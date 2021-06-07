@@ -8,24 +8,43 @@
 // Inox targets the webassembly virtual machine but runs on other architectures
 // too. It is a multi dialect language because it values diversity.
 //
-// Entities:
+// Main entities:
 // Cells - that's what memory is made of.
 // Acts  - aka activation records or closures.
 // Tasks - they run code in a cooperative manner.
 //
-// Values:
-// Void      - void is void is void, no null vs undefined wars
-// Undefined - pretty much like javascript's undefined.
-// Nil,      - empty list, singleton.
-// Symbols   - #such_names are efficient, both speed and memory usage
-// Strings   - like in javascript
-// Integers  - a kind of Number I guess, native size, minus decoration
-// Floats    - another kind of numbers, huge
-// Lists     - with an head and the rest
-// Arrays    - indexed, 0 based
-// Maps      - between symbols and arbitrary values
-// Sets      - ToDo: reactive sets, see https://github.com/ReactiveSets/toubkal
-// Objects   - the name of such type of values is the name of their class
+// Type of values:
+// Symbol        - #such_names are efficient, both speed and memory usage
+//  Void         - void is void is void, singleton
+//  Undefined    - pretty much like javascript's undefined, singleton
+//  Free         - unbound, see prolog
+//  Nil,         - empty list, (), singleton, see lisp
+// Boolean       - true or false, dualton
+//  Fail         - like in Icon; ToDo: with out without a cause?
+// Magnitude     - More or less, see smalltalk
+//  Number       - how much?
+//   Complex     - I know, sorry about that
+//    Real       - whatever that means.
+//     Rational  - Not so much
+//      Integer  - a kind of Number I guess, native size, minus decoration
+//      Unsigned - unsigned integers, eqv webassembly's usize
+//      i8, u8, i6, u16, i32, u32, i64, u64 - webassembly
+// Float         - another kind of numbers, huge
+//  f32, f64     - webassembly
+// v128          - webassembly
+// Any           - webassembly's anyref
+// Cell          - a pointer to a memory cell, type/name/value
+// Address       - address of a byte in memory
+// Object        - the name of such type of values is the name of their class
+//   Box         - a proxy to a value typically
+// Lists         - with an head and the rest, enumerable
+//  Array        - indexed, 0 based
+//   v128        - webassembly
+//  String       - like in javascript, not 0 terminated like in C
+//  Maps         - between symbols and arbitrary values
+//  Set          - with members
+//  Reactive     - ToDo: reactive sets,
+//                 see https://github.com/ReactiveSets/toubkal
 //
 // Values versus objects: values of types List, Array, Map, Object, Cell,
 // Act and Task are actualy references to same mutable underlying value. The
@@ -61,6 +80,8 @@ type isize = number;
 type usize = number;
 type u64   = number;
 
+// Some constants about memory layout
+const MEM_SIZE = 1024 * 16;
 
   function inox( state: any, event: any, source: string ){
   // Starts running an Inox machine, returns a Promise of some future result,
@@ -78,7 +99,7 @@ type u64   = number;
       type InoxValue   = ui32;
       type InoxName    = ui16;
 
-      type Cell = { type: InoxType, value: InoxValue, name: InoxName };
+      type Cell = { type: InoxType, name: InoxName, value: InoxValue };
 
       // A memory cell has an address, a type, a value and a name maybe.
       // When the type is "list", the name is address of the rest of the list.
@@ -96,6 +117,7 @@ type u64   = number;
 
       // cell number 0 is special, 0/0/0, void/void/void
       var next_cell: InoxAddress = 1;
+      var ram = new Uint32Array( MEM_SIZE / 4 );
 
       function allocate_cell(): InoxAddress {
         return next_cell++;
@@ -105,14 +127,36 @@ type u64   = number;
         // Align on 64bits
         var aligned_size = ( size + 7 ) >> 3;
         var r = next_cell;
-        next_cell += size;
+        next_cell += aligned_size;
         return r;
       }
 
       function make_cell(
-        type: InoxType, value: InoxValue, name: InoxName
-      ): Cell {
-        return { type: type, value: value, name: name };
+        type: InoxType, name: InoxName, value: InoxValue
+      ): InoxAddress {
+        let address:InoxAddress = allocate_cell();
+        store_cell( address, type, name, value );
+        return address;
+      }
+
+      function store_cell(
+        cell: InoxAddress, type: InoxType, value: InoxValue, name: InoxName
+      ): InoxAddress {
+        let address:InoxAddress = allocate_cell();
+        let word1: ui32 = ( type << 16 ) + name;
+        let word2: ui32 = value;
+        ram.set( [ word1, word2 ], address);
+        return address;
+      }
+
+     function fetch_cell( cell: InoxAddress ): Cell {
+        let words = ram.slice( cell, 2 );
+        let word1 = words[ 0 ];
+        let word2 = words[ 1 ];
+        let type  = word1 >> 16;
+        let name  = word1 & 0xffff;
+        let value = word2;
+        return { type: type, name: name, value: value };
       }
 
       function get_cell_type( cell: Cell ): InoxType {
@@ -166,28 +210,32 @@ type u64   = number;
       }
 
       // This is initialy the sentinel tail of reallocatable cells
-      var free_cells: InoxAddress = alloc_cell();
+      var free_cells: InoxAddress = allocate_cell();
 
-      function alloc_cell( type, value, name ){
+      function fast_allocate_cell( type, value, name ){
       // Allocate a new cell or reuse an free one
-        var cell = free_cells;
+        let address = free_cells;
+        let cell: Cell
+        = fetch_cell( get_next_cell( fetch_cell( free_cells ) ) );
         if( !cell.type )return make_cell( type, value, name );
-        free_cells =  free_cells.value;
+        free_cells =  cell.value;
         cell.type  = type;
         cell.value = value;
         cell.name  = name;
+        store_cell( address, type, name, value );
         return cell;
       }
 
-      function free_cell( cell ){
-        cell.type = undefined;
-        // ToDo: free any memory associated to the value
-        cell.value = free_cells;
-        free_cells = cell;
+      function free_cell( address: InoxAddress ){
+      // free a cell, add it to the free cells list
+        let cell: Cell = fetch_cell( address );
+        // ToDo: define a type for free cells, instead of 1
+        store_cell( address, 1, free_cells, 0 );
+        free_cells = address;
       }
 
       // -----------------------------------------------------------------------
-      //  Symbol
+      //  Symbol & Void, type 1 & type 0
       //
 
       const type_symbol = "Symbol";
@@ -196,20 +244,20 @@ type u64   = number;
       function make_symbol( name ){
         var symbol = all_symbols[ name ];
         if( symbol )return symbol;
-        symbol = alloc_cell( type_symbol, name, name );
+        symbol = make_cell( 1, name, name );
         all_symbols[ name ] = symbol;
         return symbol;
       }
 
       const type_void   = "Void";
       const symbol_void = make_symbol( type_void );
-      const void_value  = make_cell( type_void, _, _ );
+      const void_value  = make_cell( 0, _, _ );
 
       const symbol_symbol = make_symbol( type_symbol );
 
 
       // -----------------------------------------------------------------------
-      //  String
+      //  String, type 3
       //
 
       const type_string = "String";
@@ -219,7 +267,7 @@ type u64   = number;
       function make_string( value ){
         var string = small_strings[ value ];
         if( string )return string;
-        string = alloc_cell( type_string, value, symbol_string )
+        string = make_cell( 2, symbol_string, value )
         if( value.length() <= 1 ){
           small_strings[ value ] = string;
         }
@@ -228,19 +276,19 @@ type u64   = number;
 
 
       // -----------------------------------------------------------------------
-      //  Integer
+      //  Integer, type 4
       //
 
       const type_integer = "Integer";
       const symbol_integer = make_symbol( type_integer );
 
       function make_integer( value ){
-        return alloc_cell( type_integer, value, symbol_integer );
+        let integer = make_cell( 4, symbol_integer, value );
       }
 
 
       // -----------------------------------------------------------------------
-      //  Float
+      //  Float, type 5
       //
 
       const type_float = "Float";
