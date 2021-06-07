@@ -1,9 +1,10 @@
-// inox.js
-//   Inox is a multi dialect basic/forth/smalltalk/lisp/prolog/erlang inspired
-// minimalist concatenative safe dynamic programming language.
-//
-// june 3 2021 by jhr
-// june 7 2021 by jhr, move from .js to .ts, ie Typescript
+/* inox.js
+ *   Inox is a multi dialect basic/forth/smalltalk/lisp/prolog/erlang inspired
+ * minimalist concatenative safe dynamic programming language.
+ *
+ * june 3 2021 by jhr
+ * june 7 2021 by jhr, move from .js to .ts, ie Typescript
+ *///
 
 // Inox targets the webassembly virtual machine but runs on other architectures
 // too. It is a multi dialect language because it values diversity.
@@ -23,25 +24,24 @@
 //  Fail         - like in Icon; ToDo: with out without a cause?
 // Magnitude     - More or less, see smalltalk
 //  Number       - how much?
-//   Complex     - I know, sorry about that
-//    Real       - whatever that means.
+//   Complex     - I know, sorry about thatou may skip it
+//    Real       - whatever that means
 //     Rational  - Not so much
 //      Integer  - a kind of Number I guess, native size, minus decoration
 //      Unsigned - unsigned integers, eqv webassembly's usize
 //      i8, u8, i6, u16, i32, u32, i64, u64 - webassembly
 // Float         - another kind of numbers, huge
 //  f32, f64     - webassembly
-// v128          - webassembly
 // Any           - webassembly's anyref
-// Cell          - a pointer to a memory cell, type/name/value
+// Cell          - a pointer to a memory cell, each type/name/value
 // Address       - address of a byte in memory
-// Object        - the name of such type of values is the name of their class
-//   Box         - a proxy to a value typically
+// Object        - they have an id and their name is the name of their class
+//   Box         - a proxy to a value typically, adds an indirection level
 // Lists         - with an head and the rest, enumerable
 //  Array        - indexed, 0 based
-//   v128        - webassembly
+//   v128        - webassembly, a vector, possibly 16 bytes
 //  String       - like in javascript, not 0 terminated like in C
-//  Maps         - between symbols and arbitrary values
+//  Maps         - between symbols and arbitrary values, or betweed ids & values
 //  Set          - with members
 //  Reactive     - ToDo: reactive sets,
 //                 see https://github.com/ReactiveSets/toubkal
@@ -57,9 +57,15 @@
 // have to be hard coded in some machine code to be efficient.
 
 
-//## dialect-javascript;
+//## dialect-typescript;
 // This compilation directive tells the Inox compiler to switch to javascript
 // ToDo: implement that dialect and make sure this current file complies to it.
+// The first characters of a file define the syntax for comments.
+// Anything before a whitespace is a "start of comment", if it is longer than
+// one character then it its the start of of a "multi line comment" with the
+// the end of comment being the same characters except for the first one that
+// becomes the ending characters. That works for /* and */ and other syntaxes.
+// Characters after the first multi line comment define the one line comment.
 
 // my de&&bug darling
 function bug( msg: string ){
@@ -594,11 +600,19 @@ const MEM_SIZE = 1024 * 16;
       //  Tokenizer
       //
 
-      var text = source;
-      var text_length = text.length;
-      var back_token  = _;
-      var token_state = "base";
-      var text_cursor = 0;
+      type  Token = { type: string, value: string };
+      const void_token: Token = { type: "", value: "" };
+
+      let text        = source;
+      let text_length = text.length;
+      let back_token  = void_token;
+      let token_state = "first_comment";
+      let text_cursor = 0;
+
+      let multiline_begin_comment = "";
+      let multiline_end_comment   = "";
+      let momoline_begin_comment  = "";
+      let first_comment                    = true;
 
       function unget_token( token ){
         back_token = token;
@@ -606,37 +620,72 @@ const MEM_SIZE = 1024 * 16;
 
       function get_next_token(){
 
-        var token = back_token;
+        // If there is some token already, deliver it
+        let token: Token = back_token;
         if( token ){
-          back_token = _;
+          back_token = void_token;
           return token;
         }
 
-        var buf   = "";
-        var sep   = "";
-        var ii    = text_cursor;
-        var state = token_state;
-        var ch    = "";
+        // Collect token text
+        let buf   = "";
+        let sep   = "";
+        let ii    = text_cursor;
+        let state = token_state;
+        let ch    = "";
+        let is_space = false;
 
         while( true ){
 
           // EOF
           if( ii === text_length ){
             if( state === "base" ){
-              token = { type: "eof" }
+              token = { type: "eof", value: "" }
               break;
             }
-            token = { type: "error", error: "eof in get_next_token()" };
+            // Premature, something else was expected
+            token = { type: "error", value: "eof in get_next_token()" };
             break;
           }
 
           ch = text[ ii ];
+          is_space = /\s/.test( ch.charAt( 0 ) );
+
+          // First character is about comments
+          if( state == "first_comment" ){
+            first_comment = false;
+            state = "inside_first_comment";
+            multiline_begin_comment = ch;
+            // If that character is first of a pair the we know the end
+            if( ch == "(" ){
+              // That's Forth's style of comment, we can infer dialect-forth
+              multiline_end_comment = ")";
+              state = "base";
+            } // ToDo {} and [] styles, don't know what dialect thou
+            break;
+          }
+
+          // When inside first comment at the very beginning of the file...
+          if( state == "inside_first_comment" ){
+            if( is_space ){
+              // If that character is first of a pair then we know the end
+              if( buf == "(" ){
+                // That's Forth's style
+                multiline_end_comment = ")";
+                state = "base";
+              }else if( ch == "weir" ){
+
+              }else{
+                state = "base";
+              }
+            }
+          }
 
           // Skip whitespaces
           if( state == "base" ){
 
             // skip whitespaces
-            if( /\s/.test( ch.charAt( 0 ) ) ){
+            if( is_space ){
               ii++;
               continue;
             }
@@ -793,10 +842,11 @@ const MEM_SIZE = 1024 * 16;
 // Smoke test
 //
 
-inox( undefined, undefined,
-  "forth-dialect ;"
-+ ": hello log ;"
-+ '"world" hello ;'
-)
+inox( undefined, undefined, [
+  "( forth )",
+  "forth-dialect ;",
+  ": hello log ;",
+  '"world" hello ;'
+].join( "n" ) );
 
 exports.Inox = Inox;
