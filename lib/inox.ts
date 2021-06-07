@@ -1,8 +1,9 @@
 // inox.js
 //   Inox is a multi dialect basic/forth/smalltalk/lisp/prolog/erlang inspired
 // minimalist concatenative safe dynamic programming language.
+//
 // june 3 2021 by jhr
-// june 7 2021 by jhr, deprecated, see inox.ts
+// june 7 2021 by jhr, move from .js to .ts, ie Typescript
 
 // Inox targets the webassembly virtual machine but runs on other architectures
 // too. It is a multi dialect language because it values diversity.
@@ -42,100 +43,130 @@
 // ToDo: implement that dialect and make sure this current file complies to it.
 
 // my de&&bug darling
-function bug( msg ){
+function bug( msg: string ){
   console.log( msg );
 }
 var de = true;
 
 de&&bug( "Inox starting..." );
 
+// Let's say Typescript is AssemblyScript for a while (june 7 2021)
+type i8    = number;
+type ui8   = number;
+type i16   = number;
+type ui16  = number;
+type i32   = number;
+type ui32  = number;
+type isize = number;
+type usize = number;
+type u64   = number;
 
-  function inox( state, event, source ){
+
+  function inox( state: any, event: any, source: string ){
   // Starts running an Inox machine, returns a Promise of some future result,
   // The state and event parameters are decoded json structures.
   // The source parameter is a string, maybe the content of an .ino text file.
 
-      const _ = undefined;
+      const _ = 0; // undefined;
 
       // -----------------------------------------------------------------------
       //  Cell
       //
 
-      function Cell( type, value, name ){
+      type InoxAddress = ui32;
+      type InoxType    = ui8;
+      type InoxValue   = ui32;
+      type InoxName    = ui16;
+
+      type Cell = { type: InoxType, value: InoxValue, name: InoxName };
 
       // A memory cell has an address, a type, a value and a name maybe.
       // When the type is "list", the name is address of the rest of the list.
-      // Note: some compact encoding would store all of that in a 64 bits word.
+      // The encoding stores all of that in a 64 bits word.
 
-        this.type  = type;  // a ref to a Symbol type of cell
-        this.name  = name;  // a ref to a Symbol type of cell xor next in list.
-        this.value = value; // depends on type, often a pointer
+      // this.type  = type;  // a ref to a Symbol type of cell
+      // this.name  = name;  // a ref to a Symbol type of cell xor next in list.
+      // this.value = value; // depends on type, often a pointer
 
-        // Possible layouts :
-        //  32 bits values, 8 bits types, 24 bits addresses, 4 bytes per cell
-        //  40 bits values, 8 bits types, 16 bits addresses, 5 bytes per cell
-        //  48 bits values, 4 bits types, 12 bits addresses, 6 bytes per cell
-        // The layout could also vary according to the type.
+      // Possible layouts :
+      //  32 bits values, 8 bits types, 24 bits addresses, 4 bytes per cell
+      //  40 bits values, 8 bits types, 16 bits addresses, 5 bytes per cell
+      //  48 bits values, 4 bits types, 12 bits addresses, 6 bytes per cell
+      // The layout could also vary according to the type.
+
+      // cell number 0 is special, 0/0/0, void/void/void
+      var next_cell: InoxAddress = 1;
+
+      function allocate_cell(): InoxAddress {
+        return next_cell++;
       }
 
-      function make_cell( type, value, name ){
-        return new Cell( type, value, name );
+      function alloc_bytes( size: InoxValue ): InoxAddress {
+        // Align on 64bits
+        var aligned_size = ( size + 7 ) >> 3;
+        var r = next_cell;
+        next_cell += size;
+        return r;
       }
 
-      function get_cell_type( cell ){
+      function make_cell(
+        type: InoxType, value: InoxValue, name: InoxName
+      ): Cell {
+        return { type: type, value: value, name: name };
+      }
+
+      function get_cell_type( cell: Cell ): InoxType {
       // Returns the type of a cell, as a Symbol cell
         return cell.type;
       }
 
-      function get_cell_name( cell ){
+      function get_cell_name( cell: Cell ): InoxName {
       // Returns the name of a cell, as a Symbol cell
         return cell.name;
       }
 
-      function get_next_cell( cell ){
+      function get_next_cell( cell: Cell ): InoxAddress {
       // Assuming cell is a list member, return next cell in list
-        return cell.name;
+        var name: InoxName = cell.name;
+        var address: InoxAddress = name << 3;
+        return address;
       }
 
-      function set_next_cell( cell ){
+      function set_next_cell( cell: Cell, address: InoxAddress ): void {
       // Assuming cell is a list member, set the next cell in list
-        cell.name =cell;
+        cell.name = address >> 3;
       }
 
-      function get_cell_value( cell ){
+      function get_cell_value( cell: Cell ): usize {
       // Returns the opaque value of a cell, native word length
         return cell.value;
       }
 
-      function get_cell_value64( cell ){
+      function get_cell_value64( cell: Cell ): u64 {
       // Returns the opaque value of a cell, double word
         return cell.value;
       }
 
-      function get_cell_content( cell ){
-      // Returns an array with 3 attributes of a cell, type/value/name
-        return [
-          cell.type,
-          cell.name,
-          cell.value,
-        ];
-      }
-
-      function set_cell_content( target, source ){
+      function set_cell_content( cell: Cell, source: Cell ): void {
       // Change the content of a cell
-        target.type  = source.type;
-        target.value = source.value;
-        target.name  = source.name;
+        cell.type  = source.type;
+        cell.value = source.value;
+        cell.name  = source.name;
       }
 
-      function set_cell_value( target, source ){
+      function set_cell_value( cell: Cell, source: Cell ): void {
       // Change the content of a cell but keep the previous name
-        target.type  = source.type;
-        target.value = source.value;
+        cell.type  = source.type;
+        cell.value = source.value;
+      }
+
+      function set_cell_name( cell: Cell, name: InoxName ){
+      // Change the content of a cell but keep the previous name
+        cell.name  = name;
       }
 
       // This is initialy the sentinel tail of reallocatable cells
-      var free_cells = make_cell( _, _, _ );
+      var free_cells: InoxAddress = alloc_cell();
 
       function alloc_cell( type, value, name ){
       // Allocate a new cell or reuse an free one
