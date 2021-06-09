@@ -77,17 +77,17 @@ de&&bug( "Inox starting..." );
 
 // Let's say Typescript is AssemblyScript for a while (june 7 2021)
 type i8    = number;
-type ui8   = number;
+type u8    = number;
 type i16   = number;
-type ui16  = number;
+type u16   = number;
 type i32   = number;
-type ui32  = number;
+type u32   = number;
 type isize = number;
 type usize = number;
 type u64   = number;
 
 // Some constants about memory layout
-const MEM_SIZE = 1024 * 16;
+const MEM_SIZE = 1024 * 16; // 16kb
 
   function inox( state: any, event: any, source: string ){
   // Starts running an Inox machine, returns a Promise of some future result,
@@ -100,10 +100,10 @@ const MEM_SIZE = 1024 * 16;
       //  Cell
       //
 
-      type InoxAddress = ui32;
-      type InoxType    = ui8;
-      type InoxValue   = ui32;
-      type InoxName    = ui16;
+      type InoxAddress = u32; // 24 bits actually, 32 Mb
+      type InoxType    = u8;  // packed with name, 256 types
+      type InoxName    = u32; // 24 bits actually
+      type InoxValue   = u32; // payload
 
       type Cell = { type: InoxType, name: InoxName, value: InoxValue };
 
@@ -115,10 +115,11 @@ const MEM_SIZE = 1024 * 16;
       // this.name  = name;  // a ref to a Symbol type of cell xor next in list.
       // this.value = value; // depends on type, often a pointer
 
-      // Possible layouts :
+      // Other possible layouts :
       //  32 bits values, 8 bits types, 24 bits addresses, 4 bytes per cell
       //  40 bits values, 8 bits types, 16 bits addresses, 5 bytes per cell
-      //  48 bits values, 4 bits types, 12 bits addresses, 6 bytes per cell
+      //  48 bits values, 5 bits types, 11 bits addresses, 6 bytes per cell
+      //  16 bits values, 5 bits types, 11 bits addresses, 32 bits cells, 4kb
       // The layout could also vary according to the type.
 
       // cell number 0 is special, 0/0/0, void/void/void
@@ -129,7 +130,7 @@ const MEM_SIZE = 1024 * 16;
         return next_cell++;
       }
 
-      function alloc_bytes( size: InoxValue ): InoxAddress {
+      function allocate_bytes( size: InoxValue ): InoxAddress {
         // Align on 64bits
         var aligned_size = ( size + 7 ) >> 3;
         var r = next_cell;
@@ -146,21 +147,21 @@ const MEM_SIZE = 1024 * 16;
       }
 
       function store_cell(
-        cell: InoxAddress, type: InoxType, value: InoxValue, name: InoxName
-      ): InoxAddress {
-        let address:InoxAddress = allocate_cell();
-        let word1: ui32 = ( type << 16 ) + name;
-        let word2: ui32 = value;
+        address: InoxAddress, type: InoxType, value: InoxValue, name: InoxName
+      ): void {
+        // Pack type and name together
+        let word1: u32 = ( type << 24 ) + name;
+        let word2: u32 = value;
         ram.set( [ word1, word2 ], address);
-        return address;
       }
 
-     function fetch_cell( cell: InoxAddress ): Cell {
-        let words = ram.slice( cell, 2 );
+     function fetch_cell( address: InoxAddress ): Cell {
+        let words = ram.slice( address, 2 );
         let word1 = words[ 0 ];
         let word2 = words[ 1 ];
-        let type  = word1 >> 16;
-        let name  = word1 & 0xffff;
+        // Unpack type and name
+        let type  = word1 >> 24;
+        let name  = word1 & 0xfffff;
         let value = word2;
         return { type: type, name: name, value: value };
       }
@@ -301,12 +302,12 @@ const MEM_SIZE = 1024 * 16;
       const symbol_float = make_symbol( type_float );
 
       function make_float( value ){
-        return alloc_cell( type_float, value, symbol_float );
+        return make_cell( 5, value, symbol_float );
       }
 
 
       // -----------------------------------------------------------------------
-      //  List
+      //  List, type 6
       //
 
       const type_list = "List";
@@ -314,12 +315,12 @@ const MEM_SIZE = 1024 * 16;
 
       function make_list(){
         // ToDo: value should a linked list of cells
-        return alloc_cell( type_list, [], symbol_list );
+        return make_cell( 6, 0, symbol_list );
       }
 
 
       // -----------------------------------------------------------------------
-      //  Array
+      //  Array, type 7
       //
 
       const type_array = "Array";
@@ -327,45 +328,43 @@ const MEM_SIZE = 1024 * 16;
 
       function make_array(){
         // ToDo: value should be a slice inside the task's memory
-        return alloc_cell( type_array, [], symbol_array );
+        return make_cell( 7, 0, symbol_array );
       }
 
 
       // -----------------------------------------------------------------------
-      //  Map
+      //  Map, type 8
       //
 
       const type_map = "Map";
       const symbol_map = make_symbol( type_map );
 
       function make_map(){
-        return alloc_cell( type_map, {}, symbol_map );
+        return make_cell( 8, 0, symbol_map );
       }
 
 
       // -----------------------------------------------------------------------
-      //  Object
+      //  Object, type 8
       //
 
       const type_object = "Object";
       const symbol_object = make_symbol( type_object );
 
-      function make_object( object ){
-        var class_symbol = make_symbol( object.constructor.name );
-        return alloc_cell( type_object, object, class_symbol );
+      function make_object(){
+        return make_cell( 8, 0, symbol_object );
       }
 
 
       // -----------------------------------------------------------------------
-      //  Function
+      //  Function, type 9
       //
 
       const type_function = "Function";
       const symbol_function = make_symbol( type_function );
 
-      function make_function( fun ){
-        var fun_symbol = make_symbol( fun.name );
-        return alloc_cell( type_function, fun, symbol_function );
+      function make_function(){
+        return make_cell( 9, 0, symbol_function );
       }
 
 
@@ -377,7 +376,7 @@ const MEM_SIZE = 1024 * 16;
       // An Act is created for functions with local variables, aka closure
         this.parent = parent;
         this.count  = 1; // reference counter
-        this.locals = make_cell();
+        this.locals = make_map();
         return this;
       }
 
@@ -504,7 +503,7 @@ const MEM_SIZE = 1024 * 16;
         }
 
         var ram = make_ram32( size );
-        var new_task = new Task( parent, act );
+        var new_task = make_task( parent, act );
 
         // If parent task then copy memory from it
         if( parent ){
@@ -600,29 +599,53 @@ const MEM_SIZE = 1024 * 16;
       //  Tokenizer
       //
 
-      type  Token = { type: string, value: string };
-      const void_token: Token = { type: "", value: "" };
+      type Token = {
+        type:  string,
+        value: string,
+        index: u32
+      };
+
+      const void_token: Token = {
+        type: "",
+        value: "",
+        index: 0
+      };
 
       let text        = source;
       let text_length = text.length;
       let back_token  = void_token;
-      let token_state = "first_comment";
+      let token_state = "comment";
       let text_cursor = 0;
 
-      let multiline_begin_comment = "";
-      let multiline_end_comment   = "";
-      let momoline_begin_comment  = "";
-      let first_comment                    = true;
+      // Smart detection of comments syntax, somehow
+      let is_c_style     = false;
+      let is_forth_style = false;
+      let is_lisp_style  = false;
+      let comment_multiline_begin       = "";
+      let comment_multiline_begin_begin = "";
+      let comment_multiline_end         = "";
+      let comment_multiline_end_end     = "";
+      let comment_monoline_begin        = "";
+      let comment_monoline_begin_begin  = "";
+      let first_comment = true;
 
-      function unget_token( token ){
+      function make_token( type: string, value: string, ii: u32 ): Token {
+        return {
+          type:  type,
+          value: value,
+          index: ii - 1 // ii is always one character ahead
+        }
+      }
+
+      function unget_token( token: Token ): void {
         back_token = token;
       }
 
-      function get_next_token(){
+      function get_next_token(): Token {
 
         // If there is some token already, deliver it
         let token: Token = back_token;
-        if( token ){
+        if( token !== void_token ){
           back_token = void_token;
           return token;
         }
@@ -634,51 +657,125 @@ const MEM_SIZE = 1024 * 16;
         let state = token_state;
         let ch    = "";
         let is_space = false;
+        let is_eol   = false; // End Of Line
+        let next_ch = "";
 
-        while( true ){
+        function ch_is_space( ch: string ){
+          // ToDo: avoid regexp
+          return /\s/.test( ch.charAt( 0 ) );
+        }
+
+        function ch_is_eol( ch: string ){
+          // ToDo: handle crlf better
+          if( ch == "\n" )return true;
+          if( ch == "\n" )return true;
+          return false;
+        }
+
+        eat: while( true ){
 
           // EOF
           if( ii === text_length ){
-            if( state === "base" ){
-              token = { type: "eof", value: "" }
-              break;
+            if( state == "base" ){
+              token = { type: "eof", value: "", index: ii }
+              break eat;
             }
             // Premature, something else was expected
-            token = { type: "error", value: "eof in get_next_token()" };
-            break;
+            token = {
+              type: "error",
+              value: "eof in token " + state,
+              index: ii
+            };
+            break eat;
           }
 
+          // Get next character, check if it is a space or end of line
           ch = text[ ii ];
-          is_space = /\s/.test( ch.charAt( 0 ) );
+          ii++;
+          is_space = ch_is_space( ch );
+          is_eol = ch_is_eol( ch );
 
-          // First character is about comments
-          if( state == "first_comment" ){
-            first_comment = false;
-            state = "inside_first_comment";
-            multiline_begin_comment = ch;
-            // If that character is first of a pair the we know the end
-            if( ch == "(" ){
-              // That's Forth's style of comment, we can infer dialect-forth
-              multiline_end_comment = ")";
-              state = "base";
-            } // ToDo {} and [] styles, don't know what dialect thou
-            break;
+          // Also get next next char, some lookahead helps sometimes
+          if( ii == text_length ){
+            next_ch = "";
+          }else{
+            next_ch = text[ ii ];
           }
 
-          // When inside first comment at the very beginning of the file...
-          if( state == "inside_first_comment" ){
-            if( is_space ){
-              // If that character is first of a pair then we know the end
-              if( buf == "(" ){
-                // That's Forth's style
-                multiline_end_comment = ")";
-                state = "base";
-              }else if( ch == "weir" ){
+          // Collect comment
+          if( state == "comment" ){
 
-              }else{
-                state = "base";
+            // When inside the first comment at the very beginning of the file
+            if( first_comment && is_space ){
+              // C style of comment, either // or /* xxx */
+              if( buf == "/*" || buf == "//" ){
+                is_c_style = true;
+                comment_multiline_begin       = "/*";
+                comment_multiline_begin_begin = "/";
+                comment_multiline_end         = "*/";
+                comment_multiline_end_end     = "/";
+                comment_monoline_begin        = "//";
+                comment_monoline_begin_begin  = "/";
+              // Forth style, ( xxx )
+              }else if( buf == "(" ){
+                is_forth_style = true;
+                comment_multiline_begin       = "(";
+                comment_multiline_begin_begin = "(";
+                comment_multiline_end         = ")";
+                comment_multiline_end_end     = ")";
+              // Lisp style, ;
+              }else if( buf == ";" ){
+                is_lisp_style = true;
+                comment_monoline_begin        = ";";
+                comment_monoline_begin_begin  = ";";
+              }
+              // Prolog style, %
+              }else if( buf == "%" ){
+                is_lisp_style = true;
+                comment_monoline_begin        = "%";
+                comment_monoline_begin_begin  = "%";
               }
             }
+
+            // If this is a monoline comment ending, emit it
+            if( is_eol
+            && comment_monoline_begin
+            && ( buf.slice( 0, comment_monoline_begin.length )
+              == comment_monoline_begin )
+            ){
+              // Emit token, without start of comment sequence
+              token = {
+                type: "comment",
+                value: buf.slice( comment_monoline_begin.length - 1 ),
+                index: ii
+              };
+              break eat;
+            }
+
+            // If this terminates the comment, emit the comment
+            if( ch == comment_multiline_end_end
+            && (
+              buf.slice(
+                buf.length - comment_multiline_end.length - 1
+              )
+              == comment_multiline_end.slice(
+                0, comment_multiline_end.length - 1
+              )
+            )){
+              // Emit token, without start & end of comment sequence
+              token = {
+                type: "comment_multiline",
+                value: buf.slice(
+                  comment_monoline_begin.length - 1,
+                ),
+                index: ii
+              };
+              break eat;
+            }
+
+            // Keep Collecting characters
+            buf += ch;
+            continue eat;
           }
 
           // Skip whitespaces
@@ -686,43 +783,64 @@ const MEM_SIZE = 1024 * 16;
 
             // skip whitespaces
             if( is_space ){
-              ii++;
-              continue;
+              continue eat;
             }
 
+            // Strings starts with "
             if( ch == "\"" ){
               state = "string";
+              continue eat;
             }
 
-            state = "collect";
             buf = ch;
 
-          // Collect string until final "
-          }else if( state === "string" ){
-            if( ch == "\"" ){
-              token = { type: "string", value: buf };
-              ii++;
-              state = "base";
-              break;
+            // Comments start differently depending on style
+            if( ch == comment_monoline_begin_begin
+            ||  ch == comment_multiline_begin_begin
+            ){
+             state = "comment";
+             continue eat;
             }
-            ii++;
+
+            // Else, it is a "word", including "separators" sometimes
+            state = "word";
+            continue eat;
+
+          } // base state
+
+          // Collect string until final "
+          if( state === "string" ){
+
+            // End of string
+            if( ch == "\"" ){
+              token = { type: "string", value: buf, index: ii };
+              state = "base";
+              break eat;
+            }
+
+            // ToDo: handle escape sequences
             buf += ch;
+            continue eat;
+
+          } // string state
 
           // Collect word until separator
-          }else if( state === "collect" ){
+          if( state === "word" ){
 
-            if( /\s/.test( ch.charAt( 0 ) ) ){
+            // Normalize all whitespaces into a simple space character
+            if( is_space ){
               ch = " ";
             }
 
-            // Treat xxx( as if it were ( xxx. Hence ( + 3 2 ) eqv +( 3 2 )
-            if( ch == "(" && buf.length ){
-              ii++;
-              unget_token( { type: ch, separator: ch } );
-              token =  { type: "word", word: buf } ;
+            // Treat xxx( as if it were ( xxx. Hence ( fn 3 2 ) eqv fn( 3 2 )
+            if( ch == "(" && buf.length > 0 ){
+              unget_token( { type: ch, value: ch, index: ii } );
+              token =  { type: "word", value: buf, index: ii - 1 } ;
               state = "base";
+              continue eat;
             }
 
+            // Some characters cannot be inside a word
             if( ch == " "
             ||  ch == "~"
             ||  ch == "^"
@@ -741,28 +859,57 @@ const MEM_SIZE = 1024 * 16;
             ||  ch == '{'
             ||  ch == '}'
             ){
-              ii++;
-              unget_token( { type: ch, separator: ch } );
-              token = { type: "word", word: buf };
+
+              // Handle line continuation when \ is last character on line
+              if( ch == "\\"
+              && ch_is_eol( next_ch )
+              ){
+                // Handle crlf
+                if( next_ch == "\r" ){
+                  ii++;
+                }
+                // Skip lf
+                ii++;
+                continue eat;
+              }
+
+              // Either a word followed by some separator
+              if( buf.length ){
+                token = { type: "word", value: buf, index: ii - 1 };
+                // Also push back a separator token unless it is just a space
+                if( ch != " " ){
+                  unget_token( { type: ch, value: ch, index: ii } );
+                }
+              // Or just the separator itself, with nothing before it
+              }else{
+                token = { type: ch, value: ch, index: ii };
+              }
+              // In both case, emit a token and get back to normal
               state = "base";
-              break;
+              break eat;
+
             }
 
-            ii++;
             buf += ch;
+            continue eat;
 
-          }else{
-            token = { type: "error", error: "bad state in get_next_token()" };
-            break;
-          }
+          } // word state
 
-        }
+          // ???
+          token = {
+            type: "error",
+            value: "bad state in get_next_token()",
+            index: ii
+          };
+          break eat;
+
+        } // eat loop
 
         text_cursor = ii;
         token_state = state;
         return token;
 
-      }
+      } // get_next_token()
 
 
       // -----------------------------------------------------------------------
@@ -776,9 +923,11 @@ const MEM_SIZE = 1024 * 16;
 
       function run( task ){
         // See https://muforth.nimblemachines.com/threaded-code/
+
         var cell;
         var op_type;
         var builtin_name;
+
         while( true ){
 
           // Get cell to execute and move forward
@@ -849,4 +998,4 @@ inox( undefined, undefined, [
   '"world" hello ;'
 ].join( "n" ) );
 
-exports.Inox = Inox;
+exports.inox = inox;
