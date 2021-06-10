@@ -1,0 +1,25 @@
+{
+  "name": "inox",
+  "version": "0.1.0",
+  "description": "The Inox programming language for the WebAssembly VM.",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/virteal/Inox.git"
+  },
+  "keywords": [
+    "wasm"
+  ],
+  "author": "Jean Hugues Noel ROBERT",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/virteal/Inox/issues"
+  },
+  "homepage": "https://github.com/virteal/Inox#readme"
+}
