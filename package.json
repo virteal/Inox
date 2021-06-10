@@ -4,10 +4,11 @@
   "description": "The Inox programming language for the WebAssembly VM.",
   "main": "index.js",
   "directories": {
-    "lib": "lib"
+    "lib": "lib",
+    "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test/inox.js"
   },
   "repository": {
     "type": "git",
