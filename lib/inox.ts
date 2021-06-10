@@ -3,8 +3,9 @@
  * minimalist concatenative safe dynamic programming language.
  *
  * june 3 2021 by jhr
- * june 7 2021 by jhr, move from .js to .ts, ie Typescript
- *///
+ * june 7 2021 by jhr, move from .js to .ts, ie Typescript, AssemblyScript
+ * june 10 2021 by jhr, .nox file extension
+ */
 
 // Inox targets the webassembly virtual machine but runs on other architectures
 // too. It is a multi dialect language because it values diversity.
@@ -110,7 +111,7 @@ const sizeof_Type    = 1;
 type InoxName        = u32; // 24 bits actually
 const sizeof_Name    = 4
 
-type InoxValue       = any; // payload
+type InoxValue       = u32; // payload
 const sizeof_Value   = 4;
 
 type Cell = { type: InoxType, name: InoxName, value: InoxValue };
@@ -277,19 +278,29 @@ function free_cell( address: InoxAddress ){
 //
 
 const type_symbol = "Symbol";
-const all_symbols = {};
+const all_symbols = new Map< String, InoxAddress >();
+const all_symbols_by_id = new Map< u32, InoxAddress >();
+var next_symbol_id: u32 = 1;
 
-function make_symbol( name ){
-  var symbol = all_symbols[ name ];
-  if( symbol )return symbol;
-  symbol = make_cell( 1, name, name );
+function make_symbol( name: string ): InoxAddress {
+  if( all_symbols.has( name ) ){
+    return all_symbols[ name ];
+  }
+  let id = next_symbol_id++;
+  var symbol = make_cell( 1, id, 1 );
   all_symbols[ name ] = symbol;
+  all_symbols_by_id[ id ] = symbol;
   return symbol;
+}
+
+function get_symbol_by_id( id: u32 ): InoxAddress {
+// Return the address of the cell that holds the symbol singleton
+  return all_symbols_by_id[ id ];
 }
 
 const type_void   = "Void";
 const symbol_void = make_symbol( type_void );
-const void_value  = make_cell( 0, _, _ );
+const void_value  = make_cell( 0, 0, 0 );
 
 const symbol_symbol = make_symbol( type_symbol );
 
@@ -376,26 +387,31 @@ function make_map(){
 
 
 // -----------------------------------------------------------------------
-//  Object, type 8
+//  Object, type 9
 //
 
 const type_object = "Object";
 const symbol_object = make_symbol( type_object );
 
-function make_object(){
-  return make_cell( 8, 0, symbol_object );
+let next_id: u32 = 1;
+
+function make_object( object: Object ){
+  let id = next_id++;
+  let class_name = object.constructor.name;
+  let class_name_symbol = make_symbol( class_name );
+  var cell = make_cell( 8, id, class_name_symbol );
 }
 
 
 // -----------------------------------------------------------------------
-//  Function, type 9
+//  Function, type 10
 //
 
 const type_function = "Function";
 const symbol_function = make_symbol( type_function );
 
 function make_function(){
-  return make_cell( 9, 0, symbol_function );
+  return make_cell( 10, 0, symbol_function );
 }
 
 
@@ -587,10 +603,12 @@ function builtin( name, fn ){
   task.builtins[ name ] = fn;
 }
 
+builtin( "make_task", builtin_make_task );
+
 // ToDo: core dictionary
 
 // Parameters stack manipulations
-builtin( "push", push ); // ToDo: fix, should be like dup
+builtin( "push", push );
 builtin( "pop", pop );
 builtin( "dup", function( task ){
   // ToDo: optimize this
@@ -601,7 +619,7 @@ builtin( "dup", function( task ){
 builtin( "drop", pop );
 
 builtin( "log", function( task ){
-  console.log( pop( task ) );
+  console.log( "" + pop( task ).value );
 } );
 
 const symbol_method_missing = make_symbol( "method_missing" );
@@ -938,21 +956,21 @@ function get_next_token(): Token {
 function run( task ){
   // See https://muforth.nimblemachines.com/threaded-code/
 
-  var cell;
-  var op_type: string;
-  var builtin_name;
+  let cell;
+  let op_type: string;
+  let builtin_name;
 
   while( true ){
 
     // Get cell to execute and move forward
-    cell = task.mem[ task.ip++ ];
+    cell = get_cell( task.ip++ );
 
     // Depending on cell's type
     op_type = cell.type;
 
     // If this is a builtin, execute it
     if( op_type == "builtin" ){
-      builtin_name = cell.name;
+      builtin_name = cell.value.name;
       if( builtin_name == "next" ){
         // Jump to address on top of stack, lowering it
         task.ip = task.call_stack[ task.rp-- ];
@@ -969,7 +987,7 @@ function run( task ){
       // Push return address
       task.call_stack[ task.rp++ ];
       // Jump to designated address
-      task.ip = context.value;
+      task.ip = cell.value;
       continue;
     }
 
