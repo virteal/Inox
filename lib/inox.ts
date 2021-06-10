@@ -114,7 +114,12 @@ const sizeof_Name    = 4
 type InoxValue       = u32; // payload
 const sizeof_Value   = 4;
 
-type Cell = { type: InoxType, name: InoxName, value: InoxValue };
+class Cell {
+  type:  InoxType;
+  name:  InoxName;
+  value: InoxValue
+};
+
 const sizeof_Cell = 8; // 64 bits
 
 // A memory cell has an address, a type, a value and a name maybe.
