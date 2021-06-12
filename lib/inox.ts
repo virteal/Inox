@@ -1366,7 +1366,8 @@ function run_word( word : string ){
 
 function builtin_inox_eval(){
   var source = cell_to_string( pop() );
-
+  tokenizer_restart( source );
+  run();
 }
 
 builtin( "inox-eval", builtin_inox_eval );
