@@ -127,18 +127,20 @@ function bug( msg: string ){
   console.log( msg );
 }
 var de : boolean = true;
-const mand = assert;
+const mand = function( condition ){
+  if( condition )return;
+  assert( false );
+};
 
 
 assert( de ); // Not ready for production, please wait :)
 de&&mand( de );
 
-
 // Make it work in the javascript machine, it's the portable scheme.
 // When compiled using AssemblyScript some changes are required.
 const PORTABLE = true;
 
-// ToDo: if( PORTABLE ){
+/// ToDo: if( PORTABLE ){
 
 // ToDo: should do that when?
 // require( "assemblyscript/std/portable" );
@@ -155,9 +157,25 @@ type usize = number;
 type u64   = number;
 type float = number;
 
-type InoxAddress = u32; // Abritrary address in memory, aka a pointer
-type InoxIndex   = u16; // Index in either builtins or words dictionaries
-type InoxValue   = u32; // payload, sometimes an index, sometimes a pointer
+// } // PORTABLE
+
+type  InoxAddress     = u32; // Abritrary address in VM memory, aka a pointer
+type  InoxIndex       = u16; // Index in either builtins or words dictionaries
+type  InoxValue       = u32; // payload, sometimes an index, sometimes a pointer
+type  InoxWord        = u16; // Smallest entities at qn InoxAddress in VM memory
+type  Cell            = u32; // Pointer to a cell's value
+type  InoxInfo        = u32; // type & name info
+type  InoxType        = u8;  // packed with name, 3 bits, 8 types
+type  InoxName        = u32; // 29 bits actually, type + info is 32 bits
+const size_of_word    = 2;   // 2 bytes, 16 bits
+const size_of_cell    = 8;   // 8 bytes, 64 bits
+const size_of_value   = 4;   // 4 bytes, 32 bits
+const words_per_cell  = size_of_cell  / size_of_word; // 4
+const words_per_value = size_of_value / size_of_word; // 2
+
+// In memory, the value is stored first, then the type & name info
+const offset_of_cell_info = size_of_value / size_of_word;
+
 
 
 /* ---------------------------------------------------------------------------
@@ -169,6 +187,8 @@ type InoxValue   = u32; // payload, sometimes an index, sometimes a pointer
  *  The notion of user defined "word" comes from the Forth language.
  */
 
+// ToDo: if( PORTABLE ){
+
 // Portable versions of load() and store()
 // For the webassembly version, see https://wasmbyexample.dev/examples/webassembly-linear-memory/webassembly-linear-memory.assemblyscript.en-us.html
 
@@ -178,37 +198,35 @@ type InoxValue   = u32; // payload, sometimes an index, sometimes a pointer
 // That array of 32 bits words is indexed using 32 bits addresses
 // with odd addresses to address 16 bits words.
 // 16 bits is the standard size for UTF16 enconded strings.
-let memory = new Uint32Array( 1024 * 16 ); // 16 kb
+// ToDo: study webassembly modules
+// See https://webassembly.github.io/spec/core/syntax/modules.html
+const memory8 = new ArrayBuffer( 1024 * 16 ); // 16 kb
+const memory16 = new Uint16Array( memory8 );
+const memory32 = new Uint32Array( memory8 );
 
 function load32( index : InoxAddress ) : u32 {
   // The right shift translates 16 bits aligned addresses into 32 bits ones
-  return memory[ index >> 1 ];
+  let value = memory32[ index >>> 1 ];
+  // de&&bug( "Load 32 @" + index + " " + value );
+  return value;
 }
 
 function store32( index : InoxAddress, value : InoxValue ) : void {
-   memory[ index >> 1 ] = value;
+   memory32[ index >>> 1 ] = value;
+   // de&&bug( "store 32 @ " + index + " " + value );
    de&&mand( load32( index ) == value );
 }
 
 function load16( index : InoxAddress ) : u16 {
-  let word : u32 = memory[ index >> 1 ];
-  // ToDo: big/little endian stuff
-  if( index & 1 ){
-    return word >> 16;
-  }else{
-    return word & 0xffff;
-  }
+  let word : InoxWord = memory16[ index ];
+  // de&&bug( "Load 16 @ " + index + " " + word );
+  return word;
 }
 
-function store16( index : InoxAddress, value : u16 ) : void {
-  let word: u32 = memory[ index >> 1 ];
-  if( index & 1 ){
-    word = ( word & 0xffff ) | ( value << 16 );
-  }else{
-    word = ( word & 0xffff0000 ) | value;
-  }
-  memory[ index >> 1 ] = word;
-  de&&mand( load16( index ) == value );
+function store16( index : InoxAddress, word : InoxWord ) : void {
+  memory16[ index ] = word;
+  // de&&bug( "store16 @" + index + " " + word );
+  de&&mand( load16( index ) == word );
 }
 
 // Not portable version is AssemblyScript syntax
@@ -290,16 +308,6 @@ const _ = 0; // undefined;
 // It all exploded when Internet arrived, circa 1995 approximatly.
 // I survived. That makes me a software "veteran" I guesss.
 
-type  Cell          = u32; // Pointer to a cell's value
-type  InoxInfo      = u32; // type & name info
-type  InoxType      = u8;  // packed with name, 3 bits, 8 types
-type  InoxName      = u32; // 29 bits actually, type + info is 32 bits
-const size_of_cell  = 8;   // 64 bits
-const size_of_value = 4;   // 32 bits
-
-// In memory, the value is stored first, then the type & name info
-const offset_of_cell_info = size_of_value / 2;
-
 abstract class CellContent {
 // A memory cell has an address, a type, a value and a name maybe.
 // When the type is "list", the name is the address of the rest of the list.
@@ -337,18 +345,21 @@ let next_cell : InoxAddress = first_cell;
 
 function allocate_cell() : Cell {
   let top = next_cell;
-  // Each cell is made of two 32 bits words
-  next_cell += 2;
+  // Each cell is made of 4 16 bits words
+  next_cell += words_per_cell;
   return top;
 }
 
 function allocate_bytes( size : InoxValue ) : InoxAddress {
   // Align on 64 bits, size of cell
-  var aligned_size = ( size + 7 ) & 0xfffffff0;
+  var aligned_size
+  = ( size + ( size_of_cell - 1 ) )
+  & ( 0xffffffff - ( size_of_cell - 1 ) );
   // ToDo: malloc() style allocation?
   var top = next_cell;
   // Divide by 2 because memory is 16 bits words, not bytes
-  next_cell += ( aligned_size / 2 );
+  next_cell += ( aligned_size / size_of_word );
+  de&&mand( load32( top ) == 0 );
   return top;
 }
 
@@ -396,7 +407,7 @@ function fetch_info( cell : Cell ) : InoxAddress {
 function pack( type : InoxType, name : InoxName ) : InoxInfo {
 // Pack type and name together.
   // Name is a 64 bits aligned pointer to a symbol type of cell
-  let pack = name | type;
+  let pack = name << 3 | type;
   de&&mand( unpack_type( pack ) == type );
   de&&mand( unpack_name( pack ) == name );
   return pack
@@ -409,7 +420,7 @@ function unpack_type( value : InoxValue ) : InoxType {
 
 // @inline
 function unpack_name( value : InoxValue ) : InoxName {
-  return value & 0xfffffff8;
+  return value >>> 3;
 }
 
 function make_cell(
@@ -643,7 +654,9 @@ const type_string = "String";
 const symbol_string = make_symbol( type_string );
 
 function make_string( value : string ) : Cell {
-  return make_cell( 3, symbol_string, make_opaque_object( value ) );
+  const cell = make_cell( 3, symbol_string, make_opaque_object( value ) );
+  de&&mand( cell_to_string( cell ) == value );
+  return cell;
 }
 
 
@@ -689,12 +702,12 @@ type RefCount = u32;
 }
 
 function make_act( caller : Cell ) : Cell {
-  let address = allocate_bytes( size_of_cell + 4 );
+  let address = allocate_bytes( words_per_cell + words_per_cell / 2 );
   store_info( address, pack( 5, fetch_info( caller ) ) );
   // No local variables initially
   store_value( address, void_cell );
   // Store reference counter
-  store32( address + 8, 1 );
+  store32( address + words_per_cell, 1 );
   return address;
 }
 
@@ -865,17 +878,18 @@ let current_psp  : InoxAddress;
 
 function push( cell : Cell ){
 // Push data on parameter stack
-  current_psp -= 4; // size of cell pointer
+  current_psp -= words_per_cell;
   store32( current_psp, cell );
+  de&&bug( "push /" + current_psp + "/" + cell_to_string( cell ) );
 }
 
 function pop() : Cell {
 // Consume top of parameter stack
   let cell : Cell = load32( current_psp );
-  current_psp +=4; // size of cell pointer
+  current_psp += words_per_cell;
+  de&&bug( "pop /" + current_psp + "/" + cell_to_string( cell ) );
   return cell;
 }
-
 
 
 class CpuContext {
@@ -920,17 +934,17 @@ class Task {
 
   init( ip : InoxAddress, ram_size : InoxValue ){
     // Round size to the size of a cell
-    var size = ( ram_size / 8 ) * 8;
+    var size = ( ram_size / size_of_cell ) * size_of_cell;
     // Current instruction pointer
     this.ip     = ip;
     // Room for stacks, both parameters and returns
     this.mp     = allocate_bytes( size );
     // Return stack is at the very end
-    this.rstack = this.mp + size - 4
+    this.rstack = this.mp + ( ( size / size_of_word ) - words_per_value );
     // That's where the current return stack pointer is also
     this.rsp    = this.rstack;
     // Parameter stack is just below the return stack
-    this.pstack = this.rstack - ( 4 * 32 );
+    this.pstack = this.rstack - ( words_per_cell * 32 );
     // That's where the current parameter stack pointer is
     this.psp    = this.pstack;
   }
@@ -1005,7 +1019,7 @@ function builtin_make_task() : void {
 
 
 // -----------------------------------------------------------------------
-//  Builtinsqwerty1234567890!@~
+//  Builtins
 //
 
 let next_builtin_id             = 0;
@@ -1033,22 +1047,25 @@ function builtin( name : string, fn : Function ) : Cell {
   // Make also some word that calls the builtins
   // 16 bits with the builtin id and 16 bits with "next" instruction code
   let bytes : InoxAddress = allocate_bytes( 4 );
-  store16( bytes,     0x8000 + id ); // builtin
-  store16( bytes + 2, 0x8000 + 1  ); // next
+  store16( bytes,     0x4000 + id ); // builtin
+  store16( bytes + 1, 0x4000 + 1  ); // next
   store_value( scell, bytes );
   let word_cell = make_word( scell );
   // Restore the proper value of the symbol, a constant
   store_value( scell, id_symbol );
+  de&&mand( get_word_definition( name ) == bytes );
+  de&&mand( load16( get_word_definition( name ) ) == ( 0x4000 + id ) );
   return word_cell;
 }
 
 // Builtin with id 0 is nop, no operation
 builtin( "no-operation", function no_operation(){} );
+de&&mand( load16( get_word_definition( "no-operation" ) ) == 0x4000 );
 
 // Builtin with id 1 is "next", jump to return address
 builtin( "go-next", function go_next(){
   this.ip = load32( this.rsp );
-  this.rsp += 4;
+  this.rsp += words_per_value;
 } );
 
 // Bultin with id " is "juñp" to some relative position
@@ -1079,11 +1096,15 @@ builtin( "dup",  function dump(){
 
 function cell_to_string( cell : Cell ) : string {
 
-  let buf : string = "";
+  let value : InoxValue = fetch_value( cell );
   let info = fetch_info( cell );
   let type = unpack_type( info );
+
+  // Fast with string objects
+  if( type == 3 )return all_objects_by_id[ value ];
+
   let name = unpack_name( info );
-  let value : InoxValue = fetch_value( cell );
+  let buf : string = "";
 
   buf += type;
   buf += "/" + name + "/";
@@ -1095,8 +1116,8 @@ function cell_to_string( cell : Cell ) : string {
     case 1 : // buf += "Symbol";
       buf += "/" + symbol_id_to_string( value );
     break;
-    case 2 : // buf += "String";
-    case 3 : // buf += "Integer";
+    case 2 : // buf += "Integer";
+    case 3 : // buf += "String";
     case 4 : // buf += "Object";
       if( all_objects_by_id[ value ] ){
         let obj : any = all_objects_by_id[ value ];
@@ -1195,6 +1216,16 @@ function unget_token( token : Token ) : void {
 }
 
 function get_next_token() : Token {
+// Split source code into syntax tokens
+
+  // ToDo: hord clauses, prolog syle
+  // See http://tau-prolog.org/files/doc/grammar-specification.pdf
+
+  // ToDo: lisp like nil and lists
+  // See https://www.cs.cmu.edu/Groups/AI/html/cltl/clm/node9.html
+
+  // ToDo: study Scheme implementations
+  // See https://legacy.cs.indiana.edu/~dyb/pubs/3imp.pdf
 
   // If there is some token already, deliver it
   let token : Token = back_token;
@@ -1211,6 +1242,7 @@ function get_next_token() : Token {
   let ch    = "";
   let is_space = false;
   let is_eol   = false; // End Of Line
+  let is_eof   = false; // End Of File
 
   // Some  lookahead to detect xxx's yyy and yyy of xxx syntax sugar
   // for xxx.yyy. That requires 4 characters
@@ -1232,33 +1264,32 @@ function get_next_token() : Token {
   eat:
   while( true ){
 
-    // EOF
+    // EOF is like end of line
     if( ii == text_length ){
+      is_eof = true;
       if( state == "base" ){
         token = { type : "eof", value : "", index : ii }
         break eat;
       }
-      // Premature, something else was expected
-      token = {
-        type  : "error",
-        value : "eof in token " + state,
-        index : ii
-      };
-      break eat;
+      // Simulate an end of line
+      ch = "\n";
+
+    // Get next character in source
+    }else{
+      ch = text[ ii ];
+      ii++;
     }
 
-    // Get next character, check if it is a space or end of line
-    ch = text[ ii ];
-    ii++;
+    // Is it somespace or something equivalent?
     is_space = ch_is_space( ch );
     is_eol = ch_is_eol( ch );
 
     // Also get next next chars, some lookahead helps sometimes
-    for( let jj = 0 ; jj++ ; jj < 4 ){
-      if( ( ii + jj ) == text_length ){
+    for( let jj = 0 ; jj < 4 ; jj++ ){
+      if( ( ii + jj ) >= text_length ){
         next_ch[ jj ] = " ";
       }else{
-        next_ch[ jj ] = text[ ii ];
+        next_ch[ jj ] = text[ ii + jj ];
         // Treat lf like a space
         if( ch_is_eol( next_ch[ jj ] ) ){
           next_ch[ jj ] = " ";
@@ -1269,6 +1300,8 @@ function get_next_token() : Token {
     // Collect comment
     if( state == "comment" ){
 
+      buf += ch;
+
       // When inside the first comment at the very beginning of the file
       if( first_comment && !is_space ){
 
@@ -1276,7 +1309,7 @@ function get_next_token() : Token {
         // see https://en.wikipedia.org/wiki/Shebang_(Unix)
 
         // C style of comment, either // or /* xxx */
-        if( buf == "/*" || buf == "//" ){
+        if( ch == "/*" || ch == "//" ){
           is_c_style = true;
           comment_multiline_begin       = "/*";
           comment_multiline_begin_begin = "/";
@@ -1286,7 +1319,7 @@ function get_next_token() : Token {
           comment_monoline_begin_begin  = "/";
 
         // Forth style, either \ or ( xxx )
-        }else if( buf == "(" ){
+        }else if( ch == "(" ){
           is_forth_style = true;
           comment_multiline_begin       = "(";
           comment_multiline_begin_begin = "(";
@@ -1296,13 +1329,13 @@ function get_next_token() : Token {
           comment_monoline_begin_begin  = "\\";
 
         // Lisp style, ;
-        }else if( buf == ";" ){
+        }else if( ch == ";" ){
           is_lisp_style = true;
           comment_monoline_begin        = ";";
           comment_monoline_begin_begin  = ";";
 
         // Prolog style, %
-        }else if( buf == "%" ){
+        }else if( ch == "%" ){
           is_lisp_style = true;
           comment_monoline_begin        = "%";
           comment_monoline_begin_begin  = "%";
@@ -1318,35 +1351,49 @@ function get_next_token() : Token {
         // Emit token, without start of comment sequence
         token = {
           type  : "comment",
-          value : buf.slice( comment_monoline_begin.length - 1 ),
+          value : buf.slice(
+            comment_monoline_begin.length,
+            buf.length - comment_monoline_begin.length
+          ),
           index : ii
         };
+        state = "base";
         break eat;
       }
 
-      // If this terminates the comment, emit the comment
+      // If this terminates the multiline comment, emit the comment
       if( ch == comment_multiline_end_end
-      && (
-        buf.slice(
-          buf.length - comment_multiline_end.length - 1
-        )
-        == comment_multiline_end.slice(
-          0, comment_multiline_end.length - 1
-        )
-      )){
+      && buf.slice( buf.length - comment_multiline_begin.length )
+        == comment_multiline_end
+      && buf.slice( 0, comment_multiline_begin.length )
+        == comment_multiline_begin
+      ){
         // Emit token, without start & end of comment sequence
         token = {
           type  : "comment_multiline",
           value : buf.slice(
-            comment_monoline_begin.length - 1,
+            comment_multiline_begin.length,
+            buf.length
+            - comment_multiline_begin.length
+            - comment_multiline_end.length
           ),
+          index : ii
+        };
+        state = "base";
+        break eat;
+      }
+
+      // Premature end of file, something else was expected
+      if( is_eof ){
+        token = {
+          type  : "error",
+          value : "eof in token " + state,
           index : ii
         };
         break eat;
       }
 
       // Keep Collecting characters
-      buf += ch;
       continue eat;
     }
 
@@ -1358,8 +1405,8 @@ function get_next_token() : Token {
         continue eat;
       }
 
-      // Strings starts with "
-      if( ch == "\"" ){
+      // Strings starts with ", unless Forth
+      if( ch == "\"" && ! is_forth_style ){
         // ToDo: handle single quote 'xx' and backquote `xxxx`
         // ToDo: handle templates litterals
         state = "string";
@@ -1388,8 +1435,10 @@ function get_next_token() : Token {
     // Collect string until final "
     if( state == "string" ){
 
-      // End of string
-      if( ch == "\"" ){
+      // End of string or end of file
+      if( ch == "\""
+      || is_eof
+      ){
         token = {
           type  : "string",
           value : buf,
@@ -1408,9 +1457,22 @@ function get_next_token() : Token {
     // Collect word until separator
     if( state == "word" ){
 
-      // Normalize all whitespaces into a simple space character
+      // Spqce is a terminator
       if( is_space ){
+        // In Forth, things are pretty simple
+        if( is_forth_style ){
+          token =  { type : "word", value : buf, index : ii - 1 } ;
+          state = "base";
+          break eat;
+        }
+        // Normalize all whitespaces into a single space character
         ch = " ";
+      }
+
+      // In Forth everthing between spaces is a word
+      if( is_forth_style ){
+        buf += ch;
+        continue eat;
       }
 
       // Treat xxx( as if it were ( xxx. Hence ( fn 3 2 ) eqv fn( 3 2 )
@@ -1433,7 +1495,7 @@ function get_next_token() : Token {
         unget_token( { type : ch, value : ch, index : ii } );
         token =  { type : "word", value : buf, index : ii - 1 } ;
         state = "base";
-        continue eat;
+        break eat;
       }
 
       // ToDo: detect yyy of xxx, meaning xxx.yyy
@@ -1481,13 +1543,13 @@ function get_next_token() : Token {
           if( ch != " " ){
             // But only if there is a space right after it
             if( next_ch[ 0 ] == " " )
-            unget_token( { type : ch, value : ch, index : ii } );
+            unget_token( { type : "post", value : ch, index : ii } );
           }
         // Or just the separator itself, with nothing before it
         }else{
-          token = { type : ch, value : ch, index : ii };
+          token = { type : "pre", value : ch, index : ii };
         }
-        // In both case, emit a token and get back to normal
+        // In both cases, emit a token and get back to normal
         state = "base";
         break eat;
 
@@ -1536,14 +1598,16 @@ function run_fast( ctx : CpuContext ){
 
   function push( cell : Cell ){
   // Push data on parameter stack
-    psp -= 2; // size of cell pointer, 2 32 bits words
+    psp -= words_per_cell; // size of cell pointer, 2 32 bits words
     store32( psp, cell );
+    de&&bug( "fast push /" + psp + "/" + cell_to_string( cell ) );
   }
 
   function pop() : Cell {
   // Consume top of parameter stack
     let cell : Cell = load32( psp );
-    psp += 2; // size of cell pointer
+    psp += words_per_cell; // size of cell pointer
+    de&&bug( "fast pop /" + psp + "/" + cell_to_string( cell ) );
     return cell;
   }
 
@@ -1561,18 +1625,19 @@ function run_fast( ctx : CpuContext ){
     then:    function set_then( v : InoxIndex   ){ then = v; }
   };
 
-  let code : InoxIndex;
-  let type : InoxValue;
+  let word : usize;
+  let type : usize;
+  let code : usize;
 
   while( ip ){
 
     // Get 16 bits cell to execute and move forward
-    code = load16( ip );
+    word = load16( ip );
     ip++;
 
     //  what type of code this is, builtin or word
-    type = code >> 14;
-    code &= 0x7fff;
+    type = word >>> 14;
+    code = word & 0x3fff;
 
     // If this is a builtin, execute it
     if( type == 1 ){
@@ -1581,7 +1646,7 @@ function run_fast( ctx : CpuContext ){
       if( code == 1 ){
         // Jump to address poped from top of stack
         ip = load32( rsp );
-        rsp += 4; // size of InoxAddress
+        rsp += words_per_value; // size of InoxAddress, 2 16 bits words
         continue;
       }
 
@@ -1607,7 +1672,7 @@ function run_fast( ctx : CpuContext ){
     // else it is almost the address of some code to run
 
     // Push the current instruction pointer onto the return stack
-    rsp -= 2; // size of an InoxAddress, 2 16 bits words
+    rsp -= words_per_value; // size of an InoxAddress, 2 16 bits words
     store32( rsp, ip );
 
     // Jump to the destination's address
@@ -1616,12 +1681,12 @@ function run_fast( ctx : CpuContext ){
     // ToDo: what about literals
   }
 
-  return new CpuContext( ip, psp, rsp );
+  return new CpuContext( ip, rsp, psp );
 
 } // run_fast()
 
 function run(){
-  let old_ctx = new CpuContext( current_ip, current_psp, current_rsp );
+  let old_ctx = new CpuContext( current_ip, current_rsp, current_psp );
   let new_ctx = run_fast( old_ctx );
   current_ip  = new_ctx.ip;
   current_psp = new_ctx.psp;
@@ -1630,14 +1695,27 @@ function run(){
 
 function run_word( word : string ){
   current_ip = get_word_definition( word );
-
   run();
 }
 
 function inox_eval(){
   var source = cell_to_string( this.pop() );
   tokenizer_restart( source );
-  run();
+  let token;
+  let type;
+  let value;
+  while( true ){
+    token = get_next_token();
+    type = token.type;
+    value = token.value;
+    de&&bug( "Token /" + type + "/" + value + "/" );
+    if( type == "error" ){
+      break;
+    }
+    if( type == "eof" ){
+      break;
+    }
+  }
 }
 
 builtin( "inox-eval", inox_eval );
