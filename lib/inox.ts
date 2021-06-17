@@ -20,7 +20,7 @@ function inox(
 // The source parameter is a string, maybe the content of a .nox text file.
 
 // Inox targets the webassembly virtual machine but runs on other
-// architectures too.
+// architectures too, including micro controllers like the esp32.
 // It is a multi dialect language because it values diversity.
 //
 // Main entities:
@@ -120,30 +120,37 @@ function inox(
 // knowledge and feel at home right away. Almost.
 
 
-de&&bug( "Inox starting..." );
+/* -----------------------------------------------------------------------------
+ *  Let's go
+ */
 
-// my de&&bug darling
+// my de&&bug darling, de flag could be a variable
+const de : boolean = true;
+
 function bug( msg: string ){
   console.log( msg );
 }
-var de : boolean = true;
+
 const mand = function( condition ){
   if( condition )return;
   assert( false );
 };
 
 
-assert( de ); // Not ready for production, please wait :)
-de&&mand( de );
+assert( de );   // Not ready for production, please wait :)
+de&&mand( de ); // Like assert but that can be disabled for speed
 
-// Make it work in the javascript machine, it's the portable scheme.
-// When compiled using AssemblyScript some changes are required.
+de&&bug( "Inox starting..." );
+
+
+/* -----------------------------------------------------------------------------
+ *  Make it work in the javascript machine, it's the portable scheme.
+ *  When compiled using AssemblyScript some changes are required.
+ */
+
 const PORTABLE = true;
 
-/// ToDo: if( PORTABLE ){
-
-// ToDo: should do that when?
-// require( "assemblyscript/std/portable" );
+// ToDo: if( PORTABLE ){
 
 // Let's say Typescript is AssemblyScript for a while (june 7 2021)
 type i8    = number;
@@ -152,21 +159,30 @@ type i16   = number;
 type u16   = number;
 type i32   = number;
 type u32   = number;
-type isize = number;
-type usize = number;
+type isize = number; // native size of integers, 32 bits typically
+type usize = number; // natyve size of addresses or unsigned integers
 type u64   = number;
-type float = number;
+type float = number; // assumed to be larger then isize
+
+// ToDo: should do that when?
+// require( "assemblyscript/std/portable" );
 
 // } // PORTABLE
+
+
+/* -----------------------------------------------------------------------------
+ *  Types and constants related to types
+ */
 
 type  InoxAddress     = u32; // Abritrary address in VM memory, aka a pointer
 type  InoxIndex       = u16; // Index in either builtins or words dictionaries
 type  InoxValue       = u32; // payload, sometimes an index, sometimes a pointer
-type  InoxWord        = u16; // Smallest entities at qn InoxAddress in VM memory
+type  InoxWord        = u16; // Smallest entities at an InoxAddress in VM memory
 type  Cell            = u32; // Pointer to a cell's value
 type  InoxInfo        = u32; // type & name info
-type  InoxType        = u8;  // packed with name, 3 bits, 8 types
+type  InoxType        = u8;  // packed with name, 3 bits, at most 8 types
 type  InoxName        = u32; // 29 bits actually, type + info is 32 bits
+
 const size_of_word    = 2;   // 2 bytes, 16 bits
 const size_of_cell    = 8;   // 8 bytes, 64 bits
 const size_of_value   = 4;   // 4 bytes, 32 bits
@@ -177,16 +193,16 @@ const words_per_value = size_of_value / size_of_word; // 2
 const offset_of_cell_info = size_of_value / size_of_word;
 
 
-
 /* ---------------------------------------------------------------------------
  *  Low level memory management.
  *  The Inox virtual machine uses an array of 16 bits words to store both
- *  the content of "cells" (2 words) and arrays of "codes" (1 word). A
+ *  the content of "cells" (2 words) and arrays of "code tokens" (1 word). A
  *  cell is the basic value manipulated everywhere. A code is a token that
- *  reference either a javascript defined builtin or an Inox defined word.
- *  The notion of user defined "word" comes from the Forth language.
+ *  reference either a javascript defined primitive or an Inox defined word.
+ *  The notion of user defined "words" comes from the Forth language.
  */
 
+// -----------------------------------------------------------------------------
 // ToDo: if( PORTABLE ){
 
 // Portable versions of load() and store()
@@ -195,12 +211,13 @@ const offset_of_cell_info = size_of_value / size_of_word;
 
 // This is "the data segment" of the virtual machine.
 // the "void" first cell is allocated at absolute address 0.
-// That array of 32 bits words is indexed using 32 bits addresses
+// That array of 32 bits words is indexed using 29 bits addresses
 // with odd addresses to address 16 bits words.
 // 16 bits is the standard size for UTF16 enconded strings.
 // ToDo: study webassembly modules
 // See https://webassembly.github.io/spec/core/syntax/modules.html
-const memory8 = new ArrayBuffer( 1024 * 16 ); // 16 kb
+
+const memory8  = new ArrayBuffer( 1024 * 16 ); // 16 kb
 const memory16 = new Uint16Array( memory8 );
 const memory32 = new Uint32Array( memory8 );
 
@@ -229,13 +246,18 @@ function store16( index : InoxAddress, word : InoxWord ) : void {
   de&&mand( load16( index ) == word );
 }
 
-// Not portable version is AssemblyScript syntax
-// ToDo: figure out what @inline means exactly
-// ToDo: figure out some method to avoid the right shift when
-// optimizing for speed instead of for memory
-// The resulting vm would then have access to less cells,
-// half of them, but faster.
-// }
+// } // PORTABLE
+
+
+/* -----------------------------------------------------------------------------
+ *  Not portable version is AssemblyScript syntax
+ *  ToDo: figure out what @inline means exactly
+ *  ToDo: figure out some method to avoid the right shift when
+ *  optimizing for speed instead of for memory
+ *  The resulting vm would then have access to less cells,
+ *  half of them, but faster.
+ */
+
 if( ! PORTABLE ){ /*
 
 @inline function load32( index : InoxAddress ) : u32 {
@@ -266,8 +288,8 @@ const _ = 0; // undefined;
   *
   *  A memory cell seats at an address and has a type, a value and a name.
   *  When type is "list", the name is the address of the rest of the list.
-  *  Else it is a "symbol", a fixed abritrary value. In some languages
-  *  like Lisp a symbol are called an "atom".
+  *  Else the nqme is a "symbol", a fixed abritrary value. In some languages
+  *  like Lisp symbols are called an "atom".
   *
   *  The encoding stores all of that in a 64 bits word.
   *  cell's type is a numeric id, 0..7
@@ -278,10 +300,6 @@ const _ = 0; // undefined;
   *    value : InoxValue; // 32 bits word
   *    info  : InoxInfo;  // packed type & name
   *  };
-  *
-  *  ToDo: add sugar syntax to tranform xxx's yyy into xxx.yyy
-  *  and/or yyy of xxx into xxx.yyy.
-  *  Inox is expected to be a "user friendly" language, like BASIC.
   *
   *  This architecture, with named values, is classicaly called a
   *  tagged architecture.
@@ -330,7 +348,6 @@ abstract class CellContent {
 // cell number 0 is reserved, special, 0/0/0, void/void/void
 let first_cell = 0;
 
-
 if( ! PORTABLE ){/*
   first_cell = heap.alloc( 1024 ); // Some initial memory, expanded later
 */}
@@ -341,6 +358,10 @@ if( ! PORTABLE ){/*
 // There is some reallocation of cells when some of them are
 // freed, see fast_allocate_cell()
 // ToDo: some C style malloc()/free() combo.
+
+// This would be HERE in Forth
+// See https://forth-standard.org/standard/core/HERE
+
 let next_cell : InoxAddress = first_cell;
 
 function allocate_cell() : Cell {
@@ -351,7 +372,7 @@ function allocate_cell() : Cell {
 }
 
 function allocate_bytes( size : InoxValue ) : InoxAddress {
-  // Align on 64 bits, size of cell
+  // Align on 64 bits, size of a cell
   var aligned_size
   = ( size + ( size_of_cell - 1 ) )
   & ( 0xffffffff - ( size_of_cell - 1 ) );
@@ -402,6 +423,7 @@ function store_info( cell : Cell, info : InoxInfo ) : void {
 function fetch_info( cell : Cell ) : InoxAddress {
   return load32( cell + offset_of_cell_info );
 }
+const get_cell_info = fetch_info;
 
 // @inline
 function pack( type : InoxType, name : InoxName ) : InoxInfo {
@@ -424,9 +446,11 @@ function unpack_name( value : InoxValue ) : InoxName {
 }
 
 function make_cell(
-  type : InoxType, name : InoxName, value : InoxValue
+  type  : InoxType,
+  name  : InoxName,
+  value : InoxValue
 ) : Cell {
-  let cell :InoxAddress = allocate_cell();
+  let cell : InoxAddress = allocate_cell();
   store_cell( cell, type, name, value );
   de&&mand( get_cell_type(  cell ) == type );
   de&&mand( get_cell_name(  cell ) == name );
@@ -504,20 +528,17 @@ function copy_cell_value( source : Cell, destination : Cell ) : void {
 }
 
 // This is initialy the sentinel tail of reallocatable cells
-let nil_cell   : Cell = 0 // it will soon be the void/void/void cell
+let nil_cell : Cell = 0 // it will soon be the void/void/void cell
+
+// Linked list of free cells
 var free_cells : Cell = nil_cell;
 
-function fast_allocate_cell(
-  type  : InoxType,
-  name  : InoxName,
-  value : InoxValue
-) : Cell {
+function fast_allocate_cell() : Cell {
 // Allocate a new cell or reuse an free one
-  if( free_cells == nil_cell )return make_cell( type, name, value );
+  if( free_cells == nil_cell )return allocate_cell();
   let cell = free_cells;
   let next_cell = get_next_cell( free_cells );
   free_cells =  next_cell;
-  store_cell( cell, type, name, value );
   return cell;
 }
 
@@ -528,17 +549,20 @@ function free_cell( cell : Cell ) : void {
 }
 
 
-// -----------------------------------------------------------------------
-//  Symbol & Void, type 1 & type 0
-//
-// Symbols have an id, it is an integer. Whenever the value of a symbol
-// is required as a number, that id is used. Whenever it is the string
-// representation that is required, it's the name of the symbol that
-// is used.
-//   0 is both void and false
-//   1 is true, it's symbolic!
+/* -----------------------------------------------------------------------
+ *  Symbol & Void, type 1 & type 0
+ *
+ *  Symbols have an id, it is an integer. Whenever the value of a symbol
+ *  is required as a number, that id is used. Whenever it is the string
+ *  representation that is required, it's the name of the symbol that
+ *  is used.
+ *    0 is both void and false
+ *    1 is true, it's symbolic!
+ */
 
 const type_symbol = "true";
+
+// the dictionary of symbols
 const all_symbol_cells_by_name = new Map< string, Cell >();
 const all_symbol_cells_by_id   = new Array< Cell >();
 const all_symbol_names_by_id   = new Array<string >()
@@ -554,6 +578,8 @@ function make_symbol( name : string ) : Cell {
 
   let id = next_symbol_id++;
   let cell = make_cell( 1, id, id );
+
+  // Update symbol dictionary
   all_symbol_cells_by_name.set( name, cell );
   all_symbol_cells_by_id[ id ] = cell;
   all_symbol_names_by_id[ id ] = name;
@@ -587,9 +613,10 @@ function get_symbol_by_id( id : u32 ) : Cell {
 }
 
 
-// -----------------------------------------------------------------------
-//  Integer, type 2, 32 bits
-// ToDo: u8+ style to deal with less common arrays of bits.
+/* -----------------------------------------------------------------------
+ *  Integer, type 2, 32 bits
+ *  ToDo: u8+ style to deal with less common arrays of bits.
+ */
 
 const type_integer = "Integer";
 const symbol_integer = make_symbol( type_integer );
@@ -599,10 +626,11 @@ function make_integer( value ){
 }
 
 
-// -----------------------------------------------------------------------
-//  String, type 3
-//
-
+/* -----------------------------------------------------------------------
+ *  String, type 3
+ *
+ *  Currently implemented using an opaque object
+ */
 
 // Access to oject is opaque, there is an indirection
 
@@ -612,7 +640,7 @@ let next_object_id = 0;
 
 let free_objects : InoxOid = 0;
 
-// ToDo: should be an array
+// Indirection table to get access to an object using it's id
 let all_objects_by_id = new Array< any >();
 
 function make_opaque_object( object : any ) : InoxOid {
@@ -650,6 +678,8 @@ function free_object( id : InoxOid ){
   free_objects = id;
 }
 
+// strings are stored in some opaque objet in this implementation
+
 const type_string = "String";
 const symbol_string = make_symbol( type_string );
 
@@ -660,9 +690,9 @@ function make_string( value : string ) : Cell {
 }
 
 
-// -----------------------------------------------------------------------
-//  Object, type 4
-//
+/* -----------------------------------------------------------------------
+ *  Object, type 4
+ */
 
 const type_object = "Object";
 const symbol_object = make_symbol( type_object );
@@ -671,6 +701,7 @@ function make_object( object : Object ) : Cell {
   let symbol = make_symbol( object.constructor.name );
   return make_cell( 4, symbol , make_opaque_object( object ) );
 }
+
 
 /* -----------------------------------------------------------------------------
  *  Act, type 5
@@ -693,7 +724,7 @@ function make_object( object : Object ) : Cell {
 const type_act = "Act";
 const symbol_act = make_symbol( type_act );
 
-type RefCount = u32;
+type RefCount = InoxValue;
 
  class Act {
   filler   : InoxAddress;  // type and name, packed
@@ -750,14 +781,16 @@ function deref_act( act : Cell ) : void {
 }
 
 
-// -----------------------------------------------------------------------
-//  Word, type 6
-//    the name is the id of the name of the word
-//    the value is the address where the word is defined is the VM memory
+/* -----------------------------------------------------------------------
+ *  Word, type 6
+ *    the name is the id of the name of the word
+ *    the value is the address where the word is defined is the VM memory
+ */
 
 const type_word = "word";
 const symbol_word = make_symbol( type_word );
 
+// The dictionary of all words
 let next_word_id = 0;
 let all_words_by_id      = Array< InoxAddress >();
 let all_word_ids_by_name = new Map< string, InoxValue >()
@@ -765,7 +798,7 @@ let all_word_ids_by_name = new Map< string, InoxValue >()
 function make_word( cell : Cell ) : Cell {
 // Define a word. It's name is the name of the cell.
   // The cell's value is the adress where the definition starts.
-  // The definition is an array of 16 bits words with builtin ids and
+  // The definition is an array of 16 bits words with primitive ids and
   // word ids. See run_fast() where the definition is interpreted.
   // ToDo: first 16 bits should be flags and length of code
   // ToDo: Forth also requires a pointer to the previous definition of
@@ -824,11 +857,9 @@ const type_array = "Array";
 const symbol_array = make_symbol( type_array );
 
 function make_array( obj? : Object ):Cell {
-  let array;
-  if( obj ){
-    array = obj;
-  }else{
-    array = new Array< any >();
+  let array = obj;
+  if( ! obj ){
+    array = new Array< Cell >();
   }
   return make_cell( 4, symbol_array, make_opaque_object( array ) );
 }
@@ -838,10 +869,8 @@ const symbol_map = make_symbol( type_map );
 
 function make_map( obj? : Object ){
   let map = obj;
-  if( obj ){
-    map = obj;
-  }else{
-    map = new Map< InoxOid, any >();
+  if( ! obj ){
+    map = new Map< InoxOid, Cell >();
   }
   return make_cell( 4, symbol_map, make_opaque_object( map ) );
 }
@@ -851,11 +880,9 @@ const symbol_list = make_symbol( type_list );
 
 function make_list( obj? : Object ) : Cell {
   // ToDo: value should a linked list of cells
-  let list;
-  if( obj ){
-    list = obj;
-  }else{
-    list = new Array< any >();
+  let list = obj;;
+  if( ! obj ){
+    list = new Array< Cell >();
   }
   return make_cell( 4, symbol_list, make_opaque_object( list ) );
 }
@@ -873,32 +900,45 @@ const symbol_Task = make_symbol( type_Task );
 let current_task : Task;
 let current_ip   : InoxAddress;
 let current_rsp  : InoxAddress;
-let current_psp  : InoxAddress;
+let current_dsp  : InoxAddress;
 
 
 function push( cell : Cell ){
 // Push data on parameter stack
-  current_psp -= words_per_cell;
-  store32( current_psp, cell );
-  de&&bug( "push /" + current_psp + "/" + cell_to_string( cell ) );
+  current_dsp -= words_per_cell;
+  store32( current_dsp, cell );
+  de&&bug( "push /" + current_dsp + "/" + cell_to_string( cell ) );
 }
 
 function pop() : Cell {
 // Consume top of parameter stack
-  let cell : Cell = load32( current_psp );
-  current_psp += words_per_cell;
-  de&&bug( "pop /" + current_psp + "/" + cell_to_string( cell ) );
+  let cell : Cell = load32( current_dsp );
+  current_dsp += words_per_cell;
+  de&&bug( "pop /" + current_dsp + "/" + cell_to_string( cell ) );
   return cell;
+}
+
+function get_it(){
+// Return top of stack
+  de&&bug(
+    "get_it /" + current_dsp + "/" + cell_to_string( load32( current_dsp ) )
+  );
+  return load32( current_dsp );
+}
+
+function set_it( cell : Cell ){
+  store32( current_dsp, cell );
+  de&&bug( "set_it /" + current_dsp + "/" + cell_to_string( cell ) );
 }
 
 
 class CpuContext {
   ip  : InoxAddress;
   rsp : InoxAddress;
-  psp : InoxAddress;
-  constructor( ip : InoxAddress, rsp : InoxAddress, psp : InoxAddress ){
+  dsp : InoxAddress;
+  constructor( ip : InoxAddress, rsp : InoxAddress, dsp : InoxAddress ){
     this.ip  = ip;
-    this.psp = psp;
+    this.dsp = dsp;
     this.rsp = rsp;
   }
 }
@@ -911,8 +951,8 @@ class Task {
   act      : Cell;     // Current activation record
   ip       : Cell;     // Current interpreter pointer in code
   mp       : Cell;     // Memory pointer, in ram array, goes upward
-  psp      : Cell;     // Parameter stack pointer, goes downward
-  pstack   : Cell;     // base address of a parameter stack cell array
+  dsp      : Cell;     // data stack pointer, goes downward
+  dstack   : Cell;     // base address of data stack cell array
   rsp      : InoxAddress; // Stack pointer for call returns, goes downward
   rstack   : InoxAddress; // Base address of return stack, 32 entries
 
@@ -937,27 +977,27 @@ class Task {
     var size = ( ram_size / size_of_cell ) * size_of_cell;
     // Current instruction pointer
     this.ip     = ip;
-    // Room for stacks, both parameters and returns
+    // Room for stacks, both data parameters and returns
     this.mp     = allocate_bytes( size );
     // Return stack is at the very end
     this.rstack = this.mp + ( ( size / size_of_word ) - words_per_value );
     // That's where the current return stack pointer is also
     this.rsp    = this.rstack;
     // Parameter stack is just below the return stack
-    this.pstack = this.rstack - ( words_per_cell * 32 );
+    this.dstack = this.rstack - ( words_per_cell * 32 );
     // That's where the current parameter stack pointer is
-    this.psp    = this.pstack;
+    this.dsp    = this.dstack;
   }
 
   get_context() : CpuContext {
-    return new CpuContext( this.ip, this.rsp, this.psp );
+    return new CpuContext( this.ip, this.rsp, this.dsp );
   }
 
   restore_context( ctx : CpuContext ) : void {
     current_task = this;
     current_ip   = this.ip  = ctx.ip;
     current_rsp  = this.rsp = ctx.rsp;
-    current_psp  = this.psp = ctx.psp;
+    current_dsp  = this.dsp = ctx.dsp;
   }
 }
 
@@ -997,9 +1037,9 @@ function free_task( task : Cell ){
   free_tasks = task;
 }
 
-// builtin to switch to another task
+// primitive to switch to another task
 function builtin_task_switch() : void {
-  var next_task = pop();
+  var next_task = this.get_it();
   task_switch( get_cell_opaque_object( next_task ) );
 }
 
@@ -1008,13 +1048,13 @@ function task_switch( task : Task ) : void {
 }
 
 function builtin_make_task() : void {
-  let ip : InoxAddress = fetch_value( this.pop() );
+  let ip : InoxAddress = fetch_value( this.get_it() );
   var act = allocate_act( current_task.cell );
   var new_task : Cell = allocate_task( current_task.cell, act );
   // ToDo: push( parameters ); into new task
   let t : Task = get_cell_opaque_object( new_task );
   t.ip = ip;
-  this.push( make_cell( symbol_Task, symbol_Task, new_task ) );
+  this.set_it( make_cell( symbol_Task, symbol_Task, new_task ) );
 };
 
 
@@ -1027,8 +1067,8 @@ let all_builtins_by_id          = new Array< Cell >();
 let all_builtin_fumctions_by_id = new Array< Function >();
 let all_builtin_ids_by_name     = new Map< string, InoxIndex >();
 
-// Helper to define a builtin
-function builtin( name : string, fn : Function ) : Cell {
+// Helper to define a primitive
+function primitive( name : string, fn : Function ) : Cell {
   let fcell = make_object( fn );
   let scell = make_symbol( name );
   // Make sure the name of the Function object is as desired
@@ -1038,16 +1078,16 @@ function builtin( name : string, fn : Function ) : Cell {
     get_cell_name( scell ),
     fetch_value( fcell )
   );
-  // Assign a new builtin id to the new builtin
+  // Assign a new primitive id to the new primitive
   let id = next_builtin_id++;
-  // Associate name, builtin id and cell is all directions
+  // Associate name, primitive id and cell is all directions
   all_builtins_by_id[ id ] = fcell;
   all_builtin_fumctions_by_id[ id ] = fn;
   all_builtin_ids_by_name.set( name, id );
   // Make also some word that calls the builtins
-  // 16 bits with the builtin id and 16 bits with "next" instruction code
+  // 16 bits with the primitive id and 16 bits with "next" instruction code
   let bytes : InoxAddress = allocate_bytes( 4 );
-  store16( bytes,     0x4000 + id ); // builtin
+  store16( bytes,     0x4000 + id ); // primitive
   store16( bytes + 1, 0x4000 + 1  ); // next
   store_value( scell, bytes );
   let word_cell = make_word( scell );
@@ -1058,41 +1098,33 @@ function builtin( name : string, fn : Function ) : Cell {
   return word_cell;
 }
 
-// Builtin with id 0 is nop, no operation
-builtin( "no-operation", function no_operation(){} );
+// primitive with id 0 is nop, no operation
+primitive( "no-operation", function no_operation(){} );
 de&&mand( load16( get_word_definition( "no-operation" ) ) == 0x4000 );
 
-// Builtin with id 1 is "next", jump to return address
-builtin( "go-next", function go_next(){
+// primitive with id 1 is "next", jump to return address
+primitive( "go-next", function go_next(){
   this.ip = load32( this.rsp );
   this.rsp += words_per_value;
 } );
 
 // Bultin with id " is "juñp" to some relative position
-builtin( "go-jump", function go_jump(){
+primitive( "go-jump", function go_jump(){
   this.ip += load32( this.rsp );
 } );
 
 
-builtin( "make_task",   builtin_make_task   );
-builtin( "task_switch", builtin_task_switch );
+primitive( "make_task",   builtin_make_task   );
+primitive( "task_switch", builtin_task_switch );
 
 // ToDo: core dictionary
 
 // Parameters stack manipulations
 
-builtin( "push", function push(){ this.push() } );
-
-builtin( "pop",  function pop(){ this.pop()  } );
-
-builtin( "drop", function drop(){ this.pop()  } );
-
-builtin( "dup",  function dump(){
-  // ToDo: optimize this
-  let top = this.pop();
-  this.push( top );
-  this.push( top );
-} );
+primitive( "push", function push() { this.push()                } );
+primitive( "pop",  function pop()  { this.pop()                 } );
+primitive( "drop", function drop() { this.pop()                 } );
+primitive( "dup",  function dup()  { this.push( this.get_it() ) } );
 
 function cell_to_string( cell : Cell ) : string {
 
@@ -1141,34 +1173,39 @@ function cell_to_string( cell : Cell ) : string {
 }
 
 function builtin_to_string(){
-  let str = cell_to_string( this.pop() );
-  this.push( make_string( str ) );
+  let str = cell_to_string( this.get_it() );
+  this.set_it( make_string( str ) );
 }
 
-builtin( "to_string", builtin_to_string );
+primitive( "to_string", builtin_to_string );
 
 function builtin_log(){
-  console.log( cell_to_string( this.pop() ) );
+  console.log( cell_to_string( this.get_it() ) );
 }
 
-builtin( "log", builtin_log );
+primitive( "log", builtin_log );
 
 const symbol_method_missing = make_symbol( "method_missing" );
 
-// -----------------------------------------------------------------------
-//  Tokenizer
-//
+
+/* -----------------------------------------------------------------------
+ *  Tokenizer
+ */
 
 type Token = {
-  type  : string,
-  value : string,
-  index : u32
+  type   : string,  // comments, words, pre and post words, strings,
+  value  : string,
+  index  : u32,     // position in source code. To: line/column
+  line   : u32,
+  column : u32
 };
 
 const void_token : Token = {
-  type  : "",
-  value : "",
-  index : 0 // ToDo line/column
+  type   : "",
+  value  : "",
+  index  : 0,
+  line   : 0,
+  column : 0
 };
 
 let text        = source;
@@ -1205,9 +1242,11 @@ tokenizer_restart( source );
 
 function make_token( type : string, value : string, ii : u32 ) : Token {
   return {
-    type  :  type,
-    value : value,
-    index : ii - 1 // ii is always one character ahead
+    type   :  type,
+    value  : value,
+    index  : ii - 1, // ii is always one character ahead
+    line   : 0,
+    column : 0
   }
 }
 
@@ -1218,7 +1257,7 @@ function unget_token( token : Token ) : void {
 function get_next_token() : Token {
 // Split source code into syntax tokens
 
-  // ToDo: hord clauses, prolog syle
+  // ToDo: horn clauses, prolog syle
   // See http://tau-prolog.org/files/doc/grammar-specification.pdf
 
   // ToDo: lisp like nil and lists
@@ -1261,14 +1300,13 @@ function get_next_token() : Token {
     return false;
   }
 
-  eat:
-  while( true ){
+  eat: while( true ){
 
     // EOF is like end of line
     if( ii == text_length ){
       is_eof = true;
       if( state == "base" ){
-        token = { type : "eof", value : "", index : ii }
+        token = { type : "eof", value : "", index : ii, line: 0, column: 0 }
         break eat;
       }
       // Simulate an end of line
@@ -1350,12 +1388,14 @@ function get_next_token() : Token {
       ){
         // Emit token, without start of comment sequence
         token = {
-          type  : "comment",
-          value : buf.slice(
+          type:   "comment",
+          value:  buf.slice(
             comment_monoline_begin.length,
             buf.length - comment_monoline_begin.length
           ),
-          index : ii
+          index:  ii,
+          line:   0,
+          column: 0
         };
         state = "base";
         break eat;
@@ -1377,7 +1417,9 @@ function get_next_token() : Token {
             - comment_multiline_begin.length
             - comment_multiline_end.length
           ),
-          index : ii
+          index : ii,
+          line:   0,
+          column: 0
         };
         state = "base";
         break eat;
@@ -1388,7 +1430,9 @@ function get_next_token() : Token {
         token = {
           type  : "error",
           value : "eof in token " + state,
-          index : ii
+          index : ii,
+          line:   0,
+          column: 0
         };
         break eat;
       }
@@ -1442,7 +1486,9 @@ function get_next_token() : Token {
         token = {
           type  : "string",
           value : buf,
-          index : ii
+          index : ii,
+          line:   0,
+          column: 0
         };
         state = "base";
         break eat;
@@ -1461,7 +1507,13 @@ function get_next_token() : Token {
       if( is_space ){
         // In Forth, things are pretty simple
         if( is_forth_style ){
-          token =  { type : "word", value : buf, index : ii - 1 } ;
+          token =  {
+            type  : "word",
+            value : buf,
+            index : ii - 1,
+            line:   0,
+            column: 0
+          } ;
           state = "base";
           break eat;
         }
@@ -1492,8 +1544,20 @@ function get_next_token() : Token {
         (ch == "(" ||  ch == '[' ||  ch == '{' )
       && buf.length > 0
       ){
-        unget_token( { type : ch, value : ch, index : ii } );
-        token =  { type : "word", value : buf, index : ii - 1 } ;
+        unget_token( {
+          type  : ch,
+          value : ch,
+          index : ii,
+          line:   0,
+          column: 0
+        } );
+        token = {
+          type  : "word",
+          value : buf,
+          index : ii - 1,
+          line:   0,
+          column: 0
+        } ;
         state = "base";
         break eat;
       }
@@ -1538,16 +1602,34 @@ function get_next_token() : Token {
 
         // Either a word followed by some separator
         if( buf.length ){
-          token = { type : "word", value : buf, index : ii - 1 };
+          token = {
+            type  : "word",
+            value : buf,
+            index : ii - 1,
+            line:   0,
+            column: 0
+          };
           // Also push back a separator token unless it is just a space
           if( ch != " " ){
             // But only if there is a space right after it
             if( next_ch[ 0 ] == " " )
-            unget_token( { type : "post", value : ch, index : ii } );
+            unget_token( {
+              type  : "post",
+              value : ch,
+              index : ii,
+              line:   0,
+              column: 0
+            } );
           }
         // Or just the separator itself, with nothing before it
         }else{
-          token = { type : "pre", value : ch, index : ii };
+          token = {
+            type  : "pre",
+            value : ch,
+            index : ii,
+            line:   0,
+            column: 0
+          };
         }
         // In both cases, emit a token and get back to normal
         state = "base";
@@ -1564,7 +1646,9 @@ function get_next_token() : Token {
     token = {
       type  : "error",
       value : "bad state in get_next_token()",
-      index : ii
+      index : ii,
+      line:   0,
+      column: 0
     };
     break eat;
 
@@ -1588,41 +1672,48 @@ function run_fast( ctx : CpuContext ){
   // Also http://www.ultratechnology.com/1xforth.htm
   // and http://www.bradrodriguez.com/papers/moving1.htm
 
-  // Setup cpu context, instruction pointer, parameter & return stacks
+  // Setup cpu context, instruction pointer, data & return stacks
   let ip  : InoxAddress = ctx.ip;
-  let psp : InoxAddress = ctx.psp;
   let rsp : InoxAddress = ctx.rsp;
+  let dsp : InoxAddress = ctx.dsp;
+
+  // Top of stack optimization
+  let it  : Cell = get_it();
 
   // builtins can jump instead of just returning, aka chaining
   let then : InoxIndex = 0;
 
   function push( cell : Cell ){
-  // Push data on parameter stack
-    psp -= words_per_cell; // size of cell pointer, 2 32 bits words
-    store32( psp, cell );
-    de&&bug( "fast push /" + psp + "/" + cell_to_string( cell ) );
+  // Push data on data parameter stack
+    dsp -= words_per_cell; // size of cell pointer, 2 32 bits words
+    store32( dsp, it );
+    it = cell;
+    de&&bug( "fast push /" + dsp + "/" + cell_to_string( it ) );
   }
 
   function pop() : Cell {
-  // Consume top of parameter stack
-    let cell : Cell = load32( psp );
-    psp += words_per_cell; // size of cell pointer
-    de&&bug( "fast pop /" + psp + "/" + cell_to_string( cell ) );
-    return cell;
+  // Consume top of the data parameter stack
+    it = load32( dsp );
+    dsp += words_per_cell; // size of cell pointer
+    de&&bug( "fast pop /" + dsp + "/" + cell_to_string( it ) );
+    return it;
   }
 
+  // Builtins have a limited access to the environment, but fast
   const inox = {
-    pop:     pop,
-    push:    push,
-    ip:      function ip(){  return ip  },
-    psp:     function psp(){ return psp },
-    rsp:     function rsp(){ return rsp },
+    get_it:  function get_it(){  return it;  },
+    get_ip:  function get_ip(){  return ip;  },
+    get_rsp: function get_rsp(){ return rsp; },
+    get_dsp: function get_dsp(){ return dsp; },
     // ToDo gmp & tmp, global memory pointer and task memory pointer
     // ToDo ap, current Act pointer
     set_ip:  function set_ip(   v : InoxAddress ){ ip   = v; },
-    set_psp: function set_psp(  v : InoxAddress ){ psp  = v; },
     set_rsp: function set_rsp(  v : InoxAddress ){ rsp  = v; },
-    then:    function set_then( v : InoxIndex   ){ then = v; }
+    set_dsp: function set_dsp(  v : InoxAddress ){ dsp  = v; },
+    set_it:  function set_it(   v : InoxAddress ){ it   = v; },
+    then:    function set_then( v : InoxIndex   ){ then = v; },
+    pop:     pop,
+    push:    push
   };
 
   let word : usize;
@@ -1635,14 +1726,14 @@ function run_fast( ctx : CpuContext ){
     word = load16( ip );
     ip++;
 
-    //  what type of code this is, builtin or word
+    //  what type of code this is, primitive or word
     type = word >>> 14;
     code = word & 0x3fff;
 
-    // If this is a builtin, execute it
+    // If this is a primitive, execute it
     if( type == 1 ){
 
-      // Special "go-next" builtin is just a jump to the return address
+      // Special "go-next" primitive is just a jump to the return address
       if( code == 1 ){
         // Jump to address poped from top of stack
         ip = load32( rsp );
@@ -1681,15 +1772,16 @@ function run_fast( ctx : CpuContext ){
     // ToDo: what about literals
   }
 
-  return new CpuContext( ip, rsp, psp );
+  set_it( it );
+  return new CpuContext( ip, rsp, dsp );
 
 } // run_fast()
 
 function run(){
-  let old_ctx = new CpuContext( current_ip, current_rsp, current_psp );
+  let old_ctx = new CpuContext( current_ip, current_rsp, current_dsp );
   let new_ctx = run_fast( old_ctx );
   current_ip  = new_ctx.ip;
-  current_psp = new_ctx.psp;
+  current_dsp = new_ctx.dsp;
   current_rsp = new_ctx.rsp;
 }
 
@@ -1699,7 +1791,7 @@ function run_word( word : string ){
 }
 
 function inox_eval(){
-  var source = cell_to_string( this.pop() );
+  var source = cell_to_string( this.get_it() );
   tokenizer_restart( source );
   let token;
   let type;
@@ -1718,7 +1810,7 @@ function inox_eval(){
   }
 }
 
-builtin( "inox-eval", inox_eval );
+primitive( "inox-eval", inox_eval );
 
 // ToDo: restore state and provide event from json encoded values
 // The idea there is about code that can execute in a stateless manner
@@ -1736,13 +1828,13 @@ let bootstrap_code : string =
 `( let's go forth )
 
 `;
-push( make_string( bootstrap_code ) );
+set_it( make_string( bootstrap_code ) );
 run_word( "inox-eval" );
 
 // If source code was provided, push it on the parameter stack
 // See http://c2.com/cybords/pp4.cgi?muforth/README
 if( source ){
-  push( make_string( source) );
+  set_it( make_string( source) );
   run_word( "inox-eval" );
   run_word( "inox-event-loop" );
 }
@@ -1754,9 +1846,9 @@ return new_state;
 }
 
 
-// --------------------------------------------------------------------------
-// Smoke test
-//
+/* --------------------------------------------------------------------------
+ *  Smoke test
+ */
 
 inox( "{}", "{}", [
 
