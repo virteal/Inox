@@ -1,3 +1,7 @@
+[![Netlify Status](https://api.netlify.com/api/v1/badges/d4d3fa7e-d9ff-407e-b750-9c41e038c006/deploy-status)](https://app.netlify.com/sites/inox/deploys)
+
+
+
 # Inox
 
 Inox is a minimalist functional concatenative dynamic programming language.
