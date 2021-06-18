@@ -1,3 +1,7 @@
+[![Netlify Status](https://api.netlify.com/api/v1/badges/d4d3fa7e-d9ff-407e-b750-9c41e038c006/deploy-status)](https://app.netlify.com/sites/inox/deploys)
+
+
+
 # Inox
 
 Inox is a minimalist functional concatenative dynamic programming language.
@@ -13,5 +17,5 @@ I started working on it at the beginning of june 2021. It's not working at all y
 
 Yours,
 
-   Jean Hugues Noël Robert, aka Virteal YanUg, aka Baron Mariani.
+   Jean Hugues Noël Robert, aka Virteal YanUg, aka Baron Mariani. @jhr on Twitter.
    
