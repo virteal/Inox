@@ -8,7 +8,9 @@
     "test": "test"
   },
   "scripts": {
-    "test": "node lib/inox.ts",
+    "build": "tsc lib/inox.ts",
+    "run": "node lib/inox.js",
+    "replit": "tsc lib/inox.ts && node lib/inox.ts",
     "asbuild:untouched": "asc assembly/index.ts --target debug",
     "asbuild:optimized": "asc assembly/index.ts --target release",
     "asbuild": "npm run asbuild:untouched && npm run asbuild:optimized"
