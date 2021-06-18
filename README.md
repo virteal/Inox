@@ -17,5 +17,5 @@ I started working on it at the beginning of june 2021. It's not working at all y
 
 Yours,
 
-   Jean Hugues Noël Robert, aka Virteal YanUg, aka Baron Mariani.
+   Jean Hugues Noël Robert, aka Virteal YanUg, aka Baron Mariani. @jhr on Twitter.
    
