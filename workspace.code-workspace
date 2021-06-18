@@ -2,12 +2,6 @@
 	"folders": [
 		{
 			"path": "."
-		},
-		{
-			"path": "site\\public"
-		},
-		{
-			"path": "site"
 		}
 	]
 }
