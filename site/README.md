@@ -1,4 +1,5 @@
-# site
+# Inox web site
+Soon on inox.virteal.online
 
 ## Build Setup
 
