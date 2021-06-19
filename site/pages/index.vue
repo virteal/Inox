@@ -3,7 +3,7 @@
     <div>
       <Logo />
       <h1 class="title">
-        Inox langage
+        Inox language
       </h1>
       <div class="links">
         <a
