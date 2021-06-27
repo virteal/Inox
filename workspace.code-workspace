@@ -3,5 +3,9 @@
 		{
 			"path": "."
 		}
-	]
+	],
+	"settings": {
+		"editor.tokenColorCustomizations": null,
+		"editor.semanticTokenColorCustomizations": null
+	}
 }
