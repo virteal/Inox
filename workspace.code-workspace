@@ -5,7 +5,60 @@
 		}
 	],
 	"settings": {
-		"editor.tokenColorCustomizations": null,
-		"editor.semanticTokenColorCustomizations": null
+		"editor.tabSize": 8,
+		"editor.folding": false,
+		"editor.foldingHighlight": false,
+		"javascript.format.insertSpaceAfterFunctionKeywordForAnonymousFunctions": false,
+		"javascript.format.insertSpaceAfterOpeningAndBeforeClosingEmptyBraces": false,
+		"javascript.format.semicolons": "insert",
+		"typescript.format.insertSpaceAfterKeywordsInControlFlowStatements": false,
+		"typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": false,
+		"npm.enableRunFromFolder": true,
+		"npm.packageManager": "npm",
+		"editor.smoothScrolling": true,
+		"editor.mouseWheelScrollSensitivity": 2,
+		"editor.wordWrap": "bounded",
+		"editor.autoClosingDelete": "never",
+		"editor.autoClosingOvertype": "never",
+		"editor.autoIndent": "advanced",
+		"editor.padding.bottom": 1,
+		"editor.peekWidgetDefaultFocus": "editor",
+		"editor.renderControlCharacters": true,
+		"editor.wrappingIndent": "none",
+		"editor.cursorSmoothCaretAnimation": true,
+		"editor.find.autoFindInSelection": "always",
+		"editor.minimap.maxColumn": 80,
+		"files.eol": "\n",
+		"files.insertFinalNewline": true,
+		"files.simpleDialog.enable": true,
+		"files.trimFinalNewlines": true,
+		"files.trimTrailingWhitespace": true,
+		"workbench.list.smoothScrolling": true,
+		"workbench.editor.tabSizing": "shrink",
+		"workbench.settings.openDefaultKeybindings": true,
+		"zenMode.hideLineNumbers": false,
+		"window.restoreFullscreen": true,
+		"debug.console.fontSize": 12,
+		"debug.javascript.autoAttachFilter": "smart",
+		"debug.javascript.autoExpandGetters": true,
+		"markdown.preview.breaks": true,
+		"workbench.colorTheme": "Solarized Light",
+		"editor.accessibilitySupport": "off",
+		"js/ts.implicitProjectConfig.checkJs": true,
+		"editor.semanticHighlighting.enabled": true,
+		"editor.tokenColorCustomizations": {
+			"comments": { "foreground": "#121ec4" }
+		},
+		"workbench.colorCustomizations": {
+			"[Solarized Light]": {
+				"terminal.foreground" : "#e4ece7",
+				"terminal.background" : "#383737",
+				"debugConsole.warningForeground": "#800",
+				"debugConsole.errorForeground": "#d00",
+				"debugConsole.sourceForeground": "#0c0",
+				"debugConsole.infoForeground": "#00f"
+			}
+		}
+
 	}
 }
