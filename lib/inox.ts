@@ -133,10 +133,10 @@ const de       = true;
 
 // Traces can be enabled "by domain", aka "categories"
 const check_de = de && true;
-const eval_de  = de && false;
-const token_de = de && false;
-const run_de   = de && false;
-const stack_de = de && false;
+const eval_de  = de && true;
+const token_de = de && true;
+const run_de   = de && true;
+const stack_de = de && true;
 const nde      = false;
 
 
@@ -2002,13 +2002,13 @@ immediate_primitive( "@", function primitive_address_of(){
 } );
 
 
-primitive( "set!", function primitive_set_content(){
+primitive( "@set", function primitive_set_content(){
   const p1 = this.pop();
   const p0 = this.pop();
   copy_cell( p0, get_cell_value( p1 ) );
 } );
 
-primitive( "get", function primitive_get(){
+primitive( "@get", function primitive_get_content(){
   const cell = this.dsp();
   copy_cell( get_cell_value( cell ), cell );
 } );
@@ -2515,6 +2515,14 @@ let back_token  = void_token;
 // Changing the style makes it easy to customize various syntax elements
 let style : text;
 
+// statement/expression terminator, a single character
+let terminator_sign = ";"
+
+// item separator, a single character, in addition to space
+// ToDo: give it more semantic, not just a comment
+let separator_sign = ",";
+
+
 // Smart detection of comment style syntax, somehow
 let comment_monoline_begin        : text;
 let comment_monoline_begin_begin  : text;
@@ -2656,6 +2664,7 @@ function unget_token( token : Token ) : void {
   back_token = token;
 }
 
+
 primitive( "inox-pushback-token", function primitive_inox_pushback_token(){
   const cell = this.pop();
   const name = get_cell_name( cell );
@@ -2705,6 +2714,7 @@ function get_next_token() : Token {
 
 
   function ch_is_space( ch : text ){
+    if( ch == separator_sign )return true;
     // ToDo: avoid regexp
     return /\s/.test( ch.charAt( 0 ) );
   }
@@ -2851,14 +2861,17 @@ function get_next_token() : Token {
 
     } // comment state
 
+    // Base state
     if( state == "base" ){
 
-      // skip whitespaces
+      // skip whitespaces, including separator
+      // ToDo: handle separator sign ("," if Inox) with more semantic
       if( is_space ){
         continue eat;
       }
 
       // Texts start with ", unless Forth
+      // ToDo: make it configurable
       if( ch == "\"" && style != "forth" ){
         // ToDo: handle single quote 'xx' and backquote `xxxx`
         // ToDo: handle template text literals
@@ -2922,7 +2935,7 @@ function get_next_token() : Token {
         continue eat;
       }
 
-      // Space is a terminator
+      // Spaces are word terminators, including the separator sign
       if( is_space ){
 
         // Detect numbers
@@ -2950,6 +2963,7 @@ function get_next_token() : Token {
           state = "base";
           break eat;
         }
+
         // Normalize all whitespaces into a single space character
         ch = " ";
       }
@@ -2960,8 +2974,8 @@ function get_next_token() : Token {
         continue eat;
       }
 
-      // ; is a terminator
-      if( ch == ";" ){
+      // ; is a terminator, configurable
+      if( ch == terminator_sign ){
         token = {
           type  : ch,
           value : "",
@@ -2969,6 +2983,17 @@ function get_next_token() : Token {
           line:   line_number,
           column: 0
         };
+        // If right after something, emit two tokens
+        if( buf.length > 0 ){
+          unget_token( token );
+          token = {
+            type  : "word",
+            value : alias( buf ),
+            index : ii - 1,
+            line:   line_number,
+            column: 0
+          };
+        }
         state = "base";
         break eat;
       }
@@ -3587,9 +3612,19 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
 
      // If end of definition of the new Inox word
     if( new_word
-    &&  level.type == "new word"
     &&  value == end_fun
+    &&  type == "word"
     ){
+      // Automatically add missing ;
+      while( level.type == "infix" ){
+        leave_level();
+      }
+      if( level.type != "new word" ){
+        bug( "Eval nesting error, unexpected " + value
+        + " at line " + token.line
+        + " while expecting the end of " + level.type );
+        break;
+      }
       // ToDo: make that a primitive
       add_new_inox_word();
       continue;
@@ -3665,12 +3700,20 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
       // If operator, transform order to get to RPN, Reverse Polish Notation
       if( word_id
       &&  is_operator_inox_word( word_id )
-      &&  level.type != "x("
+      // &&  level.type != "x("
       ){
-        // Processing of postponed operators occurs at ; or start of keyword
+
+        // If after another operator, left association
+        // ToDo: configurable associativity
+        if( level.type == "infix" ){
+          leave_level();
+        }
+
+        // Otherwise processing of operators occurs at ; or start of keyword
         enter_level( "infix" );
         level.word = word_id;
         continue;
+
       }
 
       // If text literal
@@ -3952,37 +3995,42 @@ return {
 
 const I = inox();
 
-I.primitive( "debugger", function primitive_debugger(){
+I.primitive( "inox-debugger", function primitive_debugger(){
   debugger;
 } );
 
-I.evaluate( "/**/fun debug debugger ok inox-immediate" );
+I.evaluate( "/**/fun debugger inox-debugger ok inox-immediate" );
 
 I.process( "{}", "{}",
 `/* Inox */
 
-fun word-missing   "word-missing "   swap out( & ) ok
-fun method-missing "method-missing " swap out( & ) ok
+fun word-missing   "word-missing "   out( swap & ) ok
+fun method-missing "method-missing " out( swap & ) ok
+
+fun test
+  say: "Hello" to: "the world" & "!";
+ok
 
 global( #ii 0 );
 
 fun decrement
-  ( 1 negative ) + ;
+  1 negative +
 ok
 
 fun set_ii
-  @ ii set! ;
+  @ ii set!
 ok
+
 
 fun decrement_ii
-  ii decrement set_ii ;
+  ii decrement set_ii
 ok
 
-fun if:then:
+fun if:then: // ( then-block condition -- )
   inox-if inox-call
 ok
 
-fun while:repeat:
+fun while:repeat: // ( condition-block repeat-block -- )
   inox-while
 ok
 
@@ -4007,33 +4055,33 @@ fun if:then:else: // ( boolean then-block else-block -- )
   swap
   // Consume boolean after inversing it and turn block to void if needed
   not ; inox-if
-  // Call then-block unless turned into void by inox-if
+  // Call else-block unless turned into void by inox-if
   inox-call
 ok
 
 fun test_loop1
   set_ii( 10 ) ;
-  while: { decrement_ii ; ( ii > 0 ) } repeat: {
-    if:    ( ii % 2 ) 0 is=
+  while: { decrement_ii ; ii > 0 } repeat: {
+    if:    ii % 2 is= 0
     then:  { ii & " is even" ; out }
     else:  { ii & " is odd"  ; out } ;
   } ;
 ok
 
-debug test_loop1
+// test_loop1
 
 
 fun InoxStyle
-  inox-dialect // set fun/ok and cooment delimiters
-  inox-alias( "Define"      " fun "                )
-  inox-alias( "EndDefine"   " ; ok "               )
-  inox-alias( "While"       " while: { ( "         )
-  inox-alias( "Do"          " ) ; } repeat: { ( "  )
-  inox-alias( "EndWhile"    " ) ; } "              )
-  inox-alias( "If",         " if: ( "              )
-  inox-alias( "Then"        " ) then: { ( "        )
-  inox-alias( "Else"        " ) ; } else: { ( "    )
-  inox-alias( "EndIf"       " ) ; } ; "            )
+  inox-dialect // set fun/ok and comment delimiters
+  inox-alias( "Define",      " fun "                )
+  inox-alias( "EndDefine",   " ; ok "               )
+  inox-alias( "While",       " while: { ( "         )
+  inox-alias( "Repeat",      " ) ; } repeat: { ( "  )
+  inox-alias( "EndWhile",    " ) ; } "              )
+  inox-alias( "If",          " if: ( "              )
+  inox-alias( "Then",        " ) then: { ( "        )
+  inox-alias( "Else",        " ) ; } else: { ( "    )
+  inox-alias( "EndIf",       " ) ; } ; "            )
   // macro( "Debug"       "$$"                )
   // macro( "NoDebug"     ""                  )
 ok
@@ -4041,9 +4089,9 @@ ok
 InoxStyle
 
 Define TestLoop2
-  set_ii( 10 ) ;
-  While decrement_ii ; ii > 0 Do
-    If ( ii % 2 ) is= 0 Then
+  set_ii( 10 );
+  While decrement_ii ; ii > 0 Repeat
+    If ii % 2 is= 0 Then
       ii & " is even" ; out
     Else
       ii & " is odd"  ; out
@@ -4051,28 +4099,13 @@ Define TestLoop2
   EndWhile
 EndDefine
 
-debug
+debugger
 
 TestLoop2
 
 
 
 ` /*
-
-( ( "A" & "a" ) & ( "B" & "b" ) & ( "C" & "c" ) ) out
-
-"a" & "b"; out
-
-
-
-out( &( "a" "b" ) )
-
-fun word-missing   "word-missing "   out out ok
-fun method-missing "method-missing " out out ok
-
-constant( #Place "Corsica" );
-
-"I love " & Place ; out
 
 fun constant:is:
   constant
@@ -4088,13 +4121,13 @@ ok
 
 global: #JJ is: 0;
 
-( II + 1 @ II
+fun @II @ II ok
 
 out( "Address of II is " & @ II )
 
-"Indirect II set" @II !
+"Indirect II set" @II @set
 
-&( "New II is : " @II @) out
+&( "New II is : " @II @get ) out
 
 out( "II is " + II );
 
@@ -4159,7 +4192,7 @@ ok
 
 fun test
   { HELLO } inox-call
-  { hello } 1 if inox-call
+  { hello } 1 inox-if inox-call
   if: 1 then: {
     HELLO
   } else: {
