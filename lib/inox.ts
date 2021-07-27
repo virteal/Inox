@@ -988,7 +988,7 @@ function get_inox_word_definition_by_id( id : InoxIndex  ) : InoxAddress {
 
 
 function get_definition_length( bytes : InoxAddress ) : InoxIndex {
-  return load16( bytes - 1 ) & 0x0fff;
+  return load16( bytes - 1 ) & 0x07ff;
 }
 
 
@@ -1028,17 +1028,27 @@ function is_operator_inox_word( id : InoxIndex ) : InoxValue {
 }
 
 
-function set_inox_word_stream_flag( id : InoxIndex ) : void {
+function set_stream_inox_word_stream_flag( id : InoxIndex ) : void {
   // See Icon language goal directed backtrackings
   // https://lib.dr.iastate.edu/cgi/viewcontent.cgi?article=1172&context=cs_techreports
   const bytes = get_inox_word_definition_by_id( id );
   store16( bytes - 1, load16( bytes - 1 ) | 0x1000 );
 }
 
-
 function is_stream_inox_word( id : InoxIndex ) : InoxValue {
   const bytes = get_inox_word_definition_by_id( id );
   return ( load16( bytes - 1 ) & 0x1000 ) != 0 ? 1 : 0;
+}
+
+function set_inlined_inox_word_flag( id : InoxIndex ) : void {
+  const bytes = get_inox_word_definition_by_id( id );
+  store16( bytes - 1, load16( bytes - 1 ) | 0x0800 );
+}
+
+
+function is_inlined_inox_word( id : InoxIndex ) : InoxValue {
+  const bytes = get_inox_word_definition_by_id( id );
+  return ( load16( bytes - 1 ) & 0x0800 ) != 0 ? 1 : 0;
 }
 
 
@@ -1746,18 +1756,20 @@ const inox_while_symbol_id = symbol( "inox-while" );
 
 primitive( "inox-while-1", function primitive_inox_while_1(){
 // Low level words to build inox-while( { condition } { body } )
-
   // : inox-while
   //   inox-while-1 ( save blocks in a stack )
   //   inox-while-2 ( run condition block )
   //   inox-while-3 ( run body or exit word )
-
+  // ; inox-inlined
   const body_block      = this.pop();
   const condition_block = this.pop();
-
-  let rsp = this.rsp();
   // IP is expected to points to inox-while-2
   de&&mand_eq( load16( this.ip() ), 0x4000 |symbol( "inox-while-2" ) );
+  // Save info for inox-break-loop, it would skip to after inox-while-3
+  let rsp = this.rsp();
+  set_cell_value( rsp, this.ip() + 2 );
+  set_cell_info( rsp, symbol( "inox-break-sentinel" ) );
+  // Move condition and body to return stack
   rsp -= words_per_cell;
   copy_cell( body_block, rsp );
   if( de ){
@@ -1770,21 +1782,21 @@ primitive( "inox-while-1", function primitive_inox_while_1(){
   }
   this.set_rsp( rsp );
   // The return stack now holds:
-  //   initial dsp
+  //   IP for inox-break, named inox-break-sentinel
   //   IP for the body block
   //   IP for the condition block
   // Execution continues inside inox-while-2
-
 } );
 
 primitive( "inox-while-2", function primitive_inox_while_2(){
-  const rsp = this.rsp();
-  const condition_block = get_cell_value( rsp );
   // IP is expected to point to inox-while-3
   de&&mand_eq( load16( this.ip() ), 0x4000 | symbol( "inox-while-3" ) );
+  const rsp = this.rsp();
+  const condition_block = get_cell_value( rsp );
+  // Invoke condition, like inox-call would
   const next_rsp = rsp - words_per_cell;
   set_cell_value( next_rsp, this.ip() );
-  set_cell_info(  next_rsp, get_cell_info( rsp ) );
+  set_cell_info(  next_rsp, symbol( "inox-goto-while-3" ) );
   this.set_rsp( next_rsp );
   this.set_ip( condition_block );
   // The return stack now holds:
@@ -1804,9 +1816,9 @@ function primitive_inox_while_3(){
     // The inox-return of the body block must jump to inox-while-2
     const next_rsp = rsp - words_per_cell;
     set_cell_value( next_rsp, this.ip() - 2 );
-    set_cell_info(  next_rsp, symbol( "inox-while-2" ) );
+    set_cell_info(  next_rsp, symbol( "inox-goto-while-2" ) );
     this.set_rsp( next_rsp );
-    // RSP is expected to point to inox-while-2
+    // RSP must point to inox-while-2
     de&&mand_eq(
       load16( get_cell_value( this.rsp() ) ),
       0x4000 | symbol( "inox-while-2" )
@@ -1815,9 +1827,11 @@ function primitive_inox_while_3(){
 
   // The while condition is not met, it's time to exit the loop
   }else{
-    const next_rsp = rsp + words_per_cell * 2;
-    this.set_ip( get_cell_value( next_rsp ) );
-    this.set_rsp( next_rsp + words_per_cell );
+    // Drop break sentinel, condition and body from return stack
+    this.set_rsp( this.rsp() + 3 * words_per_cell );
+    // const next_rsp = rsp + words_per_cell * 2;
+    // this.set_ip( get_cell_value( next_rsp ) );
+    // this.set_rsp( next_rsp + words_per_cell );
   }
 }
 
@@ -1839,23 +1853,29 @@ primitive( "inox-until-3", function primitive_inox_until_3(){
 primitive( "inox-loop", function primitive_loop(){
   const body_block = get_cell_value( this.pop() );
   let next_rsp = this.rsp() - words_per_cell;
-  set_cell_value( next_rsp, this.ip() - 1 );
-  set_cell_info( next_rsp, symbol( "inox-loop" ) );
-  // Add fillers so that inox-break-loop works as it does with inox-while
-  let next_next = next_rsp - words_per_cell;
-  copy_cell( next_rsp, next_next );
-  next_next -= words_per_cell;
-  copy_cell( next_rsp, next_next );
-  this.set_rsp( next_next );
+  set_cell_value( next_rsp, this.ip() );
+  set_cell_info( next_rsp, symbol( "inox-break-sentinel" ) );
+  // Invoke body block, it will return to itself, loopimg until some break
+  next_rsp -= words_per_cell;
+  set_cell_value( next_rsp, body_block );
+  set_cell_info( next_rsp, symbol( "inox-loop-body" ) );
+  this.set_rsp( next_rsp );
   this.set_ip( body_block );
 } );
 
-primitive( "inox-break-loop", function inox_break_loop(){
+primitive( "inox-break", function inox_break_loop(){
 // Like inox-return but to exit a while or infinite loop
-  let rsp : InoxCell = this.rsp();
-  rsp += words_per_cell * 3;
-  this.set_ip( load32( rsp ) );
-  this.set_rsp( rsp + words_per_cell );
+  const rsp : InoxCell = this.rsp();
+  let next_rsp = rsp + words_per_cell;
+  // Drop anything until sentinel
+  while( true ){
+    if( get_cell_name( next_rsp ) == symbol( "inox-break-sentinel" ) )break;
+    next_rsp += words_per_cell;
+  }
+  // ToDo: self modifying code to avoid loop next time
+  // Return to IP previously saved in inox-loop or inox-while-3
+  this.set_ip( load32( next_rsp ) );
+  this.set_rsp( next_rsp + words_per_cell );
 } );
 
 
@@ -2318,7 +2338,7 @@ function run_fast( ctx : CpuContext ){
           && word_id != symbol( "inox-while-3" )
           && word_id != symbol( "inox-until-3" )
           && word_id != symbol( "inox-loop" )
-          && word_id != symbol( "inox-break-loop" )
+          && word_id != symbol( "inox-break" )
           ){
             debugger;
             if( RSP < old_rsp ){
@@ -2587,6 +2607,11 @@ primitive( "inox-hidden", function primitive_inox_hidden(){
 
 primitive( "inox-operator", function primitive_inox_operator(){
   set_inox_word_operator_flag( last_inox_word_defined );
+} );
+
+
+primitive( "inox-inlined", function primitive_inox_inlined(){
+  set_inlined_inox_word_flag( last_inox_word_defined );
 } );
 
 
@@ -3764,10 +3789,10 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
       return;
     }
 
-    // Inline code definition if it is short
+    // Inline code definition if it is short or if word requires it
     const definition = get_inox_word_definition_by_id( code_id );
     const length = get_definition_length( definition ) - 1; // skip "return"
-    if( length <= 2 ){
+    if( length <= 2 || is_inlined_inox_word( code_id ) ){
       let ii : InoxIndex = 0;
       while( ii < length ){
         level.codes[ level.codes_count++ ] = load16( definition + ii );
@@ -4296,33 +4321,25 @@ fun increment 1  + ;
 fun set_ii @ ii @set ;
 
 
-fun decrement_ii
-  ii decrement set_ii
-;
+fun decrement_ii ii decrement set_ii ;
 
-fun increment_ii
-  ii increment set_ii
-;
+fun increment_ii ii increment set_ii ;
 
 fun if:then: // boolean block
   inox-if inox-call
 ;
 
-fun break     inox-break-loop ;
-fun breaks    3 * 1 + inox-returns ;
-fun continue  inox-return ;
-fun continues inox-returns ;
-fun returns   inox-returns ;
+fun break inox-break ;
 
-fun inox-while inox-while-1 inox-while-2 inox-while-3 ;
+fun inox-while inox-while-1 inox-while-2 inox-while-3 ; inox-inlined
 
 fun while:do: // condition-block repeat-block
-  inox-while-1 inox-while-2 inox-while-3
-;
+  inox-while
+; inox-inlined
 
 fun until:do: // condition-block repeat-block
   inox-while-1 inox-while-2 inox-until-3
-;
+; inox-inlined
 
 fun test_false_while
   while: { 0 } do: { out( "!!! never reached" ) };
@@ -4366,8 +4383,8 @@ fun if:then:else: // boolean then-block else-block --
 
 fun loop:while: // repeat-block condition-block --
   swap dup inox-call
-  inox-while-1 inox-while-2 inox-while-3
-;
+  inox-while
+; inox-inlined
 
 fun test_loop_while
   set_ii( 3 )
