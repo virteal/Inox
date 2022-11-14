@@ -29,7 +29,7 @@
   },
   "homepage": "https://github.com/virteal/Inox#readme",
   "dependencies": {
-    "@assemblyscript/loader": "^0.19.2"
+    "@assemblyscript/loader": "^0.23.1"
   },
   "devDependencies": {
     "@types/node": "^15.12.2",
