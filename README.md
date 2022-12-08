@@ -4,14 +4,14 @@
 
 # Inox
 
-Inox is a minimalist functional concatenative dynamic programming language.
+Inox is a minimalist functional concatenative dynamic programming language. It's syntax is friendly. It is designed to operate efficiently in the context of edge computing, in the Internet of Things, in ML times. It will run on metal, nodejs, wasm, micro controlers, etc.
 
-It is a multi dialect basic/forth/smalltalk/lisp/prolog/erlang inspired stack based language.
+It is a multi dialect basic/forth/smalltalk/lisp/prolog/erlang inspired stack based language. The basic data element is a 64 bits cell made of two parts, a value and a name.
 
 Inox targets the webassembly virtual machine but runs on other architectures too. It is a multi dialect language because it values diversity.
 
 This is the reference implementation. It defines the syntax and semantic of the language. Production quality version of the virtual machine would
-have to be hard coded in some machine code to be efficient.
+have to be hard coded in some machine code to be more efficient.
 
 I started working on it at the beginning of june 2021. It's not working at all yet. The first implementation will run in a regular javascript virtual machine, nodejs typically.
 
