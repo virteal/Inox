@@ -1,4 +1,5 @@
 /* Inox */
+// December 6 2022 by jhr, extracted from lib/inox.ts, adding oo stuff
 
 to word-missing   "word-missing "   out( swap & ).
 to method-missing "method-missing " out( swap & ).
