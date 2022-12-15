@@ -5,16 +5,27 @@
         "version": "0.2.0",
         "configurations": [
                 {
-                        "type": "pwa-node",
+                        "name": "Launch via NPM",
+                        "request": "launch",
+                        "runtimeArgs": [
+                                "run-script",
+                                "run"
+                        ],
+                        "runtimeExecutable": "npm",
+                        "skipFiles": [
+                                "<node_internals>/**"
+                        ],
+                        "type": "node"
+                },
+
+                {
+                        "type": "node",
                         "request": "launch",
                         "name": "Launch Program",
                         "skipFiles": [
                                 "<node_internals>/**"
                         ],
-                        "program": "${workspaceFolder}\\lib\\inox.js",
-                        "outFiles": [
-                                "${workspaceFolder}/lib/*.js"
-                        ]
+                        "program": "${workspaceFolder}\\lib\\inox.ts"
                 }
         ]
 }

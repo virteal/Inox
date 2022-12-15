@@ -1,19 +1,16 @@
 {
   "name": "inox",
   "version": "0.1.0",
-  "description": "The Inox programming language for the WebAssembly VM.",
-  "main": "test/inox.js",
+  "description": "The Inox programming language.",
+  "main": "lib/inox.js",
   "directories": {
     "lib": "lib",
     "test": "test"
   },
   "scripts": {
     "build": "tsc lib/inox.ts",
-    "run": "node lib/inox.js",
-    "replit": "tsc lib/inox.ts && node lib/inox.ts",
-    "asbuild:untouched": "asc assembly/index.ts --target debug",
-    "asbuild:optimized": "asc assembly/index.ts --target release",
-    "asbuild": "npm run asbuild:untouched && npm run asbuild:optimized"
+    "run": "tsc lib/inox.ts && node --enable-source-maps lib/inox.js",
+    "replit": "tsc lib/inox.ts && node lib/inox.js"
   },
   "repository": {
     "type": "git",
@@ -29,10 +26,8 @@
   },
   "homepage": "https://github.com/virteal/Inox#readme",
   "dependencies": {
-    "@assemblyscript/loader": "^0.19.2"
   },
   "devDependencies": {
-    "@types/node": "^15.12.2",
-    "assemblyscript": "^0.19.2"
+    "@types/node": "^18.11.15"
   }
 }

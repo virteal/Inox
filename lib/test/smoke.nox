@@ -4,15 +4,7 @@
 to word-missing   "word-missing "   out( swap & ).
 to method-missing "method-missing " out( swap & ).
 
-#do inox-log
-debugger
-to xxx .out().
-debugger
-
 #dont inox-log
-
-to aaa
-  constant: void         is: as_void( void:0 );
 
 to word-missing   "word-missing "   out( swap & ).
 to method-missing "method-missing " out( swap & ).
@@ -24,16 +16,16 @@ to test
 
 to cast inox-cast.
 
-to as_void    cast( void    ).
-to as_integer cast( integer ).
-to as_pointer cast( pointer ).
+to as-void    cast( void    ).
+to as-integer cast( integer ).
+to as-pointer cast( pointer ).
 
 to constant:is: inox-constant.
 to global:is:   inox-global.
 
 to init-constants
   constant: inox-version is: "v0.1";
-  constant: void         is: as_void( void:0 );
+  constant: void         is: as-void( void:0 );
   constant: true         is: true:1;
   constant: false        is: false:0;
 
@@ -43,11 +35,11 @@ to ToDo out( "ToDo: " & swap ).
 
 global: ii is: 0;
 
-to make-pointer inox-make-pointer.
+to make-object inox-make-object.
 
-to make_point x:0 y:0 point:2 make-pointer.
+to make-point x:0 y:0 point:2 make-object.
 
-make_point
+make-point
 
 to dump
 // Debug dump of top of stack. TOS is preserved.
@@ -92,27 +84,18 @@ to test_mcall
 debugger
 test_mcall
 
-to decrement 1  - .
-to increment 1  + .
+to decrement 1 - .
+to increment 1 + .
 
-to set_ii @ ii @set!.
+to set_ii |ii!.
+
+to ii |ii.
 
 to decrement_ii ii decrement set_ii.
 
 to increment_ii ii increment set_ii.
 
-to if:then: // boolean block
-  inox-if inox-call
-.
-
-to with:do: inox-call drop.
-
-to test_with_do
-  with: _point do: {
-    .out()
-  }
-
-test( #with_do )
+to if:then: inox-if inox-call.
 
 to break inox-break.
 
@@ -140,11 +123,11 @@ test( #noop )
 test( #false_while )
 
 to test_forever_while
-  while: { 1 } do: {
+  while: { true } do: {
     out( "forever" )
-    while: { 1 } do: {
+    while: { true } do: {
       out( "deeper" )
-      while: { 1 } do: {
+      while: { true } do: {
         out( "to the limit" )
         break
         out( "!!! never reached, to the limit" )
@@ -173,14 +156,14 @@ to test_loop_while
   loop: {
     out( "Hello loop " & ii )
     decrement_ii
-  } while: { out( "test" ) ( ii > 0 ) };
+  } while: { out( "test" ), ii >0? };
   out( "test loop while ok" )
 
 test( #loop_while )
 
 to times:do: |blk| |nn|
-  if: |nn >? 0
-  then: {
+// times:do: using( #nn #blk )
+  if: |nn >0? then: {
     while: {
       |nn 1 - dup |nn! >=? 0
     } do: {
@@ -314,8 +297,8 @@ InoxStyle
 
 Define test_Loop2
   set_ii( 3 )
-  While decrement_ii, ii > 0 Repeat
-    If ii % 2 =? 0 Then
+  While decrement_ii, ii >0? Repeat
+    If ii % 2 =0? Then
       out( ii & " is even" )
     Else
       out( ii & " is odd")
@@ -331,24 +314,6 @@ Define test_Loop2
 End
 
 test( Loop2 )
-
-
-forth-dialect ( Forth )
-
-( First I need to define some standard Forth words )
-
-: C@ @get ; \\ Get content from address, as a character in Forth
-: C! @set ; \\ Set content from value and address
-: RSHIFT >>> ;
-: 2DROP DROP DROP ;
-: 0= 0 is= ;
-: 0< 0 < ;
-: 0<> 0 not= ;
-: 1+ 1 + ;
-: I ii ;
-: DO for_II inox-begin-block ;
-: +LOOP inox-end-block swap next_ii ;
-: LOOP inox-end-block 1 next_ii ;
 
 debugger
 
