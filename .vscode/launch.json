@@ -7,25 +7,26 @@
                 {
                         "name": "Launch via NPM",
                         "request": "launch",
+                        "type": "node",
+                        "runtimeExecutable": "npm",
                         "runtimeArgs": [
                                 "run-script",
                                 "run"
                         ],
-                        "runtimeExecutable": "npm",
                         "skipFiles": [
                                 "<node_internals>/**"
-                        ],
-                        "type": "node"
+                        ]
                 },
 
                 {
-                        "type": "node",
-                        "request": "launch",
                         "name": "Launch Program",
+                        "request": "launch",
+                        "type": "node",
+                        "program": "${workspaceFolder}\\lib\\inox.ts",
+                        "preLaunchTask": "tsc: build - tsconfig.json",
                         "skipFiles": [
                                 "<node_internals>/**"
-                        ],
-                        "program": "${workspaceFolder}\\lib\\inox.ts"
+                        ]
                 }
         ]
 }
