@@ -1,7 +1,5 @@
 /*  inox.js
- *  Inox is a concatenative glue script language.
- *
- *  It is basic/forth/smalltalk/icon/lisp/prolog/erlang inspired.
+ *    Inox is a small concatenative script language.
  *
  *  june  3 2021 by jhr
  *  june  7 2021 by jhr, move from .js to .ts, ie Typescript, AssemblyScript
@@ -10,7 +8,7 @@
  *  july 17 2021 by jhr, turing complete
  *  july 28 2021 by jhr, use 64 bits instructions, code and data unification
  *  october 10 2021 by jhr, source code cleanup
- *  december 7 2022 by jhr, class and object
+ *  december 7 2022 by jhr, class, object, malloc/free, refcount gc
  */
 
 // import { assert } from "console";
@@ -28,30 +26,7 @@ function inox(){
  * of the language. Production quality version of the virtual machine would
  * have to be hard coded in some machine code to be efficient I guess.
  *
- * Inspiration
-// Forth. When I started programming, on a Commodore VIC20, the standard
-// language was BASIC. Soon a Forth "cartridge" became commercialy available.
-// I ordered it. It took forever to be delivered. When I plugged it I
-// basically got totally lost. Much like when I first saw the 2001 movie
-// by Stanley Kubrick. It took me years to understand. What attracted me
-// initialy was speed and compactness. VIC20 had only 3.5kb of memory and
-// BASIC was slow. 6502 machine code was out of my league at the time, I
-// was 15 and no experience with programming. That was in 1981 I think, 82
-// maybe.
-// See https://en.wikipedia.org/wiki/Commodore_VIC-20
-//
-// BASIC. Program is stored in memory in a very compact form using "tokens".
-// REM starts a comment, DIM declares an array, GOSUB <LineNumber>, etc.
-// See https://www.infinite-loop.at/Power20/Documentation/Power20-controleadMe/AA-VIC-20_BASIC.html
-// Inox uses tokens to store code. Each instructions is a 32 bits word.
-// These instructions are called "inox words".
-// Some instructions are primitives, other are user defined. They are both
-// named "words". Like in Forth a word can execute in interpreted mode
-// or in compile mode. In the later case, during source parsing, the
-// word can prepare stuff to be used when in interpreted mode, compute
-// relative jumps for example.
-
-*/
+ */
 
 
 /* -----------------------------------------------------------------------------
@@ -60,48 +35,61 @@ function inox(){
  */
 
 // my de&&bug darling, de flag could be a variable
-const de  = true;   // true if debug mode
-const nde = false;  // not debug
+const de : boolean  = true;   // true if debug mode
+const nde = false;            // not debug. Sugar to comment out a de&&bug
 
-// Traces can be enabled "by domain", aka "categories"
-const mem_de   = de && true;
-const check_de = de && true;  // Enable runtime errors
-const eval_de  = de && true;
-const token_de = de && true;
-const run_de   = de && true;
-const stack_de = de && true;  // Trace data stack
-const alloc_de = de && true;  // heap allocations integrity check
+// Traces can be enabled "by domain", ie "by category"
+const mem_de   : boolean = de && true;  // Check for very low level load/store
+const alloc_de : boolean = de && true;  // Heap allocations integrity check
+const check_de : boolean = de && true;  // Enable runtime error checking, slow
+let   eval_de  : boolean = de && false; // Trace evaluation
+let   token_de : boolean = de && false; // Trace tokenization
+let   run_de   : boolean = de && true;  // Trace word runner
+let   stack_de : boolean = de && true;  // Trace stacks
+let   step_de  : boolean = de && false; // Invoke debugger before each step
 
-// Global flag to filter out all console.log until one needs them
-var can_log = true;
+// Global flag to filter out all console.log until one needs them.
+// See inox-log primitive to enable/disable traces.
+var can_log = false;
 var bug = !can_log ? debug : console.log;
 
 
 function debug( msg: string ){
-// de&&bug( a_message )
-  assert( typeof msg == "string" );
+// de&&bug( a_message ) to log a message using console.log()
   if( !can_log ){
-    // Don't get called as long as global flag say so
+    // Don't get called as long as global flag can_log, see primitive inox-log.
     bug = console.log;
     return;
   }
+  // AssemblyScript supports a simpler version of console.log()
+  assert( typeof msg == "string" );
   console.log( msg );
 }
 
 
 function mand( condition : boolean ) : boolean {
 // de&&mand( a_condition ), aka asserts; return true if assertion fails
+  // ToDo: should raise an exception?
   if( condition )return false;
   assert( false );
   return true;
 };
 
 
-function mand_eq( a : number, b : number ) : boolean {
+function mand_eq( a : any, b : any ) : boolean {
 // Check that two numbers are equal, return true if that's not the case
   if( a == b )return false;
-  console.log( "!!! not eq " + a + "/" + b );
-  assert( false );
+  debugger;
+  assert( false, "bad eq " + a + " / " + b );
+  return true;
+}
+
+
+function mand_neq( a : any, b : any ) : boolean {
+  // Check that two numbers are equal, return true if that's not the case
+  if( a != b )return false;
+  debugger;
+  assert( false, "bad neq " + a + " / " + b );
   return true;
 }
 
@@ -144,34 +132,44 @@ type InoxLength      = u32;  // Size in number of contained items, often cells
 type InoxBoolean     = u32;  // 0 for false, anything else for true
 type InoxOid         = u32;  // proxy objects have a unique id
 type InoxCell        = u32;  // Pointer to a cell's value, typed and named
-type InoxValue       = u32;  // payload, sometimes an integer, sometimes an address
-type InoxInfo        = u32;  // type & name info parts of a cell's value
-type InoxType        = u8;   // packed with name, 3 bits, at most 8 types
+type InoxValue       = u32;  // Payload
+type InoxInfo        = u32;  // Type & name info parts of a cell's value
+type InoxType        = u8;   // Packed with name, 3 bits, at most 8 types
 type InoxName        = u32;  // 29 bits actually, type + info is 32 bits
+type InoxTag         = u32;  // The id of a tag
 
 const InoxTrue  : InoxBoolean = 1;
 const InoxFalse : InoxBoolean = 0;
 
+// Memory is made of words that contains cells. Cells are made of a value and
+// information, info. Info is type and name of value. See pack().
 const size_of_word    = 4;   // 4 bytes, 32 bits
 const size_of_value   = 4;   // 4 bytes, 32 bits
-const size_of_cell    = 8;   // 8 bytes, 64 bits
-const words_per_cell  = size_of_cell  / size_of_word; // 2
+const size_of_info    = 4;   // type & name, packed
+const size_of_cell    = size_of_value + size_of_info;
+const words_per_cell  = size_of_cell  / size_of_word;
+
+// Other layouts could work. 2 bytes word, 4 bytes value, 2 bytes info.
+// This would make 6 bytes long cells instead of 8. ok for a 32 bits cpu.
+// 4 bytes cells using 2 bytes word, 2 bytes value & 2 bytes info.
+// This would mean short integers and names, ok for an ESP32 style cpu.
 
 // In memory, the value is stored first, then the type & name info, packed
 const offset_of_cell_info = size_of_value / size_of_word;  // 1
 
-// String is jargon but text is obvious
+// Shorthand for string, 4 vs 6 letters.
 type text = string;
 
 
 /* ---------------------------------------------------------------------------
  *  Low level memory management.
  *  The Inox virtual machine uses an array of 32 bits words to store both
- *  the content of "cells" (2 words) and arrays of "code tokens" (1 word). A
+ *  the content of "cells" (2 words) and arrays of "code tokens" (2 word). A
  *  cell is the basic value manipulated everywhere. A code is a token that
  *  reference either a javascript defined primitive or an Inox defined word.
  *  The notion of user defined "words" comes from the Forth language.
  */
+
 
 // -----------------------------------------------------------------------------
 // ToDo: if( PORTABLE ){
@@ -182,14 +180,15 @@ type text = string;
 
 // This is "the data segment" of the virtual machine.
 // the "void" first cell is allocated at absolute address 0.
-// That array of 32 bits words is indexed using 29 bits addresses
-// with odd addresses to address 16 bits inox words.
-// 16 bits is the standard size for UTF16 encoded texts.
+// It's an array of 32 bits words indexed using 29 bits addresses.
+// That's a 31 bits address space, 2 giga bytes, plenty.
 // ToDo: study webassembly modules
 // See https://webassembly.github.io/spec/core/syntax/modules.html
 
-const memory8  = new ArrayBuffer( 1024 * 256 ); // 256 kb
-const memory32 = new Int32Array(     memory8 );
+const INOX_HEAP_SIZE = 1024 * 256; // 256 kb, > 30k cells
+
+const memory8  = new ArrayBuffer( INOX_HEAP_SIZE  ); // 256 kb
+const memory32 = new Int32Array( memory8 );
 
 
 function load32( index : InoxAddress ) : InoxValue {
@@ -212,7 +211,7 @@ function store32( index : InoxAddress, value : InoxValue ) : void {
 /* -----------------------------------------------------------------------------
  *  Not portable version is AssemblyScript syntax
  *  ToDo: figure out what @inline means exactly
- *  ToDo: figure out some method to avoid the right shift when
+ *  ToDo: figure out some solution to avoid the right shift when
  *  optimizing for speed instead of for memory
  *  The resulting vm would then have access to less cells,
  *  half of them, but faster.
@@ -343,7 +342,7 @@ function allocate_bytes( size : InoxIndex ) : InoxAddress {
     mem_de&&mand_eq( load32( area ), 0 );
   }
   // Area is locked initialy, once, see lock_bytes()
-  raw_set_cell_value( area, 1 );
+  set_cell_value( area, 1 );
   // Remember size of area, this does not include the header overhead
   set_cell_info( area, size );
   // Return an address that is after the header, at the start of the payload
@@ -354,7 +353,7 @@ function allocate_bytes( size : InoxIndex ) : InoxAddress {
 
 function get_bytes_size( address : InoxAddress ) : InoxIndex {
 // Returns the size initially required when allocate_bytes() was called.
-  const header_address = address - size_of_cell;
+  const header_address = address - ( size_of_cell / size_of_word );
   alloc_de&&mand( safe_bytes_header( header_address ) );
   // That size was stored in allocate_bytes() in the info part of a cell
   const size = get_cell_info( header_address );
@@ -397,7 +396,7 @@ function free_bytes( address : InoxAddress ){
   // Another solution is to keep lists of free zones of
   // frequent sizes.
   // Other malloc/free style solution would not be much more complex.
-  const header_address = address - size_of_cell;
+  const header_address = address - ( size_of_cell / size_of_word );
   alloc_de&&mand( safe_bytes_header( header_address ) );
   const old_count = get_cell_value( header_address );
   // Free now if not locked
@@ -405,7 +404,7 @@ function free_bytes( address : InoxAddress ){
     // ToDo: add area to some free list
     if( alloc_de ){
       // ToDo: use info instead of value to avoid breaking the nil_cell?
-      raw_set_cell_value( header_address, 2147483647 );  // i32.MAX_VALUE
+      set_cell_value( header_address, 2147483647 );  // i32.MAX_VALUE
     }
     // Add area in free list, at the end to avoid premature reallocation
     // ToDo: insert area in sorted list instead of at the end?
@@ -417,7 +416,7 @@ function free_bytes( address : InoxAddress ){
   }
   // Decrement reference counter
   const new_count = old_count - 1;
-  raw_set_cell_value( header_address, new_count );
+  set_cell_value( header_address, new_count );
 }
 
 
@@ -425,43 +424,66 @@ function lock_bytes( address : InoxAddress ) : void {
 // Increment reference counter of bytes area allocated using allocate_bytes().
 // When free_bytes() is called, that counter is decremented and the area
 // is actually freed only when it reaches zero.
-  const header_address = address - size_of_cell;
+  const header_address = address - ( size_of_cell / size_of_word );
   alloc_de&&mand( safe_bytes_header( header_address ) );
   const old_count = get_cell_value( header_address );
   // Increment reference counter
   const new_count = old_count + 1;
-  raw_set_cell_value( header_address, new_count );
+  set_cell_value( header_address, new_count );
 }
 
 
 function is_last_reference_to_bytes( address : InoxAddress ) : boolean {
 // When the last reference disappears the bytes must be freed
-  const header_address = address - size_of_cell;
+  const header_address = address - ( size_of_cell / size_of_word );
   alloc_de&&mand( safe_bytes_header( header_address ) );
   return get_cell_value( header_address ) == 1;
 }
 
 
 function get_bytes_refcount( address : InoxAddress ) : InoxIndex {
-  const header_address = address - size_of_cell;
+  const header_address = address - ( size_of_cell / size_of_word );
   alloc_de&&mand( safe_bytes_header( header_address ) );
   return get_cell_value( header_address );
 }
 
 
 function safe_bytes_header( address : InoxAddress ) : boolean {
-// Trie to determine whether the address points to a valid area allocated
+// Try to determine if the address points to a valid area allocated
 // using allocates_bytes() and not already released.
   // This helps to debug unbalanced calls to lock_bytes() and free_bytes().
   const reference_counter : InoxAddress = get_cell_value( address );
   const size = get_cell_info( address );
   // zero is bad for both reference counter & size
-  if( reference_counter == 0 )return false;
-  if( size == 0 )return false;
+  if( reference_counter == 0 ){
+    bug( "Invalid reference counter " + reference_counter
+    + " for bytes at address " + address );
+    return false;
+  }
+  if( size == 0 ){
+    bug( "Invalid 0 size for bytes at address " + address );
+    return false;
+  }
   // When one of the 3 most significant bits is set, that a type id probably
-  if( reference_counter >= 1 << 29 )return false;
-  if( size >= 1 << 29 )return false;
+  if( reference_counter >= ( 1 << 29 ) ){
+    const type = unpack_type( reference_counter );
+    bug( "Invalid counter for address " + address
+    + ", type " + type + "?" );
+    return false;
+  }
+  if( size >= ( 1 << 29 ) ){
+    const type = unpack_type( reference_counter );
+    bug( "Invalid size for address " + address
+    + ", type " + type + "?" );
+    return false;
+  }
   return true;
+}
+
+
+function safe_bytes( address : InoxAddress ) : boolean {
+  const header_address = address - ( size_of_cell / size_of_word );
+  return safe_bytes_header( header_address );
 }
 
 
@@ -508,7 +530,8 @@ function fast_allocate_cell() : InoxCell {
 
 function free_cell( cell : InoxCell ) : void {
 // free a cell, add it to the free list
-  // ToDo: unused yet
+  // ToDo: check that cell is empty?
+  de&&mand_eq( get_cell_type( cell ), type_void_id );
   set_next_cell( cell, free_cells );
   free_cells = cell;
 }
@@ -543,31 +566,23 @@ function raw_make_cell(
 }
 
 
-function raw_set_cell_value( cell : InoxCell, value : InoxValue ) : void {
+function set_cell_value( cell : InoxCell, value : InoxValue ) : void {
+// eqv cell.value = value
+  // if( cell == 5230 )debugger;
   store32( cell, value );
   mem_de&&mand_eq( get_cell_value( cell ), value );
 }
 
 
-function set_cell_value( cell : InoxCell, value : InoxValue ) : void {
-// Change the cell's value, deals with references
-  const old_value = get_cell_value( cell );
-  if( old_value ){
-    if( is_reference_cell( cell ) ){
-      clear_cell_value( cell );
-    }
-  }
-  raw_set_cell_value( cell, value );
-}
-
-
 function get_cell_value( cell : InoxCell ) : InoxValue {
+  // eqv cell.value if memory were in an array of {value:int,info:int}
   return load32( cell );
 }
 
 
 // @inline
 function set_cell_info( cell : InoxCell, info : InoxInfo ) : void {
+  // eqv cell.info = info
   store32( cell + offset_of_cell_info, info );
   mem_de&&mand_eq( get_cell_info( cell ), info );
 }
@@ -575,6 +590,7 @@ function set_cell_info( cell : InoxCell, info : InoxInfo ) : void {
 
 // @inline
 function get_cell_info( cell : InoxCell ) : InoxInfo {
+  // eqv cell.info, returns a 32 bits number
   return load32( cell + offset_of_cell_info );
 }
 
@@ -667,7 +683,7 @@ function copy_cell( source : InoxCell, destination : InoxCell ) : void {
     de&&mand_eq( get_cell_name(  destination ), get_cell_name(  source ) );
     de&&mand_eq( get_cell_value( destination ), get_cell_value( source ) );
   }
-  // If the source was a pointer, increment the reference counter
+  // If the source was a reference, increment the reference counter
   if( is_reference_cell( source ) ){
     increment_object_refcount( get_cell_value( source ) );
   }
@@ -676,7 +692,6 @@ function copy_cell( source : InoxCell, destination : InoxCell ) : void {
 
 function move_cell( source : InoxCell, destination : InoxCell ) : void {
 // Move the content of a cell
-  // ToDo: optimize to avoid increment/decrement of reference count
   clear_cell( destination );
   set_cell_value( destination, get_cell_value( source ) );
   set_cell_info(  destination, get_cell_info(  source ) );
@@ -685,37 +700,66 @@ function move_cell( source : InoxCell, destination : InoxCell ) : void {
     de&&mand_eq( get_cell_name(  destination ), get_cell_name(  source ) );
     de&&mand_eq( get_cell_value( destination ), get_cell_value( source ) );
   }
-  clear_cell( source );
+  set_cell_value( source, 0 );
+  set_cell_info(  source, 0 );
+}
+
+
+function raw_move_cell( source : InoxCell, destination : InoxCell ) : void {
+// Move the content of a cell
+  set_cell_value( destination, get_cell_value( source ) );
+  set_cell_info(  destination, get_cell_info(  source ) );
+  if( mem_de ){
+    de&&mand_eq( get_cell_type(  destination ), get_cell_type(  source ) );
+    de&&mand_eq( get_cell_name(  destination ), get_cell_name(  source ) );
+    de&&mand_eq( get_cell_value( destination ), get_cell_value( source ) );
+  }
+  set_cell_value( source, 0 );
+  set_cell_info( source, 0 );
 }
 
 
 function clear_cell_value( cell : InoxCell ) : void {
 // Turn cell into void cell, handle object reference counters
   if( is_reference_cell( cell ) ){
-    if( is_last_reference_to_bytes( cell ) ){
-      if( is_pointer_cell( cell ) ){
+    const reference = get_cell_value( cell );
+    if( is_last_reference_to_bytes( reference ) ){
+      if( is_pointer_cell( reference ) ){
         // Clear all attributes
         // ToDo: avoid recursion?
-        const length = get_object_length( cell );
+        const length = get_object_length( reference );
         let ii : InoxIndex = 0;
         while( ii < length ){
-          clear_cell_value( cell + ii * size_of_cell );
+          if( de ){
+            clear_cell_value( reference + ii * size_of_cell );
+          }else{
+            clear_cell( reference + ii * size_of_cell );
+          }
+
         }
       }else{
         // ToDo: handle array/map/lists
-        free_proxy( get_cell_proxy( cell ) );
+        free_proxy( reference );
       }
-      free_bytes( cell );
+      free_bytes( reference );
     }else{
-      decrement_object_refcount( get_cell_value( cell ) );
+      decrement_object_refcount( reference );
     }
   }
-  raw_set_cell_value( cell, 0 );
+  set_cell_value( cell, 0 );
 }
 
 
 function clear_cell( cell : InoxCell ) : void {
+// Clear both value and info of cell, handle references
   clear_cell_value( cell );
+  set_cell_info( cell, 0 );
+}
+
+
+function raw_clear_cell( cell : InoxCell ) : void {
+// Like clear_cell() when target can safely be overwritten
+  set_cell_value( cell, 0 );
   set_cell_info( cell, 0 );
 }
 
@@ -790,22 +834,25 @@ function tag( name : text ) : InoxName {
 }
 
 
-// First cell ever
+// First cell ever. Tag with id 0 is /void
 const the_void_cell = raw_make_cell( 0, 0, 0 );
 const tag_void_cell = make_tag_cell( "void" );
-const tag_void_id   = get_cell_name( tag_void_cell );
+const tag_void      = get_cell_name( tag_void_cell );
 
-de&&mand_eq( tag_void_id, 0x0 );
+de&&mand_eq( tag_void, 0x0 );
+de&&mand_eq( tag_void, tag( "void" ) );
 
-// Tag with id 1 is #tag
+// Tag with id 1 is /tag
 const tag_tag_cell = make_tag_cell( "tag" );
-const tag_tag_id   = get_cell_name( tag_tag_cell );
+const tag_tag   = get_cell_name( tag_tag_cell );
 
-de&&mand_eq( tag_tag_id, 0x1 );
+de&&mand_eq( tag_tag, 0x1 );
+de&&mand_eq( tag_tag, tag( "tag" ) );
 
 
-function tag_id_to_text( id : u32 ) : text {
-  return all_tag_labels_by_id[ id ];
+function tag_id_to_text( id : InoxName ) : text {
+  const label = all_tag_labels_by_id[ id ];
+  return label;
 }
 
 
@@ -836,13 +883,13 @@ function is_tag_cell( cell : InoxCell ) : InoxBoolean {
 const type_integer_id = type_tag_id + 1;
 
 const tag_integer_cell = make_tag_cell( "integer" );
-const tag_integer_id   = get_cell_name( tag_integer_cell );
+const tag_integer     = get_cell_name( tag_integer_cell );
 
 de&&mand_eq( type_integer_id, 0x2 );
 
 
 function make_integer_cell( value ){
-  return make_cell( type_integer_id, tag_integer_id, value );
+  return make_cell( type_integer_id, tag_integer, value );
 }
 
 
@@ -859,11 +906,11 @@ function get_cell_integer( cell : InoxCell ) : InoxValue {
 
 const type_pointer_id  = type_integer_id + 1;
 const tag_pointer_cell = make_tag_cell( "pointer" );
-const tag_pointer_id   = get_cell_name( tag_pointer_cell );
+const tag_pointer      = get_cell_name( tag_pointer_cell );
 
 
 function make_pointer_cell( value ){
-  return make_cell( type_pointer_id, tag_integer_id, value );
+  return make_cell( type_pointer_id, tag_pointer, value );
 }
 
 
@@ -889,68 +936,89 @@ function get_cell_pointer( cell : InoxCell ) : InoxValue {
 
 const type_proxy_id  = type_pointer_id + 1;
 const tag_proxy_cell = make_tag_cell( "proxy" );
-const tag_proxy_id   = get_cell_name( tag_proxy_cell );
+const tag_proxy      = get_cell_name( tag_proxy_cell );
 
 de&&mand_eq( type_proxy_id, 0x4 );
 
 
 function is_reference_cell( cell : InoxCell ){
-// Only void and integers are used by value, other types are by reference
+// Only void, integers and words are used by value, other types are by reference
   const type = get_cell_type( cell );
-  return type >= type_proxy_id;
+  return type >= type_proxy_id && type != type_word_id;
 }
 
 
 // Access to proxied object is opaque, there is an indirection
 // Each object has an id which is a cell address. Cells that
-// reference proxied object use that cell address as pointer.
+// reference proxied object use that cell address as a pointer.
 
-// Indirection table to get access to an object using it's id
-let all_proxies_by_id = new Map< InoxCell, any >();
+// Indirection table to get access to an object using it's id.
+// The id is the address of a dynamically allocated cell that is
+// freed when the reference counter reaches zero.
+// When that happens, the object is deleted from the map.
+let all_proxied_objects_by_id = new Map< InoxCell, any >();
 
 function make_proxy( object : any ){
   const proxy = allocate_bytes( size_of_cell );
-  all_proxies_by_id.set( proxy, object );
+  all_proxied_objects_by_id.set( proxy, object );
+  de&&mand_eq( get_cell_value( proxy ), 0 );
+  de&&mand_eq( get_cell_info(  proxy ), 0 );
   const class_name = tag( object.constructor.name );
   // Proxy cell points to itself, ease copying
   set_cell_value( proxy, proxy );
-  set_cell_info( proxy, pack( type_proxy_id, class_name ) );
+  set_cell_info(  proxy, pack( type_proxy_id, class_name ) );
   // ToDo: use info field to store rtti, runtime type identification?
+  alloc_de&&mand( safe_bytes( proxy ) );
   return proxy;
 }
 
+function get_proxy_class_name( proxy : InoxCell ){
+  return unpack_name( proxy );
+}
 
-function make_proxy_cell( object : any ) : InoxOid {
+function make_proxy_cell( object : any ) : InoxCell {
   // ToDo: return object directly, it fits inside a cell's 32 bits value
-  let proxy = make_proxy( object );
-  let class_name = tag( object.constructor.name );
-  let cell = make_cell( type_proxy_id, class_name, proxy );
+  const proxy = make_proxy( object );
+  alloc_de&&mand( safe_bytes( proxy ) );
+  const class_name = get_proxy_class_name( proxy );
+  const cell = raw_make_cell( type_proxy_id, class_name, proxy );
   return cell;
 }
 
 
-function free_proxy( cell : InoxCell ){
+function free_proxy( proxy : InoxCell ){
   // This is called by clear_cell() when reference counter reaches zero
-  all_proxies_by_id.delete( cell );
+  alloc_de&&mand( safe_bytes( proxy ) );
+  all_proxied_objects_by_id.delete( proxy );
 }
 
 
-function get_proxy_by_id( id : InoxCell ) : any {
-  return all_proxies_by_id.get( id );
+function get_proxied_object_by_id( id : InoxCell ) : any {
+  alloc_de&&mand( safe_bytes( id ) );
+  return all_proxied_objects_by_id.get( id );
 }
 
 
-function get_cell_proxy( cell : InoxCell ){
-  let oid = get_cell_value( cell );
-  return get_proxy_by_id( oid );
+function get_cell_proxy( cell : InoxCell ) : InoxAddress {
+  const proxy = get_cell_value( cell );
+  alloc_de&&mand( safe_bytes( proxy ) );
+  return proxy;
+}
+
+
+function get_cell_proxied_object( cell : InoxCell ) : any {
+  const proxy = get_cell_proxy( cell );
+  alloc_de&&mand( safe_bytes( proxy ) );
+  return get_proxied_object_by_id( proxy );
 }
 
 
 function proxy_to_text( id : InoxCell ) : text {
+  alloc_de&&mand( safe_bytes( id ) );
   // Some special cases produce an empty string.
   if( !id )return "";
-  if( !all_proxies_by_id.has( id ) )return "";
-  let obj = all_proxies_by_id.get( id );
+  if( !all_proxied_objects_by_id.has( id ) )return "";
+  let obj = all_proxied_objects_by_id.get( id );
   return obj.toString();
 }
 
@@ -959,9 +1027,12 @@ function proxy_cell_to_text_cell( cell : InoxCell ){
   // ToDo: shallow copy if already a text
   // ToDo: check type, should be proxy
   const proxy = get_cell_proxy( cell );
+  alloc_de&&mand( safe_bytes( proxy ) );
   const new_proxy = make_proxy( proxy_to_text( proxy ) );
+  // Forget previous proxy
+  free_proxy( proxy );
   // Keep name but change type
-  set_cell_value( cell, proxy );
+  set_cell_value( cell, new_proxy );
   set_cell_type( cell, type_text_id );
 }
 
@@ -973,13 +1044,13 @@ function proxy_cell_to_text_cell( cell : InoxCell ){
 
 const type_text_id  = type_proxy_id + 1;
 const tag_text_cell = make_tag_cell( "text" );
-const tag_text_id   = get_cell_name( tag_text_cell );
+const tag_text      = get_cell_name( tag_text_cell );
 
 de&&mand_eq( type_text_id, 0x5 );
 
-const the_empty_text_cell = make_cell(
+const the_empty_text_cell = raw_make_cell(
   type_text_id,
-  tag_text_id,
+  tag_text,
   make_proxy( "" )
 );
 
@@ -988,28 +1059,28 @@ function make_text_cell( value : text ) : InoxCell {
   if( value.length == 0 )return the_empty_text_cell;
   // ToDo: share text object of preexisting tags?
   // ToDo: always return same cell for same text?
-  const cell = make_cell(
+  const proxy = make_proxy( value )
+  const cell = raw_make_cell(
     type_text_id,
-    tag_text_id,
-    make_proxy( value )
+    tag_text,
+    proxy
   );
-  de&&mand( cell_to_text( cell ) == value );
+  de&&mand_eq( cell_to_text( cell ), value );
   return cell;
 }
 
 
 /* -----------------------------------------------------------------------
  *  Word, type 6
- *  the name of the Inox word is an integer id, an index in the tag
- *  table.
+ *  the name of the Inox word is an integer id, an index in the tag table.
  *  the value is the address where the Inox word is defined is the VM
- *  memory, the definition is built using 64 bits regular cells.
+ *  memory, the definition is built using 32 bits words.
  *  Words are never deallocated, like tags.
  */
 
 const type_word_id  = type_text_id + 1;
-const tag_word_cell = make_tag_cell(  "word" );
-
+const tag_word_cell = make_tag_cell( "word" );
+const tag_word      = get_cell_name( tag_word_cell );
 de&&mand_eq( type_word_id, 0x6 );
 
 // The dictionary of all Inox words
@@ -1024,7 +1095,7 @@ function make_inox_word(
 // Define an Inox word. It's name is the name of the cell.
   // The cell's value is the adress of another cell where the word definition
   // starts. There is q header is the previous cell, for length & flags.
-  // The definition is an array of cells with primitive ids and
+  // The definition is an array of words with primitive ids and
   // word ids, aka a block. See runner() where the definition is interpreted.
   // ToDo: Forth also requires a pointer to the previous definition of
   // the word.
@@ -1049,7 +1120,7 @@ function inox_word_name_to_text( id : InoxValue ): text {
 
 
 function get_inox_word_definition_by_label( name : text ) : InoxAddress {
-  // ToDo: implement header with flags, length and pointer to previous
+  // ToDo: pointer to previous
   let id : InoxIndex;
   let cell : InoxCell;
   if( all_inox_word_ids_by_label.has( name ) ){
@@ -1060,10 +1131,18 @@ function get_inox_word_definition_by_label( name : text ) : InoxAddress {
     cell = all_primitive_cells_by_id[ id ];
   }else{
     // Not found, return void cell, aka 0
-    de&&bug( "Name not found: " + name );
+    de&&bug( "Word not found: " + name );
+    if( name == "." )debugger;
     return 0;
   }
   return get_cell_value( cell );
+}
+
+
+function get_inox_word_definition_by_tag( tag_id : InoxIndex ) : InoxAddress {
+  const tag_name : text = tag_id_to_text( tag_id );
+  const def = get_inox_word_definition_by_label( tag_name );
+  return def;
 }
 
 
@@ -1073,7 +1152,8 @@ function get_inox_word_id_by_name( name : text ){
     return all_inox_word_ids_by_label.get( name );
   }else{
     // Not found, return void cell, aka 0
-    de&&bug( "Name not found: " + name );
+    eval_de&&bug( "Word not found: " + name );
+    // if( eval_de && name == "." )debugger;
     return 0;
   }
 }
@@ -1081,13 +1161,15 @@ function get_inox_word_id_by_name( name : text ){
 
 function get_inox_word_definition_by_id( id : InoxIndex  ) : InoxAddress {
   let cell : InoxCell = all_inox_word_cells_by_id[ id ];
-  return get_cell_value( cell );
+  const def = get_cell_value( cell );
+  de&&mand( def != 0 )
+  return def;
 }
 
 
 function get_definition_length( def : InoxAddress ) : InoxIndex {
   // The header with length & flags is right before the code
-  const length = get_cell_value( def - words_per_cell ) & 0xffff;
+  const length = get_cell_value( def - words_per_cell ) & 0xfff;
   if( de ){
     if( length > 100 ){
       bug( "Large definition" );
@@ -1100,7 +1182,7 @@ function get_definition_length( def : InoxAddress ) : InoxIndex {
 
 function set_inox_word_flag( id : InoxWord, flag : InoxValue ){
   const def = get_inox_word_definition_by_id( id ) - words_per_cell;
-  raw_set_cell_value( def, get_cell_value( def ) | flag );
+  set_cell_value( def, get_cell_value( def ) | flag );
 }
 
 
@@ -1152,52 +1234,42 @@ function is_stream_inox_word( id : InoxIndex ) : InoxValue {
 }
 
 
-function set_inlined_inox_word_flag( id : InoxIndex ) : void {
+function set_inline_inox_word_flag( id : InoxIndex ) : void {
   set_inox_word_flag( id,  0x08000 );
 }
 
 
-function is_inlined_inox_word( id : InoxIndex ) : InoxValue {
+function is_inline_inox_word( id : InoxIndex ) : InoxValue {
   return test_inox_word_flag( id, 0x08000 );
 }
 
 
 /* -----------------------------------------------------------------------------
- *  Tempory work cells, one for each type, and some more
+ *  type invalid is for debugging mainly.
  */
 
-const tag_work_cell = make_tag_cell( "it" );
-const tag_work_id   = get_cell_name( tag_work_cell );
+const type_invalid_id  = type_word_id + 1;
+const tag_invalid_cell = make_tag_cell( "invalid" );
+const tag_invalid      = get_cell_name( tag_invalid_cell );
+de&&mand_eq( type_invalid_id, 0x7 );
+
+
+/* -----------------------------------------------------------------------------
+ *  Tempory work cells
+ */
+
 
 const the_tag_work_cell = make_tag_cell( "tag" );
-set_cell_name( the_tag_work_cell, tag_work_id );
+set_cell_name( the_tag_work_cell, tag( "work-tag") );
 
-const the_integer_work_cell =  make_integer_cell( 0 );
-set_cell_name( the_integer_work_cell, tag_work_id );
+const the_integer_work_cell = make_integer_cell( 0 );
+set_cell_name( the_integer_work_cell, tag( "work-integer" ) );
 
-const the_boolean_work_cell =  make_integer_cell( 0 );
-set_cell_name( the_boolean_work_cell, tag( "boolean" ) );
+const the_boolean_work_cell = make_integer_cell( 0 );
+set_cell_name( the_boolean_work_cell, tag( "work-boolean" ) );
 
-const the_true_work_cell = make_integer_cell( 1 );
-set_cell_name( the_true_work_cell, tag( "true" ) );
-
-const the_false_work_cell = make_integer_cell( 0 );
-set_cell_name( the_false_work_cell, tag( "false" ) );
-
-const the_fail_work_cell = make_integer_cell( -1 );
-set_cell_name( the_fail_work_cell, tag(  "fail" ) );
-
-const the_just_work_cell = make_integer_cell( 1 );
-set_cell_name( the_just_work_cell, tag( "just" ) );
-
-const the_text_work_cell = make_text_cell( "text" );
-set_cell_name( the_text_work_cell, tag( "text" ) );
-
-const the_proxy_work_cell = make_proxy_cell( 0 );
-set_cell_name( the_proxy_work_cell, tag( "proxy" ) );
-
-const the_pointer_work_cell =  make_pointer_cell( 0 );
-set_cell_name( the_pointer_work_cell, tag( "pointer" ) );
+const the_block_work_cell = make_integer_cell( 0 );
+set_cell_name( the_block_work_cell, tag( "block" ) );
 
 
 /* -----------------------------------------------------------------------------
@@ -1208,16 +1280,10 @@ set_cell_name( the_pointer_work_cell, tag( "pointer" ) );
  *  ToDo: implement lists using name and value of cell?
  */
 
-const type_float_id    = type_proxy_id;
-const tag_float_cell   = make_tag_cell(  "float" );
-
 function make_float( value : float ){
   return make_proxy_cell( value );
 }
 
-
-const tag_array_cell   = make_tag_cell( "array" );
-const tag_array_id     = get_cell_name( tag_array_cell );
 
 function make_array( obj? : Object ) : InoxCell {
   let array = obj;
@@ -1228,9 +1294,6 @@ function make_array( obj? : Object ) : InoxCell {
 }
 
 
-const tag_map_cell = make_tag_cell(  "map" );
-const tag_map_id   = get_cell_name( tag_map_cell );
-
 function make_map( obj? : Object ){
   let map = obj;
   if( ! obj ){
@@ -1238,10 +1301,6 @@ function make_map( obj? : Object ){
   }
   return make_proxy_cell( map );
 }
-
-
-const tag_list_cell = make_tag_cell(  "list" );
-const tag_list_id   = get_cell_name( tag_list_cell );
 
 function make_list( obj? : Object ) : InoxCell {
   // ToDo: value should a linked list of cells
@@ -1254,15 +1313,13 @@ function make_list( obj? : Object ) : InoxCell {
 
 
 /* --------------------------------------------------------------------------
- *  Task
+ *  Actor
  *  ToDo: make it a first class type?
  */
 
-const tag_task_cell = make_tag_cell( "task" );
-const tag_task_id   = get_cell_name( tag_task_cell );
 
-// Global state about currently running task
-let current_task : Task;
+// Global state about currently running actor
+let current_actor : Actor;
 let current_ip   : InoxAddress;
 let current_csp  : InoxAddress;
 let current_dsp  : InoxAddress;
@@ -1287,11 +1344,11 @@ class CpuContext {
 }
 
 
-class Task {
-// Inox machines run cooperative tasks, actors typically
+class Actor {
+// Inox machines run cooperative actors
 
   cell          : InoxCell;   // Proxy cell that references this object
-  parent        : InoxCell;   // Parent task
+  parent        : InoxCell;   // Parent actor
   act           : InoxCell;   // Current activation record
   memory        : InoxCell;   // Memory pointer, in ram array, goes upward
   stack         : InoxCell;   // Base address of data stack cell array,downward
@@ -1304,11 +1361,11 @@ class Task {
     ip       : InoxAddress,
     ram_size : InoxValue
   ){
-    // this.cell is set in make_task()
+    // this.cell is set in make_actor()
     this.cell = 0;
-    // Parent task list, up to root task
+    // Parent actor list, up to root actor
     this.parent = parent;
-    // Current activation for the new task
+    // Current activation for the new actor
     this.act    = act;
     // Init memory and cpu context
     this.init( ip, ram_size );
@@ -1318,6 +1375,7 @@ class Task {
     // Round size to the size of a cell
     var size = ( ram_size / size_of_cell ) * size_of_cell;
     // Room for stacks, both data and control
+    // ToDo: allocate two distinct areas so that each can grow
     this.memory = allocate_bytes( size );
     // Control stack is at the very end, with small room for underflow
     this.control_stack
@@ -1325,7 +1383,7 @@ class Task {
     // Data stack is just below the control stack made of 512 entries
     this.stack = this.control_stack - ( words_per_cell * 512 );
     this.ctx = new CpuContext( ip, this.stack, this.control_stack );
-    de&&mand( this.ctx.dsp == this.stack );
+    de&&mand_eq( this.ctx.dsp, this.stack );
     de&&mand( this.ctx.dsp >  this.memory );
   }
 
@@ -1334,7 +1392,7 @@ class Task {
   }
 
   restore_context( ctx : CpuContext ) : void {
-    current_task = this;
+    current_actor = this;
     current_ip   = this.ctx.ip  = ctx.ip;
     current_dsp  = this.ctx.dsp = ctx.dsp;
     current_csp  = this.ctx.csp = ctx.csp;
@@ -1342,66 +1400,67 @@ class Task {
 }
 
 
-function make_task( parent : InoxCell, act : InoxCell ) : InoxCell {
+function make_actor( parent : InoxCell, act : InoxCell ) : InoxCell {
   let size = 1024 * size_of_cell;  // for parameters & control stacks; ToDo
-  var new_task = new Task( parent, act, 0, size );
+  var new_actor = new Actor( parent, act, 0, size );
   // Fill parameter stack with act's parameters
   // ToDo [ act.locals ];
-  let cell = make_proxy_cell( new_task );
-  new_task.cell = cell;
+  let cell = make_proxy_cell( new_actor );
+  new_actor.cell = cell;
   return cell;
 };
 
 
-// Current task is the root task
-let root_task: InoxCell = make_task( the_void_cell, the_void_cell );
-current_task = get_cell_proxy( root_task );
+// Current actor is the root actor
+const root_actor: InoxCell = make_actor( the_void_cell, the_void_cell );
+current_actor = get_cell_proxied_object( root_actor );
 
-// Current task changes at context switch
-task_switch( current_task );
+// Current actor changes at context switch
+actor_switch( current_actor );
 
 // There is nothing in the free list
-let free_tasks = the_void_cell;
+let free_actors = the_void_cell;
 
 
-function allocate_task( parent : InoxCell, act:InoxCell ) : InoxCell {
-  if( free_tasks == the_void_cell )return make_task( parent, act );
-  let task = free_tasks;
-  let task_object = get_cell_proxy( task );
-  task_object.ctx.ip = 1;
-  task_object.parent = parent;
-  task_object.act = act;
-  return task;
+function allocate_actor( parent : InoxCell, act:InoxCell ) : InoxCell {
+  if( free_actors == the_void_cell )return make_actor( parent, act );
+  let actor = free_actors;
+  let actor_object = get_cell_proxied_object( actor );
+  actor_object.ctx.ip = 1;
+  actor_object.parent = parent;
+  actor_object.act = act;
+  return actor;
 }
 
 
-function free_task( task : InoxCell ){
-// add task to free list
-  set_next_cell( task, free_tasks );
-  free_tasks = task;
+function free_actor( actor : InoxCell ){
+// add actor to free list
+  set_next_cell( actor, free_actors );
+  free_actors = actor;
 }
 
 
-// primitive to switch to another task
-function primitive_task_switch() : void {
-  var next_task = this.pop();
-  task_switch( get_cell_proxy( next_task ) );
+// primitive to switch to another actor
+function primitive_actor_switch() : void {
+  var next_actor = this.pop();
+  actor_switch( get_cell_proxied_object( next_actor ) );
+  clear_cell( next_actor );
 }
 
 
-function task_switch( task : Task ) : void {
-  task.restore_context( task.get_context() );
+function actor_switch( actor : Actor ) : void {
+  actor.restore_context( actor.get_context() );
 }
 
 
-function primitive_make_task() : void {
+function primitive_make_actor() : void {
   let ip : InoxAddress = get_cell_value( this.dsp() );
-  var act = 0 // ToDo: allocate_act( current_task.cell );
-  var new_task : InoxCell = allocate_task( current_task.cell, act );
-  // ToDo: push( parameters ); into new task
-  let t : Task = get_cell_proxy( new_task );
+  var act = 0 // ToDo: allocate_act( current_actor.cell );
+  var new_actor : InoxCell = allocate_actor( current_actor.cell, act );
+  // ToDo: push( parameters ); into new actor
+  let t : Actor = get_cell_proxied_object( new_actor );
   t.ctx.ip = ip;
-  copy_cell( new_task, this.dsp() );
+  copy_cell( new_actor, this.dsp() );
   de&&mand( t.ctx.dsp <= t.stack );
   de&&mand( t.ctx.dsp >  t.memory );
 };
@@ -1410,20 +1469,21 @@ function primitive_make_task() : void {
 /* -----------------------------------------------------------------------
  *  primitives
  *
- *  ToDo: use failure/success insteqd of false/true,
+ *  ToDo: ? use failure/success insteqd of false/true,
  *  See Icon at https://lib.dr.iastate.edu/cgi/viewcontent.cgi?article=1172&context=cs_techreports
  */
 
 let all_primitive_cells_by_id     = new Array< InoxCell >();
-let all_primitive_fumctions_by_id = new Array< Function >();
+let all_primitive_functions_by_id = new Array< Function >();
 // ToDo: names are small integers, I could use a spare array for speed?
 let all_primitive_ids_by_name     = new Map< text, InoxIndex >();
 
-const tag_return_id = tag( "inox-return" );
+const tag_inox_return = tag( "inox-return" );
+
 
 function set_return_cell( cell : InoxCell ){
-  raw_set_cell_value( cell, 0 );
-  set_cell_info(  cell, 0x0 );  // instead of tag_return_id
+  set_cell_value( cell, 0 );
+  set_cell_info(  cell, 0x0 );  // named void instead of tag_inox_return
 }
 
 
@@ -1451,7 +1511,7 @@ function primitive( name : text, fn : Function ) : InoxCell {
 
   // Associate name, primitive id and cell in all directions
   all_primitive_cells_by_id[ id ] = function_cell;
-  all_primitive_fumctions_by_id[ id ] = fn;
+  all_primitive_functions_by_id[ id ] = fn;
   all_primitive_ids_by_name.set( name, id );
 
   // Make also an Inox word that calls the primitives
@@ -1477,7 +1537,7 @@ function primitive( name : text, fn : Function ) : InoxCell {
     id
   );
 
-  de&&bug( inox_word_cell_to_text_definition( word_cell ) );
+  nde&&bug( inox_word_cell_to_text_definition( word_cell ) );
 
   return word_cell;
 
@@ -1504,18 +1564,24 @@ function operator_primitive( name : text, fn : Function ) : InoxCell {
 
 primitive( "inox-return", function inox_return(){
 // primitive "return" is jump to return address
-  debugger;
-  let csp : InoxCell = this.csp();
-  this.set_csp( csp + words_per_cell );
-  this.set_ip( get_cell_value( csp ) );
+  const csp : InoxCell = this.csp();
+  const new_csp = csp + words_per_cell;
+  this.set_csp( new_csp );
+  const new_ip = get_cell_value( csp );
+  if( run_de ){
+    bug( "primitive, return to IP " + new_ip + " from "
+    + get_cell_name( csp ) );
+  }
+  raw_clear_cell( csp );
+  this.set_ip( new_ip );
 } );
 
 
 // Special case for primitive inox-return, it gets two ids
 all_primitive_cells_by_id[ 0 ]
-= all_primitive_cells_by_id[ tag( "inox-return" ) ];
-all_primitive_fumctions_by_id[ 0 ]
-= all_primitive_fumctions_by_id[ tag( "inox-return" ) ];
+= all_primitive_cells_by_id[ tag_inox_return ];
+all_primitive_functions_by_id[ 0 ]
+= all_primitive_functions_by_id[ tag_inox_return ];
 // Also patch word definition to reference word 0
 set_return_cell( get_inox_word_definition_by_label( "inox-return" ) );
 
@@ -1530,21 +1596,24 @@ primitive( "inox-cast", function(){
 
 primitive( "inox-rename", function primitive_inox_name(){
 // Change the name of a value
-  const name = get_cell_value( this.pop() );
+  const tos = this.pop();
+  check_de&&mand_eq( get_cell_type( tos ), type_tag_id );
+  const name = get_cell_value( tos );
+  raw_clear_cell( tos );
   set_cell_name( this.dsp(), name );
   de&&mand_eq( get_cell_name( this.dsp() ), name );
 } );
 
 
-primitive( "inox-jump", function go_jump(){
+primitive( "inox-goto", function inox_goto(){
 // Primitive is "jump" to some relative position
   // ToDo: conditional jumps
   this.set_ip( this.ip() + get_cell_value( this.pop() ) );
 } );
 
 
-primitive( "make_task",   primitive_make_task   );
-primitive( "task_switch", primitive_task_switch );
+primitive( "make_actor",   primitive_make_actor   );
+primitive( "actor_switch", primitive_actor_switch );
 
 // ToDo: core dictionary
 
@@ -1561,14 +1630,15 @@ primitive( "dup",  function primitive_dup(){
 } );
 
 
-const tmp_cell = make_cell( type_void_id, tag_void_id, 0 );
+const tmp_cell = make_cell( type_void_id, tag_void, 0 );
+
 
 primitive( "swap",  function primitive_swap(){
-  const dsp0 = this.dsp();
-  const dsp1 = dsp0 + words_per_cell;
-  copy_cell( dsp0, tmp_cell );
-  copy_cell( dsp1, dsp0 );
-  copy_cell( tmp_cell, dsp1 );
+  const tos0 = this.dsp();
+  const tos1 = tos0 + words_per_cell;
+  move_cell( tos0,     tmp_cell );
+  move_cell( tos1,     tos0 );
+  move_cell( tmp_cell, tos1 );
 } );
 
 
@@ -1578,20 +1648,20 @@ primitive( "over", function primitive_over(){
 
 
 primitive( "rotate", function primitive_rotate(){
-  const dsp0 = this.dsp();
-  const dsp1 = dsp0 + words_per_cell;
-  const dsp2 = dsp1 + words_per_cell;
-  copy_cell( dsp0, tmp_cell );
-  copy_cell( dsp1, dsp0 );
-  copy_cell( dsp2, dsp1 );
-  copy_cell( tmp_cell, dsp2 );
+  const tos0 = this.dsp();
+  const tos1 = tos0 + words_per_cell;
+  const tos2 = tos1 + words_per_cell;
+  move_cell( tos0,     tmp_cell );
+  move_cell( tos1,     tos0 );
+  move_cell( tos2,     tos1 );
+  move_cell( tmp_cell, tos2 );
 } );
 
 
 primitive( "pick", function primitive_pick(){
-  const dsp = this.dsp();
-  const nth = get_cell_integer( dsp );
-  copy_cell( dsp + nth * words_per_cell, dsp );
+  const tos = this.dsp();
+  const nth = get_cell_integer( tos );
+  copy_cell( tos + nth * words_per_cell, tos );
 } );
 
 
@@ -1609,7 +1679,7 @@ function integer_cell_to_text( cell : InoxCell ) : text {
 }
 
 
-function cell_to_tag( cell : InoxCell ) : InoxCell {
+function cell_to_tag_cell( cell : InoxCell ) : InoxCell {
   let value : InoxValue = get_cell_value( cell );
   let info  : InoxInfo  = get_cell_info(  cell );
   let type  : InoxType  = unpack_type( info );
@@ -1618,11 +1688,67 @@ function cell_to_tag( cell : InoxCell ) : InoxCell {
 }
 
 
+function safe_proxy( proxy : InoxAddress ) : boolean {
+  if( !safe_bytes( proxy ) )return false;
+  return true;
+}
+
+
+function safe_pointer( pointer : InoxAddress ) : boolean {
+  if( !safe_bytes( pointer ) )return false;
+  return true;
+}
+
+
+function safe_cell( cell : InoxCell ) : boolean {
+//  Try to determine if cell looks like a valid one
+
+  const value : InoxValue = get_cell_value( cell );
+  const info  : InoxInfo  = get_cell_info(  cell );
+  const type  : InoxType  = unpack_type(    info );
+
+  if( type == type_text_id ){
+    const proxy = value;
+    if( !safe_proxy( proxy ) ){
+      bug( "Invalid proxy " + proxy + " for text cell " + cell );
+      return false;
+    }
+    // ToDo: check it is a string
+    return true;
+  }else if( type == type_proxy_id ){
+    const proxy = value;
+    return safe_proxy( proxy );
+  }else if( type == type_pointer_id ){
+    const pointer = value;
+    return safe_pointer( pointer );
+    return true;
+  }else if( type == type_tag_id ){
+    const tag = value;
+    if( ! all_tag_cells_by_id[ tag ] ){
+      bug( "Invalid tag " + tag + " for cell " + cell );
+    }
+    return true;
+  }else if( type == type_integer_id ){
+    return true;
+  }else if( type == type_word_id ){
+    // ToDo: check
+    return true;
+  }else if( type == type_void_id ){
+    return true;
+  }else{
+    bug( "Invalid type " + type + " for cell " + cell );
+    return false;
+  }
+}
+
+
 function cell_to_text( cell : InoxCell ) : text {
 
-  let value : InoxValue = get_cell_value( cell );
-  let info  : InoxInfo  = get_cell_info(  cell );
-  let type  : InoxType  = unpack_type( info );
+  alloc_de&&mand( safe_cell( cell ) );
+
+  const value : InoxValue = get_cell_value( cell );
+  const info  : InoxInfo  = get_cell_info(  cell );
+  const type  : InoxType  = unpack_type(    info );
 
   if( type == type_text_id ){
     return proxy_to_text( value );
@@ -1646,45 +1772,57 @@ function cell_to_text( cell : InoxCell ) : text {
 
 function cell_to_dump_text( cell : InoxCell ) : text {
 
+  const valid = safe_cell( cell );
+  if( !valid ){
+    debugger;
+  }
+
   let value : InoxValue = get_cell_value( cell );
   let info  : InoxInfo  = get_cell_info(  cell );
   let type  : InoxType  = unpack_type( info );
 
   let name : InoxName = unpack_name( info );
-  let buf : text = "" + tag_id_to_text( name );
+  let buf  : text     = "" + tag_id_to_text( name ) + ": ";
 
   switch( type ){
     case type_void_id :
-      if( name != type ){
-        buf += ":<void>";
-      }
+      buf += "<void:" + value + ">";
     break;
     case type_tag_id :
-      if( value != name ){
-        buf += ":" + tag_id_to_text( value );
-      }
+      buf += tag_id_to_text( value );
     break;
     case type_integer_id :
-      buf += ":" + integer_cell_to_text( cell );
+      buf += integer_cell_to_text( cell );
     break;
     case type_text_id :
-      buf += ":" + get_cell_value( value );
+      let text = cell_to_text( cell );
+      if( text.length > 31 ){
+        text = text.slice( 0, 31 ) + "...";
+      }
+      buf += text + " @" + get_cell_value( value );
     break;
     case type_proxy_id :
-      buf += ":@" + integer_cell_to_text( cell );
+      // ToDo: add class
+      buf += "@" + get_cell_value( cell );
     break;
-    case type_word_id : buf += ":<word:" + value + ">";
+    case type_word_id :
+      // ToDo: add name
+      buf += "<word:" + value + ">";
     break;
     case type_pointer_id :
-      buf += ":*" + integer_cell_to_text( cell );
+      // ToDo: add class
+      buf += "*" + get_cell_value( cell );
     break;
     default :
       de&&mand( false );
-      buf += ":<???/" + type + ":" + value + ">";
+      buf += "<???/" + type + ":" + value + ">";
+      debugger;
     break;
   }
 
-  buf += " - " + tag_id_to_text( type ) + "@" + cell;
+  buf += " - " + tag_id_to_text( type )
+  + " " + get_cell_value( cell )
+  + " @" + cell;
   return buf;
 
 }
@@ -1693,9 +1831,18 @@ function cell_to_dump_text( cell : InoxCell ) : text {
 function dump_stacks( dsp : InoxAddress, csp : InoxAddress ){
 
   let buf  = "DATA STACK:";
-
   let ptr  = dsp;
-  let base = current_task.stack;
+
+  if( get_cell_value( ptr - 2 * words_per_cell ) != 0 ){
+    buf += "\n-2 DIRTY -> " + cell_to_dump_text( ptr - 2 * words_per_cell );
+    debugger;
+  }
+  if( get_cell_value( ptr - words_per_cell ) != 0 ){
+    buf += "\n-1 DIRTY -> " + cell_to_dump_text( ptr - words_per_cell );
+    debugger;
+  }
+
+  let base = current_actor.stack;
 
   if( ptr > base ){
     bug(
@@ -1711,8 +1858,8 @@ function dump_stacks( dsp : InoxAddress, csp : InoxAddress ){
     buf += "\n"
     + nn + " -> "
     + cell_to_dump_text( ptr )
-    + ( ptr == current_task.stack ? " <= BASE" : "" );
-    if( ptr == current_task.stack )break;
+    + ( ptr == current_actor.stack ? " <= BASE" : "" );
+    if( ptr == current_actor.stack )break;
     ptr += words_per_cell;
     nn++;
     if( nn > 10 ){
@@ -1721,8 +1868,20 @@ function dump_stacks( dsp : InoxAddress, csp : InoxAddress ){
     }
   }
 
-  let return_base = current_task.control_stack;
+
+  buf += "\nCONTROL STACK: ";
   ptr = csp;
+
+  if( get_cell_value( ptr - 2 * words_per_cell ) != 0 ){
+    buf += "\n-2 DIRTY -> " + cell_to_dump_text( ptr - 2 * words_per_cell );
+    debugger;
+  }
+  if( get_cell_value( ptr - words_per_cell ) != 0 ){
+    buf += "\n-1 DIRTY -> " + cell_to_dump_text( ptr - words_per_cell );
+    debugger;
+  }
+
+  let return_base = current_actor.control_stack;
 
   if( ptr > return_base ){
     bug(
@@ -1733,18 +1892,14 @@ function dump_stacks( dsp : InoxAddress, csp : InoxAddress ){
     return_base = ptr + 5 * words_per_cell;
   }
 
-  buf += "\CONTROL STACK: ";
   nn = 0;
   let ip : InoxAddress ;
   let name : text = "";
   while( ptr <= return_base ){
-    ip = get_cell_value( ptr );
-    buf += nn + ": " + ip;
-    name = tag_id_to_text( get_cell_name( ptr ) );
-    buf += " (" + get_cell_name( ptr ) + "/" + name +  "), " ;
-    if( ptr == current_task.control_stack ){
-      buf += "/end/";
-    }
+    buf += "\n"
+    + nn + " -> "
+    + cell_to_dump_text( ptr )
+    + ( ptr == current_actor.control_stack ? " <= BASE" : "" );
     if( nn > 10 ){
       buf += "...";
       break;
@@ -1759,101 +1914,263 @@ function dump_stacks( dsp : InoxAddress, csp : InoxAddress ){
 
 
 primitive( "inox-log", function primitive_inox_log(){
-  let cell = this.pop();
-  let type = get_cell_type( cell );
+  const verb_cell = this.pop();
+  const type = get_cell_type( verb_cell );
   if( type == type_tag_id ){
-    let tag_id = get_cell_value( cell );
-    if( tag_id == tag( "dont" ) ){
+    const verb = get_cell_value( verb_cell );
+    if( verb == tag( "dont" ) ){
       can_log = false;
     }
-    if( tag_id == tag( "do" ) ){
+    if( verb == tag( "do" ) ){
       can_log = true;
     }
     bug = can_log ? console.log : debug;
-    return;
+    if( verb == tag( "enable" ) ){
+      const domain_cell = this.pop();
+      const domain_id = get_cell_value( domain_cell );
+      if( domain_id == tag( "eval" ) ){
+        if( de ){ eval_de = true; }
+      }
+      if( domain_id == tag( "step" ) ){
+        if( de ){ step_de = true; }
+      }
+      if( domain_id == tag( "run" ) ){
+        if( de ){ run_de = true; }
+      }
+      if( domain_id == tag( "stack" ) ){
+        if( de ){ stack_de = true; }
+      }
+      if( domain_id == tag( "token" ) ){
+        if( de ){ token_de = true; }
+      }
+      clear_cell( domain_cell );
+    }else if( verb == tag( "disable" ) ){
+      // ToDo: implement this
+      const domain_cell = this.pop();
+      const domain_id = get_cell_value( domain_cell );
+      if( domain_id == tag( "eval" ) ){
+        if( de ){ eval_de = false; }
+      }
+      if( domain_id == tag( "step" ) ){
+        if( de ){ step_de = false; }
+      }
+      if( domain_id == tag( "run" ) ){
+        if( de ){ run_de = false; }
+      }
+      if( domain_id == tag( "stack" ) ){
+        if( de ){ stack_de = false; }
+      }
+      if( domain_id == tag( "token" ) ){
+        if( de ){ token_de = false; }
+      }
+      clear_cell( domain_cell )
+    }
   }
-  clear_cell( cell );
+  clear_cell( verb_cell );
 } );
+
+
+const tag_type  = tag( "type" );
+const tag_name  = tag( "name" );
+const tag_value = tag( "value" );
 
 
 primitive( "inox-get-type", function primitive_inox_get_type(){
 // Get type as an integer.
 // ToDo: get as a tag?
-  let cell = this.dsp();
-  let type = get_cell_type( cell );
-  set_cell_value( the_integer_work_cell, type );
-  copy_cell( the_integer_work_cell, cell );
+  const tos = this.dsp();
+  const type = get_cell_type( tos );
+  clear_cell( tos );
+  set_cell_value( tos, type );
+  set_cell_info( tos, pack( type_integer_id, tag_type ) );
 } );
 
 
 primitive( "inox-get-name", function primitive_inox_get_name(){
-  let cell = this.dsp();
-  let name = get_cell_name( cell );
-  set_cell_value( the_tag_work_cell, name );
-  copy_cell( the_tag_work_cell, cell );
+  const tos = this.dsp();
+  const name = get_cell_name( tos );
+  clear_cell( tos );
+  set_cell_value( tos, name );
+  set_cell_info( tos, pack( type_tag_id, tag_name ) );
 } );
 
 
 primitive( "inox-get-value", function primitive_inox_get_value(){
-  let cell = this.dsp();
-  let value = get_cell_value( cell );
-  set_cell_value( the_integer_work_cell, value );
-  copy_cell( the_integer_work_cell, cell );
+  let tos = this.dsp();
+  let value = get_cell_value( tos );
+  clear_cell( tos );
+  set_cell_value( tos, value );
+  set_cell_info( tos, pack( type_integer_id, tag_value ) );
 } );
 
 
 /* ---------------------------------------------------------------------------
- *  Some type checking
+ *  Some type checking. They work only when the global "de" flag is set.
+ *  This is true if the interpreter was compiled in so called debug or
+ *  development mode. Once a program is considered deployable, it is usually
+ *  run by a runtime that does not provide most of the facilities that
+ *  are available in debug/development mode, for speed reasons and compactness.
  */
 
 
-function mand_integer( cell ): void{
-  if( get_cell_type( cell ) == type_integer_id )return;
-  bug( "!!! integer expected, instead: "
-  + get_cell_type( cell ) + "/" + cell_to_text( cell ) )
-  assert( false );
+// Type is encoded using 3 bits, hence there exists at most 8 types.
+const type_id_to_text_array = new Array< text >;
+const type_id_to_tag_array = new Array< InoxIndex >;
+const type_name_to_id = new Map< text, InoxType >;
+
+
+type_id_to_text_array[ type_void_id    ] = "void";
+type_id_to_text_array[ type_tag_id     ] = "tag";
+type_id_to_text_array[ type_integer_id ] = "integer";
+type_id_to_text_array[ type_pointer_id ] = "pointer";
+type_id_to_text_array[ type_proxy_id   ] = "proxy";
+type_id_to_text_array[ type_text_id    ] = "text";
+type_id_to_text_array[ type_word_id    ] = "word";
+type_id_to_text_array[ 7               ] = "invalid";
+
+type_id_to_tag_array[ type_void_id    ] = tag_void;    // "void"
+type_id_to_tag_array[ type_tag_id     ] = tag_tag;     // "tag"
+type_id_to_tag_array[ type_integer_id ] = tag_integer; // "integer"
+type_id_to_tag_array[ type_pointer_id ] = tag_pointer; // "pointer"
+type_id_to_tag_array[ type_proxy_id   ] = tag_proxy;   // "proxy"
+type_id_to_tag_array[ type_text_id    ] = tag_text;    // "text"
+type_id_to_tag_array[ type_word_id    ] = tag_word;    // "word"
+type_id_to_tag_array[ type_invalid_id ] = tag_invalid; // "invalid"
+
+type_name_to_id.set( "void",    type_void_id    );
+type_name_to_id.set( "tag",     type_tag_id     );
+type_name_to_id.set( "integer", type_integer_id );
+type_name_to_id.set( "pointer", type_pointer_id );
+type_name_to_id.set( "proxy",   type_proxy_id   );
+type_name_to_id.set( "text",    type_text_id    );
+type_name_to_id.set( "word",    type_word_id    );
+type_name_to_id.set( "invalid", type_invalid_id );
+
+
+function type_id_to_text( type_id: InoxIndex ) : text {
+  if( type_id > 0 && type_id < 8 )return "invalid";
+  return type_id_to_text( type_id );
 }
 
 
-function mand_tag( cell ){
-  if( get_cell_type( cell ) == type_tag_id )return;
-  bug( "!!! tag expected, instead: "
-  + get_cell_type( cell ) + "/" + cell_to_text( cell ) )
-  assert( false );
+function type_id_to_tag( type_id : InoxIndex ) : InoxTag {
+  if( type_id > 0 && type_id < 8 )return tag_invalid;
+  return type_id_to_tag[ type_id ];
 }
 
 
-function mand_text( cell ){
-  if( get_cell_type( cell ) == type_text_id )return;
-  bug( "!!! text expected, instead: "
-  + get_cell_type( cell ) + "/" + cell_to_text( cell ) )
-  assert( false );
+function type_name_to_type_id( name : text ) : InoxType {
+  if( type_name_to_id.has( name ) )return type_name_to_id.get( name );
+  return type_invalid_id;
 }
+
+
+function mand_type( cell : InoxCell, type_id : InoxIndex ): void {
+// Assert that the type of a cell is the integer type.
+  if( get_cell_type( cell ) == type_id )return;
+  bug( "!!! type " + type_id + " (" + type_id_to_text( type_id ) + ")"
+  + " expected, instead: "
+  + get_cell_type( cell ) + "/" + type_id_to_text( get_cell_type( cell ) ) );
+  // ToDo: should raise a type error
+    assert( false );
+}
+
+
+function mand_void( cell : InoxCell ) : void {
+// Assert that the type of a cell is the integer type.
+  mand_type( cell, type_void_id );
+}
+
+
+function mand_tag( cell  : InoxCell ){
+// Assert that the type of a cell is the pointer type.
+  mand_type( cell, type_tag_id );
+}
+
+
+function mand_pointer( cell : InoxCell ) : void {
+// Assert that the type of a cell is the integer type.
+  mand_type( cell, type_pointer_id );
+}
+
+
+function mand_proxy( cell : InoxCell ) : void {
+// Assert that the type of a cell is the integer type.
+  mand_type( cell, type_proxy_id );
+}
+
+
+function mand_text( cell  : InoxCell ){
+// Assert that the type of a cell is the text type.
+  mand_type( cell, type_text_id );
+}
+
+
+function mand_word( cell : InoxCell ) : void {
+// Assert that the type of a cell is the integer type.
+  mand_type( cell, type_word_id );
+}
+
+
+function get_cell_type_tag( cell : InoxCell ) : InoxTag {
+// Get the most specific type of a cell's value
+  const type = get_cell_type( cell );
+  // For pointers, it's the name stored in the first cell of the object
+  if( type == type_pointer_id ){
+    return get_cell_name( get_cell_value( cell ) );
+  }
+  // For proxied object, it's the class name of the proxied object
+  if( type == type_proxy_id ){
+    const proxied_obj = get_proxied_object_by_id( get_cell_value( cell ) );
+    const js_type = typeof proxied_obj;
+    if( typeof proxied_obj == "object" ){
+      return tag( proxied_obj.constructor.name );
+    }
+    return tag( js_type );
+  }
+  return type_id_to_tag( get_cell_type( cell ) );
+}
+
+
+const tag_class = tag( "class" );
+
+
+primitive( "inox-get-class", function inox_get_class(){
+// Get the most specific type name (as a tag) of the top of stack cell
+  const tos = this.dsp();
+  const type_tag = get_cell_type_tag( tos );
+  clear_cell( tos );
+  set_cell_value( tos, type_tag );
+  set_cell_info( tos, pack( type_tag_id, tag_class ) );
+} );
 
 
 /* ---------------------------------------------------------------------------
  *  Some operators
  */
 
+
 operator_primitive( "+", function primitive_add(){
-  const p1 = this.pop();
-  const x1 = get_cell_value( p1 );
-  const p0 = this.dsp();
-  const x0 = get_cell_value( p0 );
+  const p2 = this.pop();
+  const p1 = this.dsp();
   if( check_de ){
-    if( get_cell_type( p1 ) != type_integer_id ){
+    if( get_cell_type( p2 ) != type_integer_id ){
+      clear_cell( p2 );
       bug( "bad type, expecting integer second operand to +" );
       assert( false );
       return;
     }
-    if( get_cell_type( p0 ) != type_integer_id ){
+    if( get_cell_type( p1 ) != type_integer_id ){
       bug( "bad type, expecting integer first operand to +" );
       assert( false );
       return;
     }
   }
-  const r  = x0 + x1;
-  raw_set_cell_value( p0, r );
+  const x2 = get_cell_value( p2 );
+  raw_clear_cell( p2 );
+  const x1 = get_cell_value( p1 );
+  const r  = x1 + x2;
+  set_cell_value( p1, r );
 } );
 
 
@@ -1861,21 +2178,25 @@ primitive( "inox-if", function primitive_if(){
 // Disable block unless top of stack is true. ( bool block -- block-or-f )
   const block = this.pop();
   if( get_cell_value( this.dsp() ) != 0 ){
-    copy_cell( block, this.dsp() );
+    move_cell( block, this.dsp() );
   // Else inox-call will detect false and do nothing accordingly
+  }else{
+    if( de ){ raw_clear_cell( block ); }
   }
 
 } );
 
 
-primitive( "inox-ifelse", function primitive_ifelse(){
-// Disable block unless top of stack is true. ( bool then-block else-block condition -- block )
+primitive( "inox-if-else", function primitive_if_else(){
+// keep one of two blocks  ( bool then-block else-block -- block )
   const else_block = this.pop();
   const then_block = this.pop();
   if( get_cell_value( this.dsp() ) != 0 ){
-    copy_cell( then_block, this.dsp() );
+    move_cell( then_block, this.dsp() );
+    clear_cell( else_block );
   }else{
-    copy_cell( else_block, this.dsp() );
+    move_cell( else_block, this.dsp() );
+    clear_cell( then_block );
   }
 } );
 
@@ -1903,8 +2224,8 @@ function FATAL( message : text ){
 // Display error and stacks. Clear stack & get back to eval loop
   bug( "\nFATAL: " + message );
   dump_stacks( this.dsp(), this.csp() );
-  this.set_csp( current_task.control_stack );
-  this.set_dsp( current_task.stack );
+  this.set_csp( current_actor.control_stack );
+  this.set_dsp( current_actor.stack );
   this.set_ip( 0 );
   debugger;
 }
@@ -1914,7 +2235,21 @@ function FATAL( message : text ){
 const _or_FATAL = FATAL;
 
 
-const inox_while_tag_id = tag( "inox-while" );
+/* ----------------------------------------------------------------------------
+ *  Low level control structures.
+ */
+
+
+const tag_inox_while_1         = tag( "inox-while-1" );
+const tag_inox_while_2         = tag( "inox-while-2" );
+const tag_inox_while_3         = tag( "inox-while-3" );
+const tag_inox_goto_while_2    = tag( "inox-goto-while-2" );
+const tag_inox_goto_while_3    = tag( "inox-goto-while-3" );
+const tag_inox_while_body      = tag( "inox-while-body" );
+const tag_inox_while_condition = tag( "inox-while-condition" );
+const tag_inox_break_sentinel  = tag( "inox-break-sentinel" );
+const tag_inox_loop_body       = tag( "inox-loop-body" );
+
 
 primitive( "inox-while-1", function primitive_inox_while_1(){
 // Low level words to build inox-while( { condition } { body } )
@@ -1922,28 +2257,29 @@ primitive( "inox-while-1", function primitive_inox_while_1(){
   //   inox-while-1 ( save blocks in control stack )
   //   inox-while-2 ( run condition block )
   //   inox-while-3 ( run body or exit word )
-  // ; inox-inlined
+  // . inox-inline
   const body_block      = this.pop();
   const condition_block = this.pop();
   // IP is expected to points to inox-while-2
-  de&&mand_eq( get_cell_value( this.ip() ), 0x40000000 | tag( "inox-while-2" ) );
+  de&&mand_eq( get_cell_name( this.ip() ), tag_inox_while_2 );
   // Save info for inox-break-loop, it would skip to after inox-while-3
-  let csp = this.csp();
-  csp -= words_per_cell;
-  set_cell_value( csp, this.ip() + 2 );
-  set_cell_info( csp, tag( "inox-loop-sentinel" ) );
+  let new_csp = this.csp();
+  new_csp -= words_per_cell;
+  de&&mand_eq( get_cell_value( new_csp ), 0 );
+  set_cell_value( new_csp, this.ip() + 2 * words_per_cell );
+  set_cell_info(  new_csp, tag_inox_break_sentinel );
   // Move condition and body to control stack
-  csp -= words_per_cell;
-  copy_cell( body_block, csp );
+  new_csp -= words_per_cell;
+  move_cell( body_block, new_csp );
   if( de ){
-    set_cell_info( csp, tag( "inox-while-body" ) );
+    set_cell_info( new_csp, tag_inox_while_body );
   }
-  csp -= words_per_cell;
-  copy_cell( condition_block, csp );
+  new_csp -= words_per_cell;
+  move_cell( condition_block, new_csp );
   if( de ){
-    set_cell_info( csp, tag( "inox-while-condition" ) );
+    set_cell_info( new_csp, tag_inox_while_condition );
   }
-  this.set_csp( csp );
+  this.set_csp( new_csp );
   // The control stack now holds:
   //   IP for inox-break, named inox-loop-sentinel
   //   IP for the body block
@@ -1954,18 +2290,20 @@ primitive( "inox-while-1", function primitive_inox_while_1(){
 
 primitive( "inox-while-2", function primitive_inox_while_2(){
   // IP is expected to point to inox-while-3
-  de&&mand_eq( get_cell_value( this.ip() ), 0x40000000 | tag( "inox-while-3" ) );
+  de&&mand_eq( get_cell_name( this.ip() ), tag_inox_while_3 );
   const csp = this.csp();
   const condition_block = get_cell_value( csp );
   // Invoke condition, like inox-call would
   const next_csp = csp - words_per_cell;
+  de&&mand_eq( get_cell_value( next_csp ), 0 );
   set_cell_value( next_csp, this.ip() );
-  set_cell_info(  next_csp, tag( "inox-goto-while-3" ) );
+  set_cell_info(  next_csp, tag_inox_goto_while_3 );
   this.set_csp( next_csp );
-  this.set_ip( condition_block );
+  // Jump into block, skip length header
+  this.set_ip( condition_block + 1 * words_per_cell );
   // The control stack now holds:
-  //   IP for the body block, named #inox-while-body in debug mode
-  //   IP for the condition block, named #inox-while-condition in debug mode
+  //   IP for the body block, named /inox-while-body in debug mode
+  //   IP for the condition block, named /inox-while-condition in debug mode
   //   IP addres of inox-while-3, the condition block will return to it
 } );
 
@@ -1973,31 +2311,43 @@ primitive( "inox-while-2", function primitive_inox_while_2(){
 function primitive_inox_while_3(){
 
   const csp = this.csp();
-  let   bool = get_cell_value( this.pop() );
+  const tos = this.pop();
+  let   bool = get_cell_value( tos );
+  clear_cell( tos );
 
   // If the condition is met, run the body and loop
   if( bool != 0 ){
     const body_block = get_cell_value( csp + words_per_cell );
     // The inox-return of the body block must jump to inox-while-2
     const next_csp = csp - words_per_cell;
-    set_cell_value( next_csp, this.ip() - 2 );
-    set_cell_info(  next_csp, tag( "inox-goto-while-2" ) );
+    de&&mand_eq( get_cell_value( next_csp ), 0 );
+    // ip currently points after this primitive, hence while-2 is before
+    set_cell_value( next_csp, this.ip() - 2 * words_per_cell );
+    set_cell_info(  next_csp, tag_inox_goto_while_2 );
     this.set_csp( next_csp );
-    // CSP must point to inox-while-2
+    // CSP must now point to inox-while-2 primitive word
     de&&mand_eq(
-      get_cell_value( get_cell_value( this.csp() ) ),
-      0x40000000 | tag( "inox-while-2" )
+      get_cell_name( get_cell_value( this.csp() ) ),
+      tag_inox_while_2
     );
-    this.set_ip( body_block );
+    // Jump into the body block, after the block length header
+    this.set_ip( body_block + 1 * words_per_cell );
 
   // The while condition is not met, it's time to exit the loop
   }else{
     // Drop loop sentinel, condition and body from control stack
     // ToDo: use lookup instead of fixed value
-    this.set_csp( this.csp() + 3 * words_per_cell );
-    // const next_csp = csp + words_per_cell * 2;
-    // this.set_ip( get_cell_value( next_csp ) );
-    // this.set_csp( next_csp + words_per_cell );
+    const new_csp = csp + 3 * words_per_cell;
+    de&&mand_eq(
+      get_cell_name( new_csp - words_per_cell ),
+      tag_inox_break_sentinel
+    );
+    this.set_csp( new_csp );
+    if( de ){
+      raw_clear_cell( csp + 0 * words_per_cell );
+      raw_clear_cell( csp + 1 * words_per_cell );
+      raw_clear_cell( csp + 2 * words_per_cell );
+    }
   }
 }
 
@@ -2017,21 +2367,29 @@ primitive( "inox-until-3", function primitive_inox_until_3(){
 
 
 primitive( "inox-loop", function primitive_loop(){
-  const body_block = get_cell_value( this.pop() );
-  let next_csp = this.csp() - words_per_cell;
-  set_cell_value( next_csp, this.ip() );
-  set_cell_info( next_csp, tag( "inox-loop-sentinel" ) );
+  const tos = this.pop();
+  const body_block = get_cell_value( tos );
+  clear_cell( tos );
+  // Save info for inox-break-loop, it would skip to after inox-loop
+  let new_csp = this.csp() - words_per_cell;
+  de&&mand_eq( get_cell_value( new_csp ), 0 );
+  set_cell_value( new_csp, this.ip() );
+  set_cell_info(  new_csp, tag_inox_break_sentinel );
   // Invoke body block, it will return to itself, loopimg until some break
-  next_csp -= words_per_cell;
-  set_cell_value( next_csp, body_block );
-  set_cell_info( next_csp, tag( "inox-loop-body" ) );
-  this.set_csp( next_csp );
-  this.set_ip( body_block );
+  new_csp -= words_per_cell;
+  move_cell( body_block, new_csp );
+  if( de ){
+    set_cell_info( new_csp, tag_inox_loop_body );
+  }
+  this.set_csp( new_csp );
+  // Jump into boby block, skip length header
+  this.set_ip( body_block + 1 * words_per_cell );
 } );
 
 
 function lookup_sentinel( csp : InoxCell, tag : InoxName ) : InoxCell {
   let next_csp = csp + words_per_cell;
+  // ToDo: init actor with a sentinel in the control stack
   let limit = 10000;
   // Drop anything until sentinel
   while( limit-- ){
@@ -2044,41 +2402,64 @@ function lookup_sentinel( csp : InoxCell, tag : InoxName ) : InoxCell {
 
 
 primitive( "inox-break", function inox_break(){
-// Like inox-return but to exit a loop control structure
+// Like inox-return but to exit a control structure, a non local return
   const csp : InoxCell = this.csp();
-  let next_csp = lookup_sentinel( csp, tag( "inox-loop-sentinel" ) );
-  // ToDo: raison exception if not found
-  if( next_csp == 0 ){
+  let sentinel_csp = lookup_sentinel( csp, tag_inox_break_sentinel );
+  // ToDo: raise exception if not found
+  if( sentinel_csp == 0 ){
     FATAL.call( this, "inox-break sentinel missing" );
     return;
   }
-  // ToDo: self modifying code to avoid loop next time
-  // Return to IP previously saved in inox-loop or inox-while-3
-  this.set_ip( get_cell_value( next_csp ) );
-  this.set_csp( next_csp + words_per_cell );
+  // Return to IP previously saved in break sentinel
+  this.set_ip( get_cell_value( sentinel_csp ) );
+  // Clear control stack up to sentinel
+  let cell = csp;
+  while( cell <= sentinel_csp ){
+    raw_clear_cell( cell );
+    cell += words_per_cell;
+  }
+  const new_csp = sentinel_csp + words_per_cell;
+  this.set_csp( new_csp  );
 } );
 
 
-primitive( "inox-enter", function primitive_inox_enter(){
-  let next_csp = this.csp() - words_per_cell;
-  set_cell_value( next_csp, this.ip() );
-  set_cell_info( next_csp, tag( "inox-enter-sentinel" ) );
+primitive( "inox-sentinel", function primitive_inox_sentinel(){
+  const tos = this.pop();
+  de&&mand_eq( get_cell_type( tos ), type_tag_id );
+  const sentinel_name = get_cell_name( tos );
+  raw_clear_cell( tos );
+  let new_csp = this.csp() - words_per_cell;
+  de&&mand_eq( get_cell_value( new_csp ), 0 );
+  set_cell_value( new_csp, this.ip() );
+  set_cell_info( new_csp, sentinel_name );
+  this.set_csp( new_csp );
 } );
 
 
-primitive( "inox-leave", function inox_leave(){
-// Non local return to last inox-enter caller
+primitive( "inox-jump", function inox_jump(){
+// Non local return to some sentinel set using inox-sentinel
+  const tos = this.pop();
+  de&&mand_eq( get_cell_type( tos ), type_tag_id );
+  const sentinel_name = get_cell_name( tos );
+  raw_clear_cell( tos );
   const csp : InoxCell = this.csp();
-  let next_csp = lookup_sentinel( csp, tag( "inox-enter-sentinel" ) );
-  // ToDo: raison exception if not found
-  if( next_csp == 0 ){
-    FATAL.call( this, "inox-enter sentinel missing" );
+  const sentinel_csp = lookup_sentinel( csp, sentinel_name );
+  // ToDo: raise exception if not found
+  if( sentinel_csp == 0 ){
+    FATAL.call( this,
+      "inox-jump, sentinel missing " + tag_id_to_text( sentinel_name )
+    );
     return;
   }
-  // ToDo: self modifying code to avoid loop next time
-  // Return to IP previously saved in inox-loop or inox-while-3
-  this.set_ip( get_cell_value( next_csp ) );
-  this.set_csp( next_csp + words_per_cell );
+  // ToDo: "continue" word to return to IP previously saved in sentinel
+  // this.set_ip( get_cell_value( sentinel_csp ) );
+  // Clear control stack up to sentinel
+  let new_csp = csp;
+  while( new_csp <= sentinel_csp ){
+    clear_cell( new_csp );
+    new_csp += words_per_cell;
+  }
+  this.set_csp( new_csp );
 } );
 
 
@@ -2087,22 +2468,24 @@ function operator( name : text, fun : Function ) : void {
   operator_primitive(
     name,
     function primitive_binary_operator(){
-      const p1 = this.pop();
-      const p0 = this.dsp();
+      const p2 = this.pop();
+      const p1 = this.dsp();
       if( check_de ){
-        if( get_cell_type( p1 ) != type_integer_id ){
+        if( get_cell_type( p2 ) != type_integer_id ){
+          clear_cell( p2 );
           bug( "bad type, expecting integer second operand" );
           assert( false );
           return;
         }
-        if( get_cell_type( p0 ) != type_integer_id ){
+        if( get_cell_type( p1 ) != type_integer_id ){
           bug( "bad type, expecting integer first operand" );
           assert( false );
           return;
         }
       }
-      const r = fun.call( this, get_cell_value( p0 ), get_cell_value( p1 ) );
-      raw_set_cell_value( p0, r );
+      const r = fun.call( this, get_cell_value( p1 ), get_cell_value( p2 ) );
+      raw_clear_cell( p2 );
+      set_cell_value( p1, r );
     }
   );
 
@@ -2124,10 +2507,10 @@ operator( ">?",    ( a, b ) => ( a >   b ) ? 1 : 0 );
 operator( "<?",    ( a, b ) => ( a <   b ) ? 1 : 0 );
 operator( ">=?",   ( a, b ) => ( a >=  b ) ? 1 : 0 );
 operator( "<=?",   ( a, b ) => ( a <=  b ) ? 1 : 0 );
-operator( "=?",    ( a, b ) => ( a ==  b ) ? 1 : 0 ); // ToDo: term or failur
-operator( "not=?", ( a, b ) => ( a !=  b ) ? 1 : 0 ); // ToDo: term or failure
-operator( "and?",  ( a, b ) => ( a &&  b ) ? 1 : 0 ); // ToDo: return left term
-operator( "or?",   ( a, b ) => ( a ||  b ) ? 1 : 0 ); // ToDo: return first true
+operator( "=?",    ( a, b ) => ( a ==  b ) ? 1 : 0 );
+operator( "not=?", ( a, b ) => ( a !=  b ) ? 1 : 0 );
+operator( "and?",  ( a, b ) => ( a &&  b ) ? 1 : 0 );
+operator( "or?",   ( a, b ) => ( a ||  b ) ? 1 : 0 );
 
 
 function unary_operator( name : text, fun : Function ) : void {
@@ -2185,7 +2568,6 @@ operator_primitive( "is\"\"?", function primitive_is_empty_text(){
 } );
 
 
-// ToDo: handle method dispatch and function call to undefined words
 const tag_method_missing = make_tag_cell( "method-missing" );
 const tag_word_missing   = make_tag_cell( "word-missing"   );
 
@@ -2204,13 +2586,20 @@ function inox_code_to_text( word : InoxCell ){
   type = get_cell_type( word );
   name = get_cell_name( word );
 
-  // If code is a primitive
+  // If code is a primitivse
   if( type == type_void_id ){
     primitive = all_primitive_cells_by_id[ name ];
+    if( !primitive ){
+      debugger;
+      return "Invalid primitive name " + name;
+    }
     name_id   = get_cell_name( primitive );
-    fun       = all_primitive_fumctions_by_id[ name ];
-    return tag_id_to_text( name_id )
-    + " ( " + ( fun ? fun.name : "???" ) + " )";
+    fun       = all_primitive_functions_by_id[ name ];
+    if( !fun ){
+      debugger
+      return "Invalid primitive " + name;
+    }
+    return tag_id_to_text( name_id ) + " ( " + fun.name + " )";
 
   // If code is the integer id of an Inox word, an execution token
   }else if ( type == type_word_id ){
@@ -2287,92 +2676,145 @@ function inox_word_cell_to_text_definition( cell : InoxCell ) : text {
 }
 
 
-/* -----------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
  *  Constants and variables
- *  a constant is just a word that pushes a literal on the data stack.
- *  a global variable is a regular static cell.
- *  a local variable is a transient cell in the control stack.
- *  a stack variable is a transient cell in the data stack.
- *  Read and write access to variables is possible directly or via a pointer.
+ *  a constant is just a word that pushes a literal onto the data stack.
+ *  a global variable is two word, xxx and xxx!, to get/set the value.
+ *  a control variable is a transient cell in the control stack.
+ *  a data variable is a transient cell in the data stack.
+ *  Read and write access to variables is possible directly or by address.
+ *  Local and data variables use dynanic scopes, ie the variables are
+ *  searched in a stack, from top to bottom.
+ *  See https://wiki.c2.com/?DynamicScoping
  */
 
 
-function primitive_inox_constant(){
+primitive( "inox-peek", function primitive_inox_peek(){
+// Get the value of a cell, using a cell's address. This is very low level.
+  const dsp = this.dsp();
+  const source_cell = get_cell_value( dsp );
+  copy_cell( source_cell, dsp );
+} );
 
-  // Get value
+
+primitive( "inox-poke", function primitive_inox_poke(){
+// Set the value of a cell, using a cell's address. Low level, unsafe.
+  const address_cell = this.pop();
+  const value_cell   = this.pop();
+  move_cell( value_cell, get_cell_value( address_cell ) );
+  raw_clear_cell( address_cell );
+} );
+
+
+function primitive_inox_constant_create(){
+// Create a getter word that pushes a literal onto the data stack
+
+  // Get value, then name
   const value_cell = this.pop();
 
-  // Create tag if necessary
-  const tag_cell = cell_to_tag( this.pop() );
-  const name = cell_to_text( tag_cell );
-  const name_id = tag( name );
-
-  // If no specific name, id void, was used, name the value of the new cell
-  if( get_cell_name( value_cell ) == 0 ){
-    set_cell_name( value_cell, name_id );
-  }
+  // Create a word to get the content, first get it's name
+  const name_cell = this.pop();
+  check_de&&mand_eq( get_cell_type( name_cell ), type_tag_id );
+  const name_id = get_cell_value( name_cell );
+  raw_clear_cell( name_cell );
 
   // Allocate space for word header, value and return instruction
   let def = allocate_bytes( ( 1 + 2 ) * size_of_cell );
 
   // flags and length need an extra word, so does then ending "return"
-  raw_set_cell( def, type_integer_id, tag( name ), 1 + 1 );
+  raw_set_cell( def, type_integer_id, name_id, 1 + 1 + 1 );
 
   // Skip that header
   def += words_per_cell;
 
   // Add Literal value
-  copy_cell( value_cell, def + 0 * words_per_cell );
+  move_cell( value_cell, def + 0 * words_per_cell );
 
   // Add return instruction
-  set_return_cell( def + words_per_cell );
+  set_return_cell( def + 1 * words_per_cell );
 
   make_inox_word( name_id, def );
 
-  de&&mand_eq( get_inox_word_definition_by_label( name ), def );
+  de&&mand_eq( get_inox_word_definition_by_tag( name_id ), def );
   de&&mand_eq(
     get_cell_value(
-      get_inox_word_definition_by_label( name ) + words_per_cell
+      get_inox_word_definition_by_tag( name_id ) + words_per_cell
     ),
     0
   );
 
 }
-primitive( "inox-constant", primitive_inox_constant );
+primitive( "inox-constant-create", primitive_inox_constant_create );
 
 
-primitive( "inox-global", function primitive_inox_global(){
-  primitive_inox_constant.call( this );
-} )
+primitive( "inox-global-create", function primitive_inox_global_create(){
+// Create two words, a setter and a getter, unlike constant-create that
+// creates only a getter.
 
-
-primitive( ".set!", function primitive_set_value(){
-// Like @set! but preserve the name of the destination cell
-  const p1 = this.pop();
-  const p0 = this.pop();
-  const name = get_cell_name( p1 );
-  copy_cell( p0, get_cell_value( p1 ) );
-  set_cell_name( p1, name );
-} );
-
-
-primitive( "inox-local-create", function primitive_inox_local_create(){
-// Create a local variable in the control stack
-  const csp = this.csp();
-  move_cell( this.pop(), csp );
-  this.set_csp( csp - words_per_cell );
-} );
-
-
-primitive( "inox-local-get", function primitive_inox_local_get(){
-// Copy the value of a local variable from the control stack to the data one
+  // Get info from data stack, expecting a value at the top of it and then a tag
   const dsp = this.dsp();
+  const name_cell = dsp - words_per_cell;
+  de&&mand_eq( get_cell_type( name_cell ), type_tag_id );
+
+  // Create a word to get the global variable like constants does
+  primitive_inox_constant_create.call( this );
+
+  // Create a setter word to set the global variable, xxx!
+  const name_id = get_cell_value( name_cell );
+  const name = tag_id_to_text( name_id );
+  const setter_name = name + "!";
+  const setter_name_id = tag( setter_name );
+
+  // Allocate space for word header, cell address, getter and return instruction
+  let def = allocate_bytes( ( 1 + 3 ) * size_of_cell );
+
+  // flags and length need an extra word, so does then ending "return"
+  raw_set_cell( def, type_integer_id, name_id, 1 + 1 + 1 + 1 );
+
+  // Skip that header
+  def += words_per_cell;
+
+  // Add address of cell inside the word created to access a constant
+  const getter_def = get_inox_word_definition_by_tag( name_id );
+  const store_cell = getter_def;
+  set_cell_value( getter_def, store_cell );
+  set_cell_info(  getter_def, setter_name_id );
+
+  // Add call to primitive peek to get the value when word runs
+  set_cell_info( def + 1 * words_per_cell, tag( "inox-peek" ) );
+
+  // Add return instruction
+  set_return_cell( def + 2 * words_per_cell );
+
+  make_inox_word( name_id, def );
+
+} );
+
+
+primitive( "inox-control-create", function primitive_inox_control_create(){
+// Create a control variable in the control stack, with some initial value
+  const csp = this.csp();
+  const new_csp = csp - words_per_cell;
+  this.set_csp( new_csp );
+  const name_cell = this.pop();
+  const name = get_cell_name( name_cell );
+  raw_clear_cell( name_cell );
+  const value_cell = this.pop();
+  move_cell( value_cell, new_csp );
+  set_cell_name( new_csp, name );
+} );
+
+
+primitive( "inox-control-get", function primitive_inox_control_get(){
+// Copy the value of a control variable from the control stack to the data one
+  const dsp = this.dsp();
+  check_de&&mand_eq( get_cell_type( dsp ), type_tag_id );
+  const name = get_cell_value( dsp );
   let   ptr = this.csp();
-  const name = get_cell_name( dsp );
   while( get_cell_name( ptr ) != name ){
     ptr += words_per_cell;
     if( check_de ){
-      if( ptr >= current_task.control_stack ){
+      if( ptr >= current_actor.control_stack ){
         FATAL.call( this,
         "Local variable not found, named " + tag_id_to_text( name ) );
         return;
@@ -2383,36 +2825,41 @@ primitive( "inox-local-get", function primitive_inox_local_get(){
 } );
 
 
-primitive( "inox-local-set", function primitive_inox_local_set(){
-// Set the value of a local variable in the control stack
+primitive( "inox-control-set", function primitive_inox_control_set(){
+// Set the value of a control variable in the control stack
   const dsp   = this.pop();
-  const name = get_cell_name( dsp );
-  let   ptr = this.csp();
+  check_de&&mand_eq( get_cell_type( dsp ), type_tag_id );
+  const name = get_cell_value( dsp );
+  raw_clear_cell( dsp );
+  let ptr = this.csp();
   while( get_cell_name( ptr ) != name ){
     ptr += words_per_cell;
     if( check_de ){
-      if( ptr >= current_task.control_stack ){
+      if( ptr >= current_actor.control_stack ){
         FATAL.call( this,
         "Local variable not found, named " + tag_id_to_text( name ) );
         return;
       }
     }
   }
-  move_cell( this.pop(), ptr );
+  const value_cell = this.pop();
+  move_cell( value_cell, ptr );
+  set_cell_name( ptr, name );
 } );
 
 
-primitive( "inox-stack-get", function primitive_inox_stack_get(){
-// Copy the value of a local variable from the data stack
+primitive( "inox-data-get", function primitive_inox_data_get(){
+// Copy the value of a data variable from the data stack
   const dsp  = this.dsp();
+  check_de&&mand_eq( get_cell_type( dsp ), type_tag_id );
+  const name = get_cell_value( dsp );
   let   ptr  = dsp + words_per_cell;
-  const name = get_cell_name( dsp );
   while( get_cell_name( ptr ) != name ){
     ptr += words_per_cell;
     if( check_de ){
-      if( ptr > current_task.stack ){
+      if( ptr > current_actor.stack ){
         FATAL.call( this,
-        "Stack variable not found, named " + tag_id_to_text( name ) );
+        "Data variable not found, named " + tag_id_to_text( name ) );
         return;
       }
     }
@@ -2421,104 +2868,189 @@ primitive( "inox-stack-get", function primitive_inox_stack_get(){
 } );
 
 
-primitive( "inox-stack-set", function primitive_inox_stack_set(){
-// Set the value of a local variable in the data stack
+primitive( "inox-data-set", function primitive_inox_data_set(){
+// Set the value of a data variable in the data stack
   const dsp  = this.pop();
-  const name = get_cell_name( dsp );
-  const cell = dsp + words_per_cell;
+  check_de&&mand_eq( get_cell_type( dsp ), type_tag_id );
+  const name = get_cell_value( dsp );
+  const cell = this.pop();
   let   ptr  = cell + words_per_cell;
   while( get_cell_name( ptr ) != name ){
     ptr += words_per_cell;
     if( check_de ){
-      if( ptr > current_task.stack ){
+      if( ptr > current_actor.stack ){
         FATAL.call( this,
-        "Stack variable not found, named " + tag_id_to_text( name ) );
+        "Data variable not found, named " + tag_id_to_text( name ) );
         return;
       }
     }
   }
   clear_cell( dsp );
   copy_cell( cell, ptr );
-  this.set_dsp( cell + words_per_cell );
-} );
-
-
-primitive( "inox-object-get", function primitive_inox_object_get(){
-// Copy the value of an instance variable from an object
-  const dsp = this.pop();
-  const obj = dsp + words_per_cell;
-  if( check_de ){
-    if( get_cell_type( obj ) != type_pointer_id ){
-      // ToDo: fatal error
-      de&&mand_eq( get_cell_type( obj ), type_pointer_id );
-      return;
-    }
-  }
-  let ptr  = get_cell_value( obj );
-  let limit;
-  if( check_de ){
-    limit = ptr + get_object_length( ptr ) * words_per_cell;
-  }
-  const name = get_cell_name( dsp );
-  while( get_cell_name( ptr ) != name ){
-    // ToDo: go backward
-    ptr += words_per_cell;
-    if( check_de ){
-      if( ptr >= limit ){
-        FATAL.call( this,
-        "Object member not found, named " + tag_id_to_text( name ) );
-        return;
-      }
-    }
-  }
-  copy_cell( ptr, obj );
-} );
-
-
-primitive( "inox-object-set", function primitive_inox_object_set(){
-// Set the value of an instance variable in some object.
-  const name_cell = this.pop();
-  const name = get_cell_name( name_cell );
-  const obj = this.pop();
-  const dsp  = this.pop();
-  if( check_de ){
-    if( get_cell_type( obj ) != type_pointer_id ){
-      // ToDo: fatal error
-      de&&mand_eq( get_cell_type( obj ), type_pointer_id );
-      return;
-    }
-  }
-  let ptr  = get_cell_value( obj );
-  let limit : InoxAddress;
-  if( check_de ){
-    limit = ptr + get_object_length( ptr ) * words_per_cell;
-  }
-  while( get_cell_name( ptr ) != name ){
-    // ToDo: go backward
-    ptr += words_per_cell;
-    if( check_de ){
-      if( ptr >= limit ){
-        FATAL.call( this,
-        "Object member not found, named " + tag_id_to_text( name ) );
-        return;
-      }
-    }
-  }
-  // Like move_cell() but preserve the target cell's name
-  raw_set_cell_value( ptr, get_cell_value( dsp ) );
-  set_cell_type(  ptr, get_cell_type(  dsp ) );
-  clear_cell( dsp );
+  set_cell_name( ptr, name );
 } );
 
 
 primitive( "inox-size-of-cell", function primitive_inox_size_of_cell(){
   const cell = this.push();
   copy_cell( the_integer_work_cell, cell );
+  de&&mand_eq( get_cell_value( cell ), 0 );
   set_cell_value( cell, size_of_cell );
 } );
 
 
-primitive( "inox-make-pointer", function primitive_inox_make_pointer() {
+primitive( "inox-lookup", function primitive_find(){
+// Get the address of a named value inside a range of cells, or void
+  const end_cell   = this.pop();
+  const end_ptr    = get_cell_value( end_cell );
+  const start_cell = this.pop();
+  const start_ptr  = get_cell_value( start_cell );
+  const dsp = this.dsp();
+  const name = get_cell_name( dsp() );
+  let found = 0;
+  let ptr = start_ptr;
+  if( start_ptr < end_ptr ){
+    while( true ){
+      if( get_cell_name( ptr ) == name ){
+        found = ptr;
+        break;
+      }
+      if( ptr == end_ptr )break;
+      ptr++;
+    }
+  }else{
+    while( true ){
+      if( get_cell_name( ptr ) == name ){
+        found = ptr;
+        break;
+      }
+      if( ptr == end_ptr )break;
+      ptr--;
+    }
+  }
+  if( found ){
+    set_cell_value( dsp, found );
+  }else{
+    raw_clear_cell( dsp )
+  }
+} );
+
+
+/* -----------------------------------------------------------------------------
+ *  Object creation and access to the it variable.
+ */
+
+
+// Javascript uses "this", some other languages use "self".
+const tag_it = tag( "it" );
+
+
+function make_circular_object_from_js( obj : any, met : Map< String, any> ){
+
+  // The first item is the name of the class.
+  const class_name = tag( obj.constructor.name );
+
+  // How many properties are there inside that object?
+  const keys = obj.keys();
+  const length = keys.length;
+
+  // Allocate enough memory to hold all of that
+  const cell = allocate_bytes( length * size_of_cell );
+
+  // First cell is name:length
+  set_cell_value( cell, length );
+  set_cell_info( cell, pack( type_integer_id, class_name ) );
+  let top = cell + size_of_word;
+
+  // Them come the properties, numeric indexes first, then named
+  let ii : InoxIndex = 0;
+
+  // Inox does handle sparse arrays
+  // ToDo: implement sparse arrays, the Lua way.
+  let sparse_idx = 0;
+
+  if( length == 0 )return;
+
+  // Check if object is an array, when it starts with numeric keys
+  const first_key = obj[ 0 ];
+
+  // First, process the array part, then the map part
+  let array_part = true;
+  const tag_item = tag( "item" );
+  let name = tag_void;
+  let value;
+  while( ii < length ){
+    const key = keys[ ii++ ];
+    if( array_part ){
+      if( typeof key != "number" ){
+        array_part = false;
+      }
+      const idx : InoxIndex = key;
+      // Detect floats
+      if( !Number.isInteger( idx ) ){
+        array_part = true;
+      }else{
+        // Detect sparse array
+        if( idx != sparse_idx ){
+          array_part = false;
+        }else{
+          sparse_idx = idx;
+        }
+      }
+    }
+    value = obj[ key ];
+    if( array_part ){
+      name = tag_item;
+    }else{
+      name = tag( key );
+    }
+    // Depending on type
+    let new_cell : InoxCell;
+    const js_type = typeof value;
+
+    if( js_type == "number" ){
+      if( Number.isInteger( value ) ){
+        new_cell = make_integer_cell( value );
+      }else{
+        // ToDo: new_cell = make_float_cell( value )
+      }
+
+    }else if( js_type == "boolean" ){
+      new_cell = make_integer_cell( value ? 1 : 0 );
+
+    }else if( js_type == "string" ){
+      new_cell = make_text_cell( value );
+
+    }else if( js_type == "object" ){
+      new_cell = make_circular_object_from_js( value, met );
+    }
+    if( new_cell == the_void_cell ){
+      // Already void
+    }else{
+      move_cell( new_cell, top );
+      set_cell_name( top, name );
+      free_cell( new_cell );
+    }
+    top += words_per_cell;
+  }
+
+  return cell;
+
+}
+
+
+function make_object_from_js( obj : any ) : InoxCell {
+// Build a new Inox object from a Javascript one, a deep clone.
+  // Handle circular pointers
+  let met_objects = new Map< String, any >;
+  const new_cell = make_circular_object_from_js( obj, met_objects );
+  // Free whatever memory the map uses
+  met_objects = null;
+  return new_cell;
+}
+
+
+primitive( "inox-make-object", function primitive_inox_make_object() {
 // Make an object from values plus header. v1 v2 ... vnn name:nn -- name:ptr
 // Returns a pointer value that points to the new object in dynamic memory.
 // Whenever that pointer is copied, a reference counter is incremented.
@@ -2529,6 +3061,7 @@ primitive( "inox-make-pointer", function primitive_inox_make_pointer() {
   const header = this.dsp();
   const name   = get_cell_name( header );
   const length = get_cell_value( header );
+  // Allocate a cell for the class/length and cells for the values
   const dest   = allocate_bytes( ( 1 + length ) * size_of_cell );
   if( dest == 0 ){
     // ToDo: raise an exception
@@ -2549,38 +3082,192 @@ primitive( "inox-make-pointer", function primitive_inox_make_pointer() {
   // The first element is the named length
   // ToDo: the length is redundant with info in malloc
   de&&mand_eq( get_cell_value( dest ), length );
-  this.set_dsp( header + ii * words_per_cell );
-  set_cell_value( the_pointer_work_cell, dest );
-  set_cell_name(  the_pointer_work_cell, name );
-  copy_cell( the_pointer_work_cell, this.dsp() );
+  const dsp = header + ii * words_per_cell
+  this.set_dsp( dsp );
+  raw_set_cell( dsp, type_pointer_id, name, dest );
+} );
+
+
+primitive( "inox-object-get", function primitive_inox_object_get(){
+// Copy the value of an instance variable from an object
+  const dsp = this.pop();
+  const obj = dsp + words_per_cell;
+  let ptr = get_cell_value( obj );
+  // Void from void
+  if( ptr == 0x0 ){
+    de&&mand( get_cell_info( obj ) == 0 );
+    clear_cell( dsp );
+    return
+  }
+  if( check_de ){
+    if( get_cell_type( obj ) != type_pointer_id ){
+      // ToDo: fatal error
+      de&&mand_eq( get_cell_type( obj ), type_pointer_id );
+      return;
+    }
+  }
+  let limit;
+  if( check_de ){
+    limit = ptr + get_object_length( ptr ) * words_per_cell;
+  }
+  const name = get_cell_name( dsp );
+  while( get_cell_name( ptr ) != name ){
+    // ToDo: go backward
+    ptr += words_per_cell;
+    if( check_de ){
+      if( ptr >= limit ){
+        FATAL.call( this,
+        "Object member not found, named " + tag_id_to_text( name ) );
+        return;
+      }
+    }
+  }
+  clear_cell( dsp );
+  copy_cell( ptr, obj );
+} );
+
+
+primitive( "inox-object-set", function primitive_inox_object_set(){
+// Set the value of an instance variable of an object.
+  const name_cell = this.pop();
+  const name = get_cell_name( name_cell );
+  const obj = this.pop();
+  const dsp = this.pop();
+  if( check_de ){
+    if( get_cell_type( obj ) != type_pointer_id ){
+      // ToDo: fatal error
+      de&&mand_eq( get_cell_type( obj ), type_pointer_id );
+      return;
+    }
+  }
+  let ptr  = get_cell_value( obj );
+  let limit : InoxAddress;
+  if( check_de ){
+    limit = ptr + get_object_length( ptr ) * words_per_cell;
+  }
+  // Skip the class name & length header first cell
+  ptr += words_per_cell;
+  while( get_cell_name( ptr ) != name ){
+    // ToDo: go backward
+    ptr += words_per_cell;
+    if( check_de ){
+      if( ptr >= limit ){
+        FATAL.call( this,
+        "Object member not found, named " + tag_id_to_text( name ) );
+        return;
+      }
+    }
+  }
+  clear_cell( ptr );
+  move_cell( dsp, ptr );
+  // Preserve initial name
+  set_cell_name( ptr, name );
+  clear_cell( obj );
+  clear_cell( name_cell );
 } );
 
 
 primitive( "inox-with-it", function primitive_inox_with_it(){
-// Create an it local variable in the return stack
+// Create and initialize an it control variable in the control stack
   const csp = this.csp() - words_per_cell;
   move_cell( this.pop(), csp );
-  set_cell_name( csp, tag( "it" ) );
+  set_cell_name( csp, tag_it );
   this.set_csp( csp  );
 } );
 
 
-primitive( "inox-at-it", function primitive_inox_at_it(){
-// Get the address of the it local variable in the control stack
-  const name = tag( "it" );
+primitive( "inox-without-it", function primitive_inox_without_it(){
+// Clear the control stack down to the it control variable included
+  let cell = this.csp();
+  let found = false;
+  let limit = 10;
+  while( !found ){
+    if( get_cell_name( cell ) === tag_it ){
+      found = true;
+    }
+    clear_cell( cell );
+    cell += words_per_cell;
+    if( limit-- == 0 ){
+      FATAL.call( this, "inox-without-it, it missing" );
+      return;
+    }
+  }
+  this.set_csp( cell );
+} );
+
+
+primitive( "inox-without", function primitive_inox_without(){
+  // Clear control stack up to the specified control variable included
+  const tos = this.pop();
+  de&&mand_eq( get_cell_type( tos ), type_tag_id );
+  const name = get_cell_name( tos );
+  raw_clear_cell( tos );
+  let cell = this.csp();
+  let found = false;
+  let limit = 10;
+  while( !found ){
+    if( get_cell_name( cell ) === name ){
+      found = true;
+    }
+    clear_cell( cell );
+    cell += words_per_cell;
+    if( limit-- == 0 ){
+      FATAL.call( this, "inox-without, missing " + tag_id_to_text( name ) );
+      return;
+    }
+  }
+  this.set_csp( cell );
+} );
+
+primitive( "inox-it", function primitive_inox_it(){
+// Push the value of the it control variable onto the data stack
   let   ptr  = this.csp();
-  while( get_cell_name( ptr ) != name ){
+  while( get_cell_name( ptr ) != tag_it ){
     ptr += words_per_cell;
     if( check_de ){
-      if( ptr >= current_task.control_stack ){
+      if( ptr >= current_actor.control_stack ){
         FATAL.call( this,
-        "Local variable not found, named " + tag_id_to_text( name ) );
+        "Local variable 'it' not found" );
       }
-      return;
     }
   }
   const dsp = this.push();
   copy_cell( ptr, dsp );
+} );
+
+
+primitive( "inox-call-method-by-name",
+  function primitive_inox_call_method_by_name(){
+// Call method by name
+  const dsp = this.pop();
+  const name = cell_to_text( dsp );
+  clear_cell( dsp );
+  let target = this.dsp();
+  const type = get_cell_type( target );
+  // ToDo: lookup using name of value ?
+  let target_class_name = tag_id_to_text( get_cell_type_tag(  target ) );
+  const full_name = target_class_name + "." + name;
+  let word_id = get_inox_word_id_by_name( full_name );
+  if( word_id == 0 ){
+    // ToDo: lookup in class hierarchy
+    // ToDo: on the fly creation of the target method if found
+    if( word_id == 0 ){
+      // ToDo: lookup based on type, unless pointer
+      if( type != type_pointer_id ){
+        // ToDo: get type as string, then add : and method name
+      }
+      if( word_id == 0 ){
+        const temp_cell = make_text_cell( full_name )
+        move_cell( temp_cell, this.push() );
+        free_cell( temp_cell );
+        word_id = get_inox_word_id_by_name( "method-missing" );
+      }
+    }
+  }
+  this.set_csp( this.csp() - words_per_cell );
+  set_cell_value( this.csp(), this.ip() );
+  set_cell_name( this.csp(),  tag( full_name ) );
+  this.set_ip( get_inox_word_definition_by_id( word_id ) );
 } );
 
 
@@ -2628,7 +3315,7 @@ primitive( "inox-set-ip", function primitive_set_ip(){
 
 
 /* -----------------------------------------------------------------------
- *  runner, fast, execute 32 bits encoded instructions
+ *  runner, fast, execute Inox words
  */
 
 class InoxExecutionContext {
@@ -2659,7 +3346,7 @@ function run_fast( ctx : CpuContext ){
   let   IP  : InoxAddress = ctx.ip;
   let   CSP : InoxAddress = ctx.csp;
   let   DSP : InoxAddress = ctx.dsp;
-  de&&mand( DSP <= current_task.stack );
+  de&&mand( DSP <= current_actor.stack );
   de&&mand( !! IP );
 
   // primitives have a limited access to the environment, but fast
@@ -2667,11 +3354,11 @@ function run_fast( ctx : CpuContext ){
   inox.ip  = function ip(){  return IP;  };
   inox.csp = function csp(){ return CSP; };
   inox.dsp = function dsp(){ return DSP; };
-  // ToDo gmp & tmp, global memory pointer and task memory pointer
+  // ToDo gmp & tmp, global memory pointer and actor memory pointer
   // ToDo ap, current Act pointer
-  inox.set_ip  = function set_ip(  v : InoxAddress ){ return IP  = v; };
-  inox.set_csp = function set_csp( v : InoxAddress ){ return CSP = v; };
-  inox.set_dsp = function set_dsp( v : InoxAddress ){ return DSP = v; };
+  inox.set_ip  = function set_ip(  v : InoxAddress ){ IP  = v; };
+  inox.set_csp = function set_csp( v : InoxAddress ){ CSP = v; };
+  inox.set_dsp = function set_dsp( v : InoxAddress ){ DSP = v; };
 
   inox.push = function push(){
     return DSP -= words_per_cell;
@@ -2696,21 +3383,19 @@ function run_fast( ctx : CpuContext ){
 
       // Get name and type of value to run
       word = get_cell_info( IP );
-      run_de&&bug(
-        "\nRUN, IP " + IP
-        + ", " + inox_code_to_text( IP ) + " in "
-        + inox_code_to_text( get_cell_value( CSP ) )
-      );
+      run_de&&bug( "\nRUN IP" + IP + " " + inox_code_to_text( IP ) );
       stack_de && dump_stacks( DSP, CSP );
 
       // Special "next" code, 0x0000, is a jump to the return address
       // Machine code equivalent would be a return from subroutine
+if( step_de )debugger;
       if( word == 0x0000 ){
         IP = get_cell_value( CSP );
         if( run_de ){
           bug( "run, return to IP " + IP + " from "
-          + inox_code_to_text( get_cell_name( CSP ) ) );
+          + get_cell_name( CSP ) );
         }
+        de && raw_clear_cell( CSP );
         if( IP == 0 )break loop;  // That's the only way to exit the loop
         CSP += words_per_cell;
         continue;
@@ -2719,24 +3404,26 @@ function run_fast( ctx : CpuContext ){
       // What type of code this is, primitive, Inox word or literal
       const type = unpack_type( word );
 
-      // Call to another word
+      // Call to another word, the name of the cell names it
       if( type == type_word_id ){
-
+        // Push return address into control stack
         CSP -= words_per_cell;
         set_cell_value( CSP, IP + words_per_cell );
         // Store routine name also, cool for stack traces
-        // ToDo: set type to Act
-        set_cell_info( CSP, word );
+        // ToDo: set type to Act?
+        set_cell_info( CSP, word & 0xfff );
         // ToDo: The indirection could be avoided.
+        // ToDo: store address of defininition into cell's value
         IP = get_inox_word_definition_by_id( unpack_name( word ) );
         // bug( inox_word_to_text_definition( unpack_name( word ) ) );
 
-     // Call to a primitive
+     // Call to a primitive, the name of the cell names it
+     // ToDo: use a type instead of tricking the void type?
      } else if( type == type_void_id ){
 
         IP += words_per_cell;
         if( !de ){
-          all_primitive_fumctions_by_id[ word ].call( inox );
+          all_primitive_functions_by_id[ word ].call( inox );
           if( IP == 0 )break loop;
           continue;
         }
@@ -2744,9 +3431,13 @@ function run_fast( ctx : CpuContext ){
         let word_id = word;
         if( run_de && ( word_id ) != 61 ){  // inox-quote is special
           let old_csp = CSP;
-          let fun = all_primitive_fumctions_by_id[ word_id ];
+          let fun = all_primitive_functions_by_id[ word_id ];
+          if( de ){
+            if( !fun )debugger
+          }
           fun.call( inox );
           if( CSP != old_csp
+          && word_id != tag( "inox-return" )
           && word_id != tag( "inox-call" )
           && word_id != tag( "inox-call-by-name" )
           && word_id != tag( "inox-call-method-by-name" )
@@ -2758,9 +3449,13 @@ function run_fast( ctx : CpuContext ){
           && word_id != tag( "inox-loop" )
           && word_id != tag( "inox-break" )
           && word_id != tag( "inox-with-it" )
+          && word_id != tag( "inox-without-it" )
           && word_id != tag( "inox-from-control" )
+          && word_id != tag( "inox-control-create" )
+          && word_id != tag( "inox-without" )
+          && word_id != tag( "inox-sentinel" )
+          && word_id != tag( "inox-jump" )
           ){
-            debugger;
             if( CSP < old_csp ){
               bug( "??? small CSP, excess calls "
               + ( old_csp - CSP ) / words_per_cell );
@@ -2769,7 +3464,8 @@ function run_fast( ctx : CpuContext ){
               + ( CSP - old_csp ) / words_per_cell );
             }
             de&&bug( "Due to " + fun.name + ", " + inox_code_to_text( word ) );
-            CSP = old_csp;
+            debugger;
+            // CSP = old_csp;
           }
           let old_ip  = IP;
           if( IP && IP != old_ip ){
@@ -2781,15 +3477,20 @@ function run_fast( ctx : CpuContext ){
             break loop;  // That's not supposed to be a way to exit the loop
           }
         }else{
-          all_primitive_fumctions_by_id[ word_id ].call( inox );
+          all_primitive_functions_by_id[ word_id ].call( inox );
           if( IP == 0 )break loop;
         }
 
       // Push literal
       }else{
         DSP -= words_per_cell;
-        set_cell_value( DSP, get_cell_value( IP ) );
-        set_cell_info(  DSP, word );
+        copy_cell( IP, DSP );
+        // ToDo: optimize by inlining copy_cell()
+        // set_cell_value( DSP, get_cell_value( IP ) );
+        // set_cell_info(  DSP, word );
+        // if( is_reference_cell( IP ) ){
+        //   increment_object_refcount( get_cell_value( IP ) );
+        // }
         IP += words_per_cell;
       }
     }
@@ -2805,9 +3506,9 @@ function run_fast( ctx : CpuContext ){
 
 function run(){
 
-  const task = current_task;
-  de&&mand( current_dsp <= current_task.stack );
-  de&&mand( current_dsp >  current_task.memory );
+  const actor = current_actor;
+  de&&mand( current_dsp <= current_actor.stack );
+  de&&mand( current_dsp >  current_actor.memory );
 
   // Provide minimal context to run_fast()
   let current_ctx = new CpuContext(
@@ -2823,9 +3524,9 @@ function run(){
   current_dsp = new_ctx.dsp;
   current_csp = new_ctx.csp;
 
-  de&&mand( task == current_task );
-  de&&mand( current_dsp <= current_task.stack );
-  de&&mand( current_dsp >  current_task.memory );
+  de&&mand( actor == current_actor );
+  de&&mand( current_dsp <= current_actor.stack );
+  de&&mand( current_dsp >  current_actor.memory );
 
 }
 
@@ -2907,7 +3608,7 @@ primitive( "inox-alias", function primitive_inox_alias(){
   clear_cell( new_text_cell );
   const old_text_cell = this.pop();
   const word = cell_to_text( old_text_cell );
-  clear_cell( new_text_cell );
+  clear_cell( old_text_cell );
   define_alias( tokenizer.style, word, new_text );
 } );
 
@@ -2960,8 +3661,11 @@ primitive( "inox-literal", function primitive_inox_literal(){
 
 primitive( "inox-code", function primitive_inox_do_code(){
 // Add an Inox word code id to the Inox word beeing defined or to a block
-  eval_do_code_function.call( this, get_cell_value( this.pop() ) );
-} );
+  const tos = this.dsp();
+  de&&mand_eq( get_cell_type( tos ), type_integer_id );
+  eval_do_code_function.call( this, get_cell_value( tos ) );
+  raw_clear_cell( tos );
+});
 
 
 immediate_primitive( "inox", function primitive_inox(){
@@ -3000,8 +3704,8 @@ primitive( "inox-operator", function primitive_inox_operator(){
 } );
 
 
-primitive( "inox-inlined", function primitive_inox_inlined(){
-  set_inlined_inox_word_flag( last_inox_word_defined );
+primitive( "inox-inline", function primitive_inox_inline(){
+  set_inline_inox_word_flag( last_inox_word_defined );
 } );
 
 
@@ -3029,49 +3733,16 @@ primitive( "inox-call-by-name", function primitive_inox_call_by_name(){
   clear_cell( dsp );
   let word_id = get_inox_word_id_by_name( name );
   if( word_id == 0 ){
-    copy_cell( make_tag_cell( name ), this.push() );
+    const temp_cell = make_text_cell( name );
+    move_cell( temp_cell, this.push() );
+    free_cell( temp_cell );
     word_id = get_inox_word_id_by_name( "word-missing" );
   }
-  this.set_csp( this.csp() - words_per_cell );
-  set_cell_value( this.csp(), this.ip() );
-  set_cell_name( this.csp(),  tag( name ) );
-  this.set_ip( get_inox_word_definition_by_id( word_id ) );
-} );
-
-
-primitive( "inox-call-method-by-name",
-  function primitive_inox_call_method_by_name(){
-// Call method by name
-  const dsp = this.pop();
-  const name = cell_to_text( dsp );
-  clear_cell( dsp );
-  let target = this.dsp();
-  const type = get_cell_type( target );
-  // ToDo: lookup using name of value ?
-  // Dereference pointer
-  if( type == type_pointer_id ){
-    target = get_cell_value( target );
-  }
-  let target_class_name = tag_id_to_text( get_cell_name(  target ) );
-  const full_name = target_class_name + ":" + name;
-  let word_id = get_inox_word_id_by_name( full_name );
-  if( word_id == 0 ){
-    // ToDo: lookup in class hierarchy
-    // ToDo: on the fly creation of the target method if found
-    if( word_id == 0 ){
-      // ToDo: lookup based on type, unless pointer
-      if( type != type_pointer_id ){
-        // ToDo: get type as string, then add : and method name
-      }
-      if( word_id == 0 ){
-        copy_cell( make_tag_cell( full_name ), this.push() );
-        word_id = get_inox_word_id_by_name( "method-missing" );
-      }
-    }
-  }
-  this.set_csp( this.csp() - words_per_cell );
-  set_cell_value( this.csp(), this.ip() );
-  set_cell_name( this.csp(),  tag( name ) );
+  const next_csp = this.csp() - words_per_cell;
+  this.set_csp( next_csp );
+  de&&mand_eq( get_cell_value( next_csp), 0 );
+  set_cell_value( next_csp, this.ip() );
+  set_cell_name( next_csp,  tag( name ) );
   this.set_ip( get_inox_word_definition_by_id( word_id ) );
 } );
 
@@ -3093,21 +3764,32 @@ primitive( "inox-definition", function primitive_inox_definition(){
 
 // ToDo: inox-block-length & inox-word-flags
 
+const tag_inox_call = tag( "inox-call" );
+
 
 primitive( "inox-call", function primitive_inox_call(){
 // run block unless none
   // Get block address
-  const next_ip = get_cell_value( this.pop() );
+  const tos = this.pop();
+  const block = get_cell_value( tos );
   // Do nothing if none
-  if( next_ip == 0 )return;
+  if( block == 0 )return;
+  if( de ){ clear_cell_value( tos ); }
+  if( de && block < 5000 ){
+    bug( "Not a block at " + block );
+    debugger;
+    return;
+  }
   // Push return address
   const csp = this.csp();
+  const ip  = this.ip();
   const next_csp = csp - words_per_cell;
+  set_cell_value( next_csp, ip );
+  set_cell_info(  next_csp, tag_inox_call );
   this.set_csp( next_csp );
-  set_cell_value( next_csp, this.ip() );
-  set_cell_info(  next_csp, tag( "inox-call" ) );
-  // Jump to block code
-  this.set_ip( next_ip );
+  // Jump into block definition
+  const return_ip = block + 1 * words_per_cell;
+  this.set_ip( return_ip );
 } );
 
 
@@ -3118,17 +3800,39 @@ primitive( "inox-run", function primitive_inox_run(){
 } );
 
 
+const tag_block_length = tag( "block-length" );
+
+
 primitive( "inox-block", function primitive_inox_block(){
 // Skip block code after IP but push it's address. Ready for inox-call
   const ip = this.ip();
-  const block_length = get_cell_value( ip - words_per_cell );
+  check_de&&mand_eq( get_cell_name( ip ), tag_block_length );
+  const block_length = get_cell_value( ip );
   if( check_de ){
-    set_cell_value( the_integer_work_cell, ip );
-    copy_cell( the_integer_work_cell, this.push() );
+    de&&mand( block_length != 0 );
+    // For debugging purpose I store the block's ip somewhere
+    set_cell_value( the_block_work_cell, ip );
+    copy_cell( the_block_work_cell, this.push() );
   }else{
-    set_cell_value( this.push(), ip );
+    const new_dsp = this.push();
+    de&&mand_eq( get_cell_value( new_dsp ), 0 );
+    set_cell_value( new_dsp, ip );
   }
-  this.set_ip( ip + block_length * words_per_cell );
+  const new_ip = ip + ( 1 + block_length ) * words_per_cell;
+  if( de ){
+    const previous_cell = new_ip - words_per_cell;
+    const previous_cell_value = get_cell_value( previous_cell );
+    const previous_cell_type  = get_cell_type( previous_cell );
+    const previous_cell_name  = get_cell_name( previous_cell );
+    de&&mand_eq( previous_cell_value, 0 );
+    de&&mand_eq( previous_cell_type, type_void_id );
+    de&&mand_eq( previous_cell_name, tag_inox_return );
+    //if( previous_cell_name != tag( "void" ) ){
+    //  bug( "Bad opcode, not void, " + tag_id_to_text( previous_cell_name))
+    //}
+    //de&&mand_eq( previous_cell_name, tag( "void" ) );
+  }
+  this.set_ip( new_ip );
 } );
 
 
@@ -3152,6 +3856,13 @@ const void_token : Token = {
   column : 0
 };
 
+
+abstract class TextStreamIterator {
+  // Get next text to tokenize. REPL would readline() on stdin typically
+  abstract next() : text;
+}
+
+
 class TokenizerContext {
 
   style : text                  = "";
@@ -3165,6 +3876,8 @@ class TokenizerContext {
   comment_multiline_begin_begin = "";
   comment_multiline_end         = "";
   comment_multiline_end_end     = "";
+
+  stream       : TextStreamIterator;
 
   text         : text           = "";
   text_length  : number         = 0;
@@ -3189,6 +3902,8 @@ class TokenizerContext {
     line   : 0,
     column : 0
   };
+
+  eager_mode : boolean = false;
 
 }
 
@@ -3265,6 +3980,17 @@ function set_style( new_style : text ) : void {
       tokenizer.end_define = "}";
     }
 
+  }else if( new_style == "sh" ){
+    tokenizer.define = "function";
+    tokenizer.comment_monoline_begin        = "#";
+    tokenizer.comment_monoline_begin_begin  = "#";
+    tokenizer.comment_multiline_begin       = "";
+    tokenizer.comment_multiline_begin_begin = "";
+    tokenizer.comment_multiline_end         = "";
+    tokenizer.comment_multiline_end_end     = "";
+    tokenizer.define = "function";
+    tokenizer.end_define = "}";
+
   }else if( new_style == "forth" ){
     tokenizer.comment_monoline_begin        = "\\";
     tokenizer.comment_monoline_begin_begin  = "\\";
@@ -3305,9 +4031,18 @@ function set_style( new_style : text ) : void {
 }
 
 
+function tokenizer_set_stream( stream : TextStreamIterator ){
+  tokenizer.stream = stream;
+}
+
+
 function tokenizer_restart( source : text ){
 
   // The source code to process
+  // ToDo: use a stream instead of an array of characters.
+  // ToDo: stream.get_next_line() could be called when eof is reached in
+  // to refill the text source of the tokenizer.
+  tokenizer.stream      = null;
   tokenizer.text        = source;
   tokenizer.text_length = tokenizer.text.length;
 
@@ -3471,16 +4206,17 @@ function get_next_token() : Token {
 
   function ch_is_eol( ch : text ){
     // ToDo: handle crlf better
-    if( ch == "\n" )return true;
-    if( ch == "\r" )return true;
-    return false;
+    if( ch != "\n" && ch != "\r" )return false;
+    return true;
   }
 
   function ch_is_limit( ch : text ){
     if( ch == " " )return true;
+    if( tokenizer.eager_mode )return false;
     if( tokenizer.style != "inox" )return false;
     if( ch == ":"
     ||  ch == ";"  // ToDo: ?
+    ||  ch == "/"  // /a/b/c is /a /b /c, a/b/c is a/ b/ c
     ||  ch == "~"  // ToDo: ?
     ||  ch == "^"  // ToDo: ?
   //||  ch == "."  // ToDo: dot notation where a.b( c ) eqv b( a, c )
@@ -3494,8 +4230,11 @@ function get_next_token() : Token {
     ||  ch == "{"
     ||  ch == "}"
     // ToDo: what about all two characters combinations with (, { and [ ?
-    )return true;
-    return false;
+    ){
+      return true;
+    }else{
+      return false;
+    }
   }
 
 
@@ -3535,8 +4274,22 @@ function get_next_token() : Token {
 
     // EOF, end of file
     if( ii == tokenizer.text_length ){
-      is_eof = true;
-      if( state != "word" && state != "comment" ){
+      // If there is a stream, try to get more text from it
+      if( tokenizer.stream ){
+        const more_text = tokenizer.stream.next();
+        if( more_text != "" ){
+          tokenizer.text = more_text;
+          tokenizer.text_length = more_text.length;
+          ch = more_text[ 0 ];
+          ii = 1;
+          previous_ii = 0;
+        }else{
+          is_eof = true;
+        }
+      }else{
+        is_eof = true;
+      }
+      if( is_eof && state != "word" && state != "comment" ){
         token.type = "eof";
         break eat;
       }
@@ -3553,7 +4306,7 @@ function get_next_token() : Token {
     is_eol   = ch_is_eol( ch );
 
     // Normalize all whitespaces into a single space character
-    if( is_space ){
+    if( is_space && state != "comment" && state != "text" ){
       ch = " ";
     }
 
@@ -3588,11 +4341,13 @@ function get_next_token() : Token {
       }
     }
 
+    // State machine :
+    // base -> word ->
+    // base -> text ->
+    // base -> comment -> base
+
     // Base state, the initial state of the automata
     if( state == "base" ){
-
-      // Default is to expect a "word", including "separators" sometimes
-      state = "word";
 
       // skip whitespaces, including separator
       // ToDo: handle separator sign ("," if Inox) with more semantic
@@ -3607,12 +4362,38 @@ function get_next_token() : Token {
         // ToDo: handle template text literals
         state = "text";
         continue eat;
+      }
 
       // Comments start differently depending on style
-      }else if( ch == tokenizer.comment_monoline_begin_begin
-      ||        ch == tokenizer.comment_multiline_begin_begin
+      buf += ch;
+
+      // If start of comment, change state
+      if( buf == tokenizer.comment_monoline_begin
+      ||  buf == tokenizer.comment_multiline_begin
       ){
+        buf = buf.slice( 0, -1 );
         state = "comment";
+
+      }else{
+
+        // If potential start of comment, keep eating
+        if( buf == tokenizer.comment_monoline_begin_begin
+        || buf == tokenizer.comment_multiline_begin_begin
+        ){
+          continue eat;
+        }
+
+        // Forget buffer but keep the false start of comment part
+        if( buf[0] == tokenizer.comment_monoline_begin_begin
+        ||  buf[0] == tokenizer.comment_multiline_begin_begin
+        ){
+          buf = buf.slice( 0, -1 );
+        } else {
+          buf = "";
+        }
+
+        // Change state, the new ch will be added to the buffer, see below
+        state = "word";
       }
 
     } // base state
@@ -3632,8 +4413,12 @@ function get_next_token() : Token {
         // ToDo: skip #! shebang
         // see https://en.wikipedia.org/wiki/Shebang_(Unix)
 
+        // sh shell type of comment, #
+        if( ch == "#" ){
+          set_style( "sh" );
+
         // C style of comment, either // or /* xxx */
-        if( ch == "/" ){
+        }else if( ch == "/" ){
           set_style( "inox" );
 
         // Forth style, either \ or ( xxx )
@@ -3652,7 +4437,7 @@ function get_next_token() : Token {
 
       // If this is a monoline comment ending, emit it
       if( ( is_eol || is_eof )
-       && tokenizer.comment_monoline_begin != ""
+      && tokenizer.comment_monoline_begin != ""
       && ( buf.slice( 0, tokenizer.comment_monoline_begin.length )
         == tokenizer.comment_monoline_begin )
       ){
@@ -3722,11 +4507,20 @@ function get_next_token() : Token {
     if( state == "word" ){
 
       // space is a word delimiter
-      if( is_space ){
-        // ToDo: expand alias
-        token.value = alias( buf );
-        state = "base";
-        break eat;
+      if(  is_space ){
+        // ToDo: refactor
+        let aliased = get_alias( buf );
+        // If simple word substitution with an alias
+        if( aliased && aliased.indexOf( " " ) == -1 ){
+          token.value = aliased;
+          state = "base";
+          break eat;
+        // Unless no alias or alias expands into more than a simple word
+        }else if( !aliased ){
+          token.value = buf;
+          state = "base";
+          break eat;
+        }
       }
 
       // Get next next characters, some lookahead helps sometimes
@@ -3742,12 +4536,16 @@ function get_next_token() : Token {
         continue eat;
       }
 
-      // . is a limit if followed by space or if after something
-      if( ch == tokenizer.end_define ){
+      // . is a token if alone
+      if( ch == tokenizer.end_define
+      && !tokenizer.eager_mode
+      ){
         is_limit = buf.length != 0 || ch_is_space( next_ch[ 0 ] );
 
-      // ; is a limit
-      }else if( ch == tokenizer.terminator_sign ){
+      // ; is a token
+      }else if( ch == tokenizer.terminator_sign
+      && !tokenizer.eager_mode
+      ){
         is_limit = true;
 
       // Some other special characters are a limit too
@@ -3763,16 +4561,25 @@ function get_next_token() : Token {
 
       // If there was nothing before the limit, emit a single char token
       if( buf.length == 0 && ! is_space ){
-        token.value = ch;
+        if( ch != "/" ){
+          token.value = ch;
+        }else{
+          if( buf.length == 0 ){
+            buf += "/";
+            continue eat;
+          }
+        }
 
       // If there was something before the limit, deal with that
       }else if( buf.length >= 0 ){
 
-        // (, [ and { are words of a special type, so is : when before a space
+        // xx(, xx[ and xx{ are words of a special type.
+        // so is xxx: when before a space or /xxx/yyy which is /xxx
         if( ch == "("
         ||  ch == '['
         ||  ch == '{'
         ||  ( ch == ':' && next_ch[ 0 ] == " " )
+        || ch == '/' && buf[0] != "/"
         ){
          buf = buf + ch;
          ii++;
@@ -3795,13 +4602,13 @@ function get_next_token() : Token {
             ii++;
           }
 
-        // xxx:", xxx:123, xxx:-123, xxx:#yyy, to name expressions
+        // xxx:", xxx:123, xxx:-123, to name literals
         } else if( ch == ":" ){
 
           // End of word if : is before a literal or another delimiter
           // ToDo: enable :: in words?
           if( next_ch[ 0 ] == "\""
-          ||  next_ch[ 0 ] == "#"
+          // ||  next_ch[ 0 ] == "/"
           ||  next_ch[ 0 ] == "-"
           ||  ch_is_digit( next_ch[ 0 ] )
           ||  ch_is_limit( next_ch[ 0 ] )
@@ -3823,12 +4630,12 @@ function get_next_token() : Token {
         // In Inox style the aliases can expand into multiple words
         if( tokenizer.style == "inox" && word_alias ){
           let index_space = word_alias.indexOf( " " );
-          token_de&&bug( "alias for " + buf + " is " + word_alias );
           if( index_space != -1 ){
+            token_de&&bug( "alias for " + buf + " is " + word_alias );
             // When this happens, restart as if from new source, base state.
             // Change source code to insert the extra stuff and scan again
             // ToDo: this breaks the index/line/column scheme
-            tokenizer.text = word_alias + tokenizer.text.substring( ii - 1 );
+            tokenizer.text = word_alias + tokenizer.text.substring( ii );
             tokenizer.text_length  = tokenizer.text.length;
             tokenizer.alias_cursor = word_alias.length;
             ii = 0;
@@ -3925,6 +4732,11 @@ function test_token( type : text, value : text ){
 tokenizer_restart( "" );
 test_token( "eof", "" );
 
+tokenizer_restart( "#!/bin/inox\n#ok" );
+test_token( "comment", "!/bin/inox" );
+test_token( "comment", "ok" );
+test_token( "eof", "" );
+
 tokenizer_restart(  "/**/" );
 test_token( "comment_multiline", "" );
 test_token( "eof", "" );
@@ -3942,15 +4754,30 @@ test_token( "comment", "" );
 test_token( "comment", "test2" );
 test_token( "eof", "" );
 
-tokenizer_restart( "() 0 1234 + : abc ; , ." );
+tokenizer_restart( "() 0 1234 \",\" + : abc ; , ." );
 test_token( "comment_multiline", "" );
 test_token( "word", "0" );
 test_token( "word", "1234" );
+test_token( "word", "\",\"" );
 test_token( "word", "+" );
 test_token( "word", ":" );
 test_token( "word", "abc" );
 test_token( "word", ";" );
 test_token( "word", "," );
+test_token( "word", "." );
+test_token( "eof", "" );
+
+tokenizer_restart( "/**/ 0 1234 \",\" + : -: -) abc;,." );
+test_token( "comment_multiline", "" );
+test_token( "word", "0" );
+test_token( "word", "1234" );
+test_token( "text", "," );
+test_token( "word", "+" );
+test_token( "word", ":" );
+test_token( "word", "-:" );
+test_token( "word", "-)" );
+test_token( "word", "abc" );
+test_token( "word", ";" );
 test_token( "word", "." );
 test_token( "eof", "" );
 
@@ -4003,7 +4830,7 @@ test_token( "word", ".x!" );
 test_token( "eof", "" );
 
 tokenizer_restart(
-  "/**/ it.x dup.:out dup.out() "
+  "/**/ it.x dup.:out dup.out()"
 );
 test_token( "comment_multiline", "" );
 test_token( "word", "it" );
@@ -4013,6 +4840,20 @@ test_token( "word", ".:out" );
 test_token( "word", "dup" );
 test_token( "word", ".out(" );
 test_token( "word", ")" );
+test_token( "eof",  "" );
+
+tokenizer_restart(
+  "/**/ a/ /a /a/b/c a/b/c"
+);
+test_token( "comment_multiline", "" );
+test_token( "word", "a/" );
+test_token( "word", "/a" );
+test_token( "word", "/a" );
+test_token( "word", "/b" );
+test_token( "word", "/c" );
+test_token( "word", "a/" );
+test_token( "word", "b/" );
+test_token( "word", "c" );
 test_token( "eof",  "" );
 
 
@@ -4088,6 +4929,7 @@ function is_small_number( buf : text ){
   return true;
 }
 
+
 function text_to_integer( buf : text ){
   return parseInt( buf );
 }
@@ -4126,23 +4968,49 @@ immediate_primitive(
 
 
 primitive( "inox-eval", function primitive_inox_eval() : void {
+// This is both the "outer" interpreter and the compiler, much like in Forth.
+  // It interprets a text input. That's not like the fast inner interpreter
+  // that runs a compiled binary representation made of compiled codes.
+  // However, using the define word, which is "to" usualy but ":" in the Forth
+  // dialect, the outer interter is able to start the definition of a new word
+  // or a redefinition, ie it compiles the following text until the end of the
+  // word definition is reached. That end condition is either a dot or a line
+  // whose indentation level is less than the indentation level of the opening
+  // "to". Note that while going ahead in the input text, the outer interpreter
+  // may encounter special words that are immediately executed instead of beeing
+  // added to the word being defined. Such words, nammed immediate words, may
+  // help to redefine the syntax of the language, I don't use that feature
+  // much but Forth people use it a lot because the Forth compiler does more
+  // work than I do here, like computing relative jumps for if/then control
+  // structures for example; I use { } enclosed blocks instead.
+  // See also https://www.reddit.com/r/Forth/comments/55b8ta/what_makes_immediate_mode_the_key_to_everything/
+  // ToDo: use indendation in other usefull situations, not just the ending of a
+  // word definition.
+  // ToDo: simplifying the compiler using more immediate words.
+  // ToDo: rewrite that complex function in Inox so that the language can
+  // bootstrap itself.
+  // ToDo: a state less version.
 
   de && chk();
 
+  // primitive eval may return after changing the control stack or the IP
+  // but that is most certainely due to a bug than intentionnal. Better
+  // restore them to their initial values.
   const old_csp = this.csp();
   const old_ip  = this.ip();
 
   const that = this;
 
   // The source code to evaluate is at the top of the stack
-  const source = cell_to_text( this.dsp() );
-  copy_cell( the_void_cell, this.dsp() );
+  const tos = this.dsp();
+  const source : text = cell_to_text( tos );
+  clear_cell( tos );
 
   // Reinitialize the stream of tokens
   tokenizer_restart( source );
-  de&&bug( "inox-eval " + source );
+  de&&bug( "inox-eval " + source.slice( 0, 100 ) );
 
-  let token;
+  let token   : Token;
   let type    : text;
   let value   : text;
   let word_id : InoxIndex;
@@ -4151,11 +5019,13 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
 
   type WordDefinition = { type: InoxIndex, name: InoxName, value: InoxValue };
 
-
-  // A block is an array of encoded words from {} delimited source code
+  // A block is an array of encoded words from {} delimited source code.
+  // The first cell is named block-length, it is the number of cells after it.
+  // ToDo: it should be a normal array of cells, dynamically allocated.
   type InoxBlock = Array< WordDefinition >;
 
-  // Some syntactic constructions can nest, function call, sub expressions, etc
+  // Some syntactic constructions can nest, function call, sub expressions, etc.
+  // ToDo: this should be a normal array of cells.
   type Level = {
     depth           : InoxIndex;  // Levels nest, starting with a "base" level 0
     type            : text;       // "word", "(", ":" or "{"
@@ -4168,7 +5038,8 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     line            : InoxIndex;  // Position in source code, for err messages
   }
 
-  // This is a stack of levels
+  // This is a stack of levels, a kind of AST, Abstract Syntax Tree.
+  // ToDo: it should be a normal array of cells.
   const levels = new Array< Level >();
 
   // The base level is the initial state
@@ -4248,6 +5119,8 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     level.codes       = Array< WordDefinition >();
     level.codes_count = 0;
     new_word           = level;
+    // Next token is special, it's anything until some space
+    tokenizer.eager_mode = true;
   }
 
   eval_begin_word_function = eval_begin_word;
@@ -4264,6 +5137,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     let def = allocate_bytes( ( new_word.codes.length + 2 ) * size_of_cell );
 
     // flags and length need an extra word, so does then ending "return"
+    de&&mand_eq( get_cell_value( def ), 0 );
     set_cell_value( def, new_word.codes_count + 1 );
 
     // Skip that header
@@ -4347,7 +5221,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     // Inline code definition if it is very short or if word requires it
     const definition = get_inox_word_definition_by_id( code_id );
     const length = get_definition_length( definition ) - 1;  // skip "return"
-    if( length <= 2 || is_inlined_inox_word( code_id ) ){
+    if( length <= 1 || is_inline_inox_word( code_id ) ){
       let ii : InoxIndex = 0;
       while( ii < length ){
         level.codes[ level.codes_count++ ] = {
@@ -4383,10 +5257,10 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     || immediate_mode
     ){
       // Remember in control stack what word is beeing entered
-      set_cell_info( that.csp(), pack( type_integer_id, code_id ) );
+      set_cell_info( that.csp(), pack( type_void_id, code_id ) );
       that.set_ip( get_inox_word_definition_by_id( code_id ) );
       // bug( inox_word_to_text_definition( code_id ) );
-      de&&mand( that.dsp() <= current_task.stack );
+      de&&mand( that.dsp() <= current_actor.stack );
       // ToDo: should reverse control and never use .run(), ie be stack less
       if( de && that.ip() == 0 ){
         bug( "Eval, do_code invalid " + code_id );
@@ -4394,7 +5268,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
       }else{
         that.run();
       }
-      de&&mand( that.dsp() <= current_task.stack );
+      de&&mand( that.dsp() <= current_actor.stack );
       if( de ){
         stack_de && dump_stacks( that.dsp(), that.csp() );
         if( that.csp() != old_csp ){
@@ -4437,7 +5311,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     // Reserve one word for block's length, like for word definitions
     level.codes[ level.codes_count++ ] = {
       type:  type_integer_id,
-      name:  tag( "block-info" ),
+      name:  tag_block_length,
       value: 0
     };
   }
@@ -4449,13 +5323,15 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     // Add a "return" at the end of the block
     level.codes[ level.codes_count++ ] = {
       type:  type_void_id,
-      name:  tag( "inox-return" ),
+      name:  tag_inox_return,
       value: 0
     };
-    // const block_length = level.codes_count - level.block_start;
-    // Set argument for inox-block, make it look like a valid litteral
-    // level.codes[ level.block_start ]
+    const block_length = level.codes_count - level.block_start;
+    // Set argument for inox-block, make it look like a valid literal
+    de&&mand_eq( level.codes[ level.block_start ].name, tag_block_length )
+    level.codes[ level.block_start ].value
     // = 0x80000000 | 0x20000000 | ( block_length - 1 );
+    = block_length - 1;
     // -1 not to add the length word
     leave_level();
   }
@@ -4466,35 +5342,38 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
   let define : text = "to";
   // That's for the Inox dialect, Forth uses shorter :
 
-  function operand1(value: text) {
+  function operand_X(value: text) {
     // remove first character, ex .a becomes a
     if (value.length <= 1) return value;
-    return value.substring(1);
+    return value.substring( 1 );
   }
 
-  function operand2(value: text) {
+  function operand__X(value: text) {
     // remove firts two characters
     if (value.length <= 2) return value;
-    return value.substring(2);
+    return value.substring( 2 );
   }
 
-  function operand3(value: text) {
+  function operand_X_(value: text) {
     // remove first and last characters
     if (value.length <= 2) return value;
-    return value.substring(1, value.length - 1);
+    return value.substring( 1, value.length - 1);
   }
 
-  function operand4(value: text) {
+  function operandX_(value: text) {
     // remove last character
     if (value.length <= 2) return value;
-    return value.substring(0, value.length - 1);
+    return value.substring( 0, value.length - 1);
   }
 
   // Eval loop, until error or eof
   // ToDo: stackless eval loop
+  let done : boolean = false;;
   while( true ){
 
-    de&&mand( that.dsp() <= current_task.stack );
+    done = false;
+
+    de&&mand( that.dsp() <= current_actor.stack );
 
     token = get_next_token();
 
@@ -4543,6 +5422,9 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     if( new_word && new_word.name == "" ){
       // ToDo: make that a primitive
       new_word.name = value;
+      if( tokenizer.eager_mode ){
+        tokenizer.eager_mode = false;
+      }
       eval_de&&bug( "eval, new word is " + value );
       // Update global for primitive_inox_immediate & co
       set_cell_name(  last_token_cell, get_cell_name( tag( value ) ) );
@@ -4550,11 +5432,21 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
       continue;
     }
 
+    // If decreased Indentation
+    if( type == ";" ){
+      // Simulate a .
+      type = "word";
+      value = tokenizer.end_define;
+    }
+
     // If ; or ) or } terminator, first close all postponed infix operators
     if( level.type == "infix"
     && ( type == "word" )
-    && ( value == ";" || value == ")" || value == "}" )
-    ){
+    && ( value == ";"
+      || value == ")"
+      || value == "}"
+      || value == tokenizer.end_define // "."
+    )){
       leave_level();
     }
 
@@ -4563,6 +5455,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
       bug( "Eval, nesting error, unexpected " + value
       + " at line " + token.line
       + " while expecting the end of " + level.type
+      + " in definition of " + new_word.name
       + " at line " + level.line
       );
       debugger;
@@ -4575,13 +5468,6 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     if( type == "text" ){
       eval_do_literal( make_text_cell( value ) );
       continue;
-    }
-
-    // If decreased Indentation
-    if( type == ";" ){
-      // Simulate a .
-      type = "word";
-      value = tokenizer.end_define;
     }
 
     // If word
@@ -4605,7 +5491,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     word_id = get_inox_word_id_by_name( value );
 
     // If operator, transform order to get to RPN, Reverse Polish Notation
-    if( word_id != 0 && is_operator_inox_word( word_id ) ){
+    if( word_id && is_operator_inox_word( word_id ) ){
 
       // If after another operator, left association
       // ToDo: configurable associativity
@@ -4621,7 +5507,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     }
 
     // function calls, keyword method calls and sub expressions
-    if( level.depth > 0 && word_id != 0 && level.word == 0 ){
+    if( word_id && level.depth > 0 && level.word == 0 ){
 
       // If building a function call and expecting the function name
       if( level.type == "x(" &&  level.name == "" ){
@@ -4639,9 +5525,14 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
 
     }
 
+    let last_ch = value.length > 1 ? value[ value.length - 1 ] : "";
+
     // If known word, run it or add it to the new word beeing built
-    if( word_id && ! is_operator_inox_word( word_id ) ){
-      // This does not apply to operators
+    if( word_id
+    && !is_operator_inox_word( word_id )
+    && last_ch != ":"
+    ){
+      // This does not apply to operators and keyword calls
       eval_do_code( word_id );
       continue;
     }
@@ -4656,18 +5547,10 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
       continue;
     }
 
-    // ToDo: in Forth style, unknown word should generate an error
-    if( tokenizer.style != "inox" && word_id == 0 ){
-      eval_do_literal( make_tag_cell( value ) );
-      continue;
-    }
-
     let first_ch
     = value.length > 0 ? value[ 0 ]                : "";
     let second_ch
     = value.length > 1 ? value[ 1 ]                : "";
-    let last_ch
-    = value.length > 1 ? value[ value.length - 1 ] : "";
 
     // If xxx: it's a keyword call
     if( last_ch == ":" ){
@@ -4699,27 +5582,10 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
 
       // if xxx() or .xxx() calls
       }else{
-
         enter_level( "x(" );
-
-        // Detect method calls .xx( or normal calls xx(
-        let operand : text = first_ch  == "."
-        ? operand3( value )
-        : operand4( value );
-
-        word_id = get_inox_word_id_by_name( operand );
-
-        // If xxx is a defined word then it has to be called last
-        if( word_id != 0 ){
-          level.name = operand;
-          level.word = word_id;
-
-        // If word is not defined, use it as a tag literal
-        }else{
-          // ToDo: if # prefixed word, use it as a tag?
-          eval_do_literal( make_tag_cell( operand4( value ) ) );
-        }
-
+        const operand = operandX_( value );
+        level.name = operand;
+        level.word = get_inox_word_id_by_name( operand );
       }
 
     // If start of a block inside a new word definition
@@ -4750,43 +5616,26 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     && ( level.type == "(" || level.type == "x(" )
     ){
 
-      // If word(), process word
-      if( level.word != 0 && value == ")" ){
+      // If xxx( )
+      if( level.word ){
+        // Existing word was detected by tokenizer
+        // ToDo: move that logic out of the tokenizer
         eval_do_code( level.word );
 
-      // If word( expr )abc, process word & name result
-      }else if( level.word != 0 && value != ")" ){
-        eval_do_code( level.word );
-        eval_do_literal( make_tag_cell( operand1( value ) ) );
-        eval_do_code( get_inox_word_id_by_name( "inox-rename" ) );
+      // If .xxx( )
+      }else if( level.name.length > 1 && level.name[0] == "." ){
+        eval_do_literal( make_tag_cell( operand_X( level.name ) ) );
+        eval_do_code( tag( "inox-call-method-by-name" ) );
 
-      // If ( expr )abc, process word & name result
-      }else if( level.word == 0 && value != ")" ){
-        eval_do_literal( make_tag_cell( operand1( value ) ) );
-        eval_do_code( get_inox_word_id_by_name( "inox-rename" ) );
+      // If xxx( ) but word is missing
+      }else if( level.name.length != 0 ){
+        eval_do_literal( make_tag_cell( level.name ) );
+        eval_do_code( get_inox_word_id_by_name( "word-missing" ) );
+      }
 
-      // if abc( expr ), word-missing,
-      }else if( level.name != "" && value == ")" ){
-        // Detect method calls
-        if( level.name[ 0 ] == "." ){
-          eval_do_literal( make_tag_cell( operand1( level.name ) ) );
-          eval_do_code( get_inox_word_id_by_name( "method-missing" ) );
-        }else{
-          eval_do_literal( make_tag_cell( level.name ) );
-          eval_do_code( get_inox_word_id_by_name( "word-missing" ) );
-        }
-
-      // if abc( expr )efg, ToDo: word-missing
-      }else if( level.name != "" && value != ")" ){
-        // Detect method calls
-        if( second_ch == "." ){
-          eval_do_literal( make_tag_cell( operand4( level.name ) ) );
-          eval_do_code( get_inox_word_id_by_name( "method-missing" ) );
-        }else{
-          eval_do_literal( make_tag_cell( level.name ) );
-          eval_do_code( get_inox_word_id_by_name( "word-missing" ) );
-        }
-        eval_do_literal( make_tag_cell( operand1( value ) ) );
+      // If )abc, name result
+      if( value.length > 1 ){
+        eval_do_literal( make_tag_cell( operand_X( value ) ) );
         eval_do_code( get_inox_word_id_by_name( "inox-rename" ) );
       }
 
@@ -4795,29 +5644,38 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     // ; (or .) marks the end of the keyword method call, if any
     }else if( ( value == ";" || value == tokenizer.end_define )
     && level.type == ":"
+    // ToDo: }, ) and ] should also do that
     ){
 
       while( level.type == ":" ){
 
-        word_id = get_inox_word_id_by_name( level.name );
+        // If .xx: ... yy: ... ; method call
+        if( level.name[0] == "." ){
+          eval_do_literal( make_tag_cell( level.name.slice( 1 ) ) );
+          eval_do_code( tag( "inox-call-method-by-name" ) );
 
-        // If word does not exist, use method-missing instead
-        if( word_id == 0 ){
-          // Tell method_missing about the number of arguments?
-          // set_cell_value( the_integer_work_cell, level.length );
-          set_cell_value( the_tag_work_cell, tag( level.name ) );
-          eval_do_literal( the_tag_work_cell );
-          // ToDo: Add call to method_missing
-          eval_do_code( get_inox_word_id_by_name( "method-missing" ) );
-          // Method missing will add the class of the target to find the desired
-          // method or will call a class specific method_missing found in the
-          // class hierarchy
-          // This implements a dynamic dispatch
-
+        // If not a method call
         }else{
-          eval_do_code( word_id );
-        }
 
+          word_id = get_inox_word_id_by_name( level.name );
+
+          // If word does not exist, use word-missing instead
+          if( word_id == 0 ){
+            // Tell method_missing about the number of arguments?
+            // set_cell_value( the_integer_work_cell, level.length );
+            set_cell_value( the_tag_work_cell, tag( level.name ) );
+            eval_do_literal( the_tag_work_cell );
+            // Add call to method_missing
+            eval_do_code( get_inox_word_id_by_name( "word-missing" ) );
+            // Method missing will add the class of the target to find the
+            // method or will call a class specific method_missing found in the
+            // class hierarchy
+            // This implements a dynamic dispatch
+
+          }else{
+            eval_do_code( word_id );
+          }
+        }
         leave_level();
 
         // Close all calls if terminating ., not when ;
@@ -4825,84 +5683,58 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
 
       }
 
-    // If #xxxx, it's a tag
-    }else if( first_ch == "#" ){
-      eval_do_literal( make_tag_cell( operand1( value ) ) );
+    // If /xxxx, it's a tag
+    }else if( first_ch == "/" ){
+      eval_do_literal( make_tag_cell( operand_X( value ) ) );
+
+    // If xxxx/, it's a tag too
+    }else if( last_ch == "/" ){
+      eval_do_literal( make_tag_cell( operandX_( value ) ) );
 
     // If |xxxx|, it's a create in the control stack
     }else if( first_ch == "|" && last_ch == "|" ){
-      eval_do_literal( make_tag_cell( operand4( value ) ) );
-      eval_do_code( tag( "inox-local-create" ) );
+      eval_do_literal( make_tag_cell( operand_X_( value ) ) );
+      eval_do_code( tag( "inox-control-create" ) );
 
-    // If @|xxxx, it's a lookup in the control stack
-    }else if( first_ch == "@" && second_ch == "|" ){
-      eval_do_literal( make_tag_cell( operand2( value ) ) );
-      eval_do_code( tag( "inox-local-at" ) );
-
-      // If |xxxx!, it's a lookup in the control stack with store
+    // If |xxxx!, it's a lookup in the control stack with store
     }else if( first_ch == "|" && last_ch == "!" ){
-      eval_do_literal( make_tag_cell( operand3( value ) ) );
-      eval_do_code( tag( "inox-local-set" ) );
+      eval_do_literal( make_tag_cell( operand_X_( value ) ) );
+      eval_do_code( tag( "inox-control-set" ) );
 
     // If |xxxx, it's a lookup in the control stack with fetch
     }else if( first_ch  == "|" ){
-      eval_do_literal( make_tag_cell( operand1( value ) ) );
-      eval_do_code( tag( "inox-local-get" ) );
+      eval_do_literal( make_tag_cell( operand_X( value ) ) );
+      eval_do_code( tag( "inox-control-get" ) );
 
-    // If @.xxxx, it's a lookup in a value
-    }else if( first_ch == "@" && second_ch == "." ){
-      eval_do_literal( make_tag_cell( operand2( value ) ) );
-      eval_do_code( tag( "inox-value-at" ) );
-
-      // If .:xxxx, it's a method call
+    // If .:xxxx, it's a method call
     }else if( first_ch == "." && second_ch == ":" ){
-      eval_do_literal( make_tag_cell( operand2( value ) ) );
+      eval_do_literal( make_tag_cell( operand__X( value ) ) );
       eval_do_code( tag( "inox-call-method-by-name" ) );
 
-    // If .xxxx!, it's a lookup in a value with store
+    // If .xxxx!, it's a lookup in an object with store
     }else if( first_ch == "." && last_ch == "!" ){
-      eval_do_literal( make_tag_cell( operand3( value ) ) );
-      eval_do_code( tag( "inox-array-set" ) );
+      eval_do_literal( make_tag_cell( operand_X_( value ) ) );
+      eval_do_code( tag( "inox-object-set" ) );
 
-    // If .xxxx, it's a lookup in an array value with fetch
-    }else if( first_ch  == "." ){
-      eval_do_literal( make_tag_cell( operand1( value ) ) );
-      eval_do_code( tag( "inox-array-get" ) );
-
-    // If @*xxxx, it's a lookup in a value, thru a pointer
-    }else if( first_ch == "@" && second_ch == "*" ){
-      eval_do_literal( make_tag_cell( operand2( value ) ) );
-      eval_do_code( tag( "inox-pointer-at" ) );
-
-    // If *xxxx!, it's a lookup in a value with store, thru a pointer
-    }else if( first_ch == "*" && last_ch == "!" ){
-      eval_do_literal( make_tag_cell( operand3( value ) ) );
-      eval_do_code( tag( "inox-pointer-set" ) );
-
-    // If *xxxx, it's a lookup in a value with fetch, thru a pointer
-    }else if( first_ch  == "*" ){
-      eval_do_literal( make_tag_cell( operand1( value ) ) );
-      eval_do_code( tag( "inox-pointer-get" ) );
-
-    // If @_xxxx, it's a lookup in the data stack
-    }else if( first_ch == "@"&& second_ch == "_" ){
-      eval_do_literal( make_tag_cell( operand2( value ) ) );
-      eval_do_code( tag( "inox-stack-at" ) );
+    // If .xxxx, it's a lookup in an object with fetch
+    }else if( first_ch  == "." && value.length > 1 ){
+      eval_do_literal( make_tag_cell( operand_X( value ) ) );
+      eval_do_code( tag( "inox-object-get" ) );
 
     // If _xxxx!, it's a lookup in the data stack with store
     }else if( first_ch == "_" && last_ch == "!" ){
-      eval_do_literal( make_tag_cell( operand3( value ) ) );
-      eval_do_code( tag( "inox-stack-set" ) );
+      eval_do_literal( make_tag_cell( operand_X_( value ) ) );
+      eval_do_code( tag( "inox-data-set" ) );
 
     // If _xxxx, it's a lookup in the data stack with fetch
     }else if( first_ch == "_" ){
-      eval_do_literal( make_tag_cell( operand1( value ) ) );
-      eval_do_code( tag( "inox-stack-get" ) );
+      eval_do_literal( make_tag_cell( operand_X( value ) ) );
+      eval_do_code( tag( "inox-data-get" ) );
 
     // If :xxxx, it's a naming operation, explicit, Forth style compatible
     }else if( first_ch == ":" ){
-      // ToDo: optimize the frequent literal #tag inox-rename sequences
-      eval_do_literal( make_tag_cell( operand1( value ) ) );
+      // ToDo: optimize the frequent literal /tag inox-rename sequences
+      eval_do_literal( make_tag_cell( operand_X( value ) ) );
       eval_do_code( tag( "inox-rename" ) );
 
     // ( start of subexpression
@@ -4916,7 +5748,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
 
       // If early binding function call, xxx( ... )
       if( first_ch != "." ){
-        word_id = get_inox_word_id_by_name( operand3( value ) );
+        word_id = get_inox_word_id_by_name( operand_X( value ) );
         // If xxx is a defined word then it has to be called last
         if( word_id != 0 ){
           level.name = value;
@@ -4924,22 +5756,19 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
 
         // If word is not defined, use it as a tag literal
         }else{
-          // ToDo: if # prefixed word, use it as a tag?
+          // ToDo: if / prefixed word, use it as a tag?
           eval_do_literal( make_tag_cell( value ) );
         }
+     }
 
-      // If .xxx late binding method call, .xxx( ... target )
-      }else{
-        word_id = get_inox_word_id_by_name( operand4( value ) );
-      }
-
-    // Else, this is a literal, either a number or a symbol
+    // Else, this is a literal, either a number or a tag
     }else{
       if( first_ch == "-" && is_integer( value.substring( 1 ) ) ){
         eval_do_literal( make_integer_cell( - text_to_integer( value) ) );
       }else if( is_integer( value ) ){
         eval_do_literal( make_integer_cell(   text_to_integer( value) ) );
       }else{
+        if( value == "." )debugger;
         eval_do_literal( make_tag_cell( value ) );
       }
     }
@@ -4987,7 +5816,7 @@ primitive( "CR", function primitive_CR(){
 
 function primitive_trace(){
   // ToDo: output to stdout when running on POSIX systems
-  console.log( "OUTPUT " + cell_to_text( this.dsp() ) );
+  console.log( "\nOUTPUT " + cell_to_text( this.dsp() ) );
 }
 primitive( "inox-trace", primitive_trace );
 
@@ -5006,6 +5835,7 @@ primitive( "inox-trace-stacks", function primitive_inox_trace_stacks(){
 define_alias( "forth",  ".",      "out" );
 
 // In some other dialects there are other names for this
+define_alias( "sh",     "echo",   "out")
 define_alias( "basic",  "PRINT",  "out" );
 define_alias( "icon",   "write",  "out" );
 define_alias( "python", "print",  "out" );
@@ -5053,14 +5883,22 @@ function process(
   let state = JSON.parse( json_state );
   let event = JSON.parse( json_event );
 
+  // ToDo: build state object and push it onto the data stack.
+  // ToDo: build event object and push it onto the data stack.
+
   // If source code was provided, push it on the parameter stack
   // See http://c2.com/cybords/pp4.cgi?muforth/README
 
-  copy_cell( make_text_cell( source_code), current_dsp );
+  const text_cell = make_text_cell( source_code );
+  move_cell( text_cell, current_dsp );
+  free_cell( text_cell );
   run_inox_word( "inox-eval" );
 
   // ToDo: return diff to apply instead of new state
+  // ToDo: cell_to_json_text( current_dsp );
   let new_state = JSON.stringify( cell_to_text( current_dsp ) );
+  clear_cell( current_dsp );
+  // ToDo: check that stacks are empty
   return new_state;
 
 } // process()
@@ -5088,19 +5926,20 @@ I.primitive( "inox-debugger", function primitive_debugger(){
 
 I.evaluate( "/**/ to debugger inox-debugger." );
 
-const smoke = require( "fs" ).readFileSync( "test/smoke.nox", 'utf8');
+const smoke = require( "fs" ).readFileSync( "lib/test/smoke.nox", 'utf8');
 
 I.process( "{}", "{}", smoke );
 
 
-// Pseudo code for a statefull event processor
+// Pseudo code for a statefull event processor. Async requires promises.
 /*
 function processor( identity: string ){
   while( true ){
     const event = await get_next_event( identity );
     const state = await load_state( identity );
     const source_code = state.source_code;
-    const new_state = inox.process( state, event, source_code );
+    const diff = inox.process( state, event, source_code );
+    const new_state = apply( state, diff )
     await store_state( identity, new_state );
   }
 }

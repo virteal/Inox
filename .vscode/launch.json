@@ -27,6 +27,16 @@
                         "skipFiles": [
                                 "<node_internals>/**"
                         ]
+                },
+
+                {
+                        "name": "Launch node directly",
+                        "request": "launch",
+                        "type": "node",
+                        "program": "${workspaceFolder}\\lib\\inox.ts",
+                        "skipFiles": [
+                                "<node_internals>/**"
+                        ]
                 }
         ]
 }

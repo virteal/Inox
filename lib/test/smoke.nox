@@ -1,127 +1,172 @@
-/* Inox */
-// December 6 2022 by jhr, extracted from lib/inox.ts, adding oo stuff
+#!inox.sh
+# December 6 2022 by jhr, extracted from lib/inox.ts, adding oo stuff
 
-to word-missing   "word-missing "   out( swap & ).
-to method-missing "method-missing " out( swap & ).
+inox-dialect
 
-#dont inox-log
+// dont/inox-log
+to word-missing   "word-missing "   out( swap & ) debugger.
+to method-missing "method-missing " out( swap & ) debugger drop.
 
-to word-missing   "word-missing "   out( swap & ).
-to method-missing "method-missing " out( swap & ).
+to log inox-log.
+
+to debug
+  dont/log
+  eval/enable/log
+  run/enable/log
+  stack/enable/log
+  token/enable/log
+  do/log
+
+to no-debug
+  step/disable/log
+  token/disable/log
+  dont/log
 
 to test
+  dup out( "Testing " & swap )
+  dup inox-call-by-name( "test-" & swap )
+  out( "End of test for " & swap )
+
+to debug-test
   dup out( "Testing " swap & )
-  dup inox-call-by-name( test_ swap & )
-  out( "End of test for " swap & )
+  dup ( "test-" & swap )
+  debug
+  inox-call-by-name
+  no-debug
+  out( "End of test for " & swap )
 
 to cast inox-cast.
-
 to as-void    cast( void    ).
 to as-integer cast( integer ).
 
-to constant:is: inox-constant.
-to global:is:   inox-global.
+to constant:is: inox-constant-create.
+to global:is:   inox-global-create.
 
 to init-constants
-  constant: inox-version is: "v0.1";
+  constant: inox-version is: "v0.2";
   constant: void         is: as-void( void:0 );
   constant: true         is: true:1;
   constant: false        is: false:0;
 
 init-constants
 
-to ToDo out( "ToDo: " & swap ).
-
-global: ii is: 0.
-
-to make-object inox-make-object.
-
-to make-point x:0 y:0 point:2 make-object.
-
-make-point
+to ToDo: out( "ToDo: " & swap ).
 
 to dump
 // Debug dump of top of stack. TOS is preserved.
+  dup inox-get-class swap
   dup inox-get-type  swap
   dup inox-get-name  swap
   dup inox-get-value swap
   drop
   out(
-    "type:"      & _type
+      "class: "  & _class
+    & " type: "  & _type
     & " name: "  & _name
     & " value: " & _value
   )
   drop drop drop
 
-dup dump
-
 to dump-object
   dup dump
-  // ToDo: dump each member
+  ToDo: "dump each member";
 
-dump-object
+to with-it     inox-with-it.
+to without-it  inox-without-it.
+to it          inox-it.
+to call        inox-call.
+to if          inox-if.
+to break       inox-break.
+to inline      inox-inline.
+to while       inox-while-1 inox-while-2 inox-while-3. inline
+to until       inox-while-1 inox-while-2 inox-until-3. inline
+to sentinel    inox-sentinel.
+to jump        inox-jump.
+to loop        inox-loop.
 
-1 _point.x! // ToDo: x:1 _point.!
+
+to call:      call.
+to if:then:   if call.
+to while:do:  while.
+to until:do:  until.
+to loop:      loop.
+
+// to object.then: if call.
+// to object.else: not if call.
+// to block.while: while.
+// to block.until: until.
+// to object.class xxxx.
+
+to method:
+  // Store target into the it control variable
+  swap
+  inox-with-it
+    // ToDo: optimize with adding inox-method-call primitive
+    call
+  // Clear the control stack down to the it variable included
+  inox-without-it
+
+to make-object inox-make-object.
+
+to make-point x:0 y:0 point:2 inox-make-object.
+
+make-point
+
+_point dup dump
+
+1 _point.x! // ToDo: _point x:1.!
 2 _point.y!
 out( "(x:" & _point.x & ",y:" & _point.y & ")" )
+to point.out method: { out( "(x:" & it.x & ",y:" & it.y & ")" ) };.
 
-to use:to: { swap inox-to-control }
 
-to method: inox-with-it inox-call inox-from-control.
 
-to it |it.
-
-#do inox-log
-
-to point:out method: { out( "(x:" & it.x & ",y:" & it.y & ")" ) };.
-
-to test_mcall
-  dup .out
+to test-mcall
   dup .:out
   dup .out()
+test-mcall
 
-debugger
-test_mcall
+to decrement ( 1 - ).
+to increment ( 1 + ).
 
-to decrement 1 - .
-to increment 1 + .
+to with-ii 0 |ii|. inline
+to without-ii /ii inox-without. inline
+to do-with-ii: with-ii call without-ii.
+to ii! |ii!. inline
+to ii  |ii. inline
+to decrement-ii ii decrement ii!.
+to increment-ii ii increment ii!.
+to --ii ii decrement dup ii!. // |ii 1 - dup |ii!
+to ++ii ii increment dup ii!.
+to ii-- ii decrement-ii.
+to ii++ ii increment-ii.
 
-to set_ii |ii!.
+to test-ii-operations
+  with-ii
+    out( "Initial ii should be 0, is " & ii )
+    increment-ii
+    out( "Incremented ii should be 1, is " & ii )
+    decrement-ii
+    out( "Decremented ii should be 0, is " & ii )
+    10 ii!
+    out( "New value of ii should be 10, is " & ii )
+    out( "++ii should be 11, is " & ++ii )
+    out( "ii++ should be 11, is " & ii++ )
+    out( "ii-- should be 12, is " & ii-- )
+    out( "--ii should be 10, is " & --ii )
+    out( "ii should be 10, is "   & ii   )
+  without-ii
+ii-operations/test
 
-to ii |ii.
-
-to decrement_ii ii decrement set_ii.
-
-to increment_ii ii increment set_ii.
-
-to if:then: inox-if inox-call.
-
-to break inox-break.
-
-debugger
-to inox-while inox-while-1 inox-while-2 inox-while-3. inox-inlined
-
-to while:do: // condition-block repeat-block
-  inox-while
-. inox-inlined
-
-to until:do: // condition-block repeat-block
-  inox-while-1 inox-while-2 inox-until-3
-. inox-inlined
-
-to test_false_while
+to test-false-while
   while: { 0 } do: { out( "!!! never reached" ) };
-  out( "test_false_while ok" )
+false-while/test
 
-to test_noop.
+to test-break
+  while: { true } do: { break }.
+break/test
 
-debugger
-
-test( #noop )
-
-test( #false_while )
-
-to test_forever_while
+to test-forever-while
   while: { true } do: {
     out( "forever" )
     while: { true } do: {
@@ -138,94 +183,66 @@ to test_forever_while
     out( "!!! never reached, forever" )
   };
   out( "test forever ok" )
+forever-while/test
 
-test( #forever_while )
+to if-else inox-if-else.
+to if:then:else: if-else call.
 
-to if:then:else: // boolean then-block else-block --
-  inox-ifelse
-  inox-call
+to loop:while: swap dup call while.
 
-to loop:while: // repeat-block condition-block --
-  swap dup inox-call
-  inox-while
-. inox-inlined
-
-to test_loop_while
-  set_ii( 3 )
+to test-loop-while
+  with-ii
+  3 ii!
   loop: {
     out( "Hello loop " & ii )
-    decrement_ii
+    decrement-ii
   } while: { out( "test" ), ii >0? };
-  out( "test loop while ok" )
+  without-ii
+loop-while/test
 
-test( #loop_while )
 
-to times:do: |blk| |nn|
-// times:do: using( #nn #blk )
+to times:do:
+  times:do/sentinel
+  |blk| |nn| // begin
   if: |nn >0? then: {
     while: {
-      |nn 1 - dup |nn! >=? 0
+      ( |nn - 1 ) dup |nn! >=0?
     } do: {
-      |blk inox-call
+      |blk call
     };
   };
-  break
+  times:do/jump
 
-to test_times_do
+to test-times-do
   times: 3 do: { out( "Time´goes on" ) } ;
-  out( "test times ok" )
+times-do/test
 
-test( #times_do )
 
-to loop: inox-loop.
-
-global: #II is: 0.
-
-to @II @ II.
-
-out( "Address of II is " & @ II )
-
-"Indirect II set" @II @set
-
-out( "New II is : " & ( @II @get ) )
-
-out( "II is " & II )
-
-out( "Hello " & Place & "!" )
-
-to try: inox-enter inox-call inox-leave;
+to try:
+  try/sentinel
+    call
+  try/jump
 
 to try:catch:
-  inox-enter
-  |catch|
-  if: inox-mark then: {
-    inox-call
-  } else: {
-    |catch inox-call
-  }
-  inox-leave
+  try:catch/sentinel
+    |catch|
+    if: inox-mark then: {
+      call
+    } else: {
+      |catch call
+    };
+  try:catch/jump
 
 to try:catch:finally:
-  inox-enter
-  |finally|
-  try:catch:
-  |finally inox-call
-  inox-leave
+  try:catch:finally/sentinel
+    |finally|
+    try:catch:;
+    |finally call
+  try:catch:finally/jump
 
 to say:to: swap out out( " " ) out.
 
 say: "Hello" to: "Smalltalk world!".
-
-( (+ 1 2) + (100 + 100) )
-inox-trace(
-  (
-    (3 +)
-    +(4)
-    (+ 1000)
-    + 2000
-  )
-)
-out
 
 to hello out( "Hello world!" ).
 
@@ -238,40 +255,38 @@ HELLO
 
 inox-dialect // inox
 
-to test_HELLO
+to test-HELLO
   "HELLO" inox-call-by-name
-  "HELLO" inox-definition inox-call
-  { HELLO } inox-call
-  { hello } 1 inox-if inox-call
+  "HELLO" inox-definition call
+  { HELLO } call
+  1 { hello } if call
   if: 1 then: {
     HELLO
   } else: {
     hello
   };
-.
+HELLO/test
 
-test( #HELLO )
-
-
-to test_loop1
-  set_ii( 3 )
-  while: { decrement_ii, ii >? 0 } do: {
-    if:    ii % 2 is= 0
-    then:  { out( ii & " is even" ) }
-    else:  { out( ii & " is odd"  ) } ;
-  } ;
-  out( "test loop1 ok 1" )
-  times: 3 do: {
-    out( "bravo" )
-  } ;
-  out( "test loop1 ok 2" )
-  loop: {
-    out( "great" )
-    break
-  } ;
-  out( "test loop1 ok 3, all ok" )
-
-test( #loop1 )
+to test-loop1
+  with-ii
+    3 ii!
+    while: { decrement-ii, ii >0? } do: {
+      if:    ii % 2 =0?
+      then:  { out( ii & " is even" ) }
+      else:  { out( ii & " is odd"  ) } ;
+    } ;
+    out( "test loop1 ok 1" )
+    times: 3 do: {
+      out( "bravo" )
+    } ;
+    out( "test loop1 ok 2" )
+    loop: {
+      out( "great" )
+      break
+    } ;
+    out( "test loop1 ok 3, all ok" )
+  without-ii
+loop1/test
 
 
 to InoxStyle
@@ -294,24 +309,28 @@ to InoxStyle
 
 InoxStyle
 
-Define test_Loop2
-  set_ii( 3 )
-  While decrement_ii, ii >0? Repeat
-    If ii % 2 =0? Then
-      out( ii & " is even" )
-    Else
-      out( ii & " is odd")
+debug
+
+Define test-Loop2
+  with-ii
+    3 ii!
+    While decrement-ii, ii >0? Repeat
+      If ii % 2 =0? Then
+        out( ii & " is even" )
+      Else
+        out( ii & " is odd" )
+      End
     End
-  End
-  Times 3 Do
-    out( "bravo" )
-  End
-  Loop
-    out( "great" )
-    Break
-  End
+    Times 3 Do
+      out( "bravo" )
+    End
+    Loop
+      out( "great" )
+      Break
+    End
+  without-ii
 End
 
-test( Loop2 )
+Loop2/test
 
-debugger
+out( "End of smoke test" )
