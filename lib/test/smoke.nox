@@ -54,18 +54,20 @@ to ToDo: out( "ToDo: " & swap ).
 
 to dump
 // Debug dump of top of stack. TOS is preserved.
-  dup inox-get-class swap
-  dup inox-get-type  swap
-  dup inox-get-name  swap
-  dup inox-get-value swap
-  drop
+  dup
+  |tos|
+  |tos inox-get-class
+  |tos inox-get-type
+  |tos inox-get-name
+  |tos inox-get-value
+  |tos
   out(
       "class: "  & _class
     & " type: "  & _type
     & " name: "  & _name
     & " value: " & _value
   )
-  drop drop drop
+  tos/without
 
 to dump-object
   dup dump
@@ -87,6 +89,7 @@ to loop        inox-loop.
 
 to call:      call.
 to if:then:   if call.
+to if:do:     if:then:.
 to while:do:  while.
 to until:do:  until.
 to loop:      loop.
@@ -117,8 +120,8 @@ _point dup dump
 1 _point.x! // ToDo: _point x:1.!
 2 _point.y!
 out( "(x:" & _point.x & ",y:" & _point.y & ")" )
-to point.out method: { out( "(x:" & it.x & ",y:" & it.y & ")" ) };.
 
+to point.out method: { out( "(x:" & it.x & ",y:" & it.y & ")" ) };.
 
 
 to test-mcall
@@ -131,7 +134,7 @@ to increment ( 1 + ).
 
 to with-ii 0 |ii|. inline
 to without-ii /ii inox-without. inline
-to do-with-ii: with-ii call without-ii.
+to with-ii-do: with-ii call without-ii.
 to ii! |ii!. inline
 to ii  |ii. inline
 to decrement-ii ii decrement ii!.
@@ -213,6 +216,8 @@ to times:do:
   };
   times:do/jump
 
+to times:loop: time:do:.
+
 to test-times-do
   times: 3 do: { out( "Time´goes on" ) } ;
 times-do/test
@@ -290,45 +295,41 @@ loop1/test
 
 
 to InoxStyle
-  inox-dialect // set define builder and comment delimiters
-  inox-alias( "Define",      " to "            )
+  inox-dialect
+  inox-alias( "To",          " to "            )
   inox-alias( "While",       " while: { "      )
   inox-alias( "Until",       " until: { "      )
-  inox-alias( "Repeat",      " } do: { "       )
-  inox-alias( "Do",          " do: { "         )
+  inox-alias( "Do",          " } do: { "       )
   inox-alias( "Loop",        " loop: { "       )
   inox-alias( "Break",       " break "         )
+  inox-alias( "Begin",       " { "             )
   inox-alias( "End",         " } ; "           )
   inox-alias( "If",          " if: "           )
   inox-alias( "Then",        " then: { "       )
   inox-alias( "Else",        " } else: { "     )
   inox-alias( "Times",       " times: "        )
-
-  // macro( "Debug"       "$$"                )
-  // macro( "NoDebug"     ""                  )
-
 InoxStyle
 
 debug
 
-Define test-Loop2
-  with-ii
+To test-Loop2
+  with-ii-do: Begin
     3 ii!
-    While decrement-ii, ii >0? Repeat
+    While --ii >0? Do
       If ii % 2 =0? Then
         out( ii & " is even" )
       Else
         out( ii & " is odd" )
       End
     End
-    Times 3 Do
+    Times 3 Loop
       out( "bravo" )
     End
     Loop
       out( "great" )
       Break
     End
-  without-ii
+  End
 End
 
 Loop2/test
