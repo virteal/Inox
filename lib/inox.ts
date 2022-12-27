@@ -200,36 +200,29 @@ function load32( index : InoxAddress ) : InoxValue {
   return value |0;
 }
 
-function load32info( index : InoxAddress ) : InoxValue {
-  // ToDo: ? index <<= 1;
-  let value : InoxValue = memory32[ index + 1] |0;
-  // |0 is a pre webassembly trick to coerce value to a 32 bits integer
-  // de&&bug( "Load 32 @" + index + " " + value );
-  return value |0;
-}
-
 
 function store32( index : InoxAddress, value : InoxValue ) : void {
   // ToDo: ? index <<= 1;
+  if( value == 2416 )debugger;
   memory32[ index ] = value |0;
   // de&&bug( "store 32 @ " + index + " " + value );
   mem_de&&mand_eq( load32( index ), value );
 }
 
 
+function load32info( index : InoxAddress ) : InoxValue {
+  return load32( index + 1 );
+}
+
+
 function store32info( index : InoxAddress, value : InoxValue ) : void {
-  // ToDo: ? index <<= 1;
-   memory32[ index + 1 ] = value |0;
-   // de&&bug( "store 32 @ " + index + " " + value );
-   mem_de&&mand_eq( load32info( index ), value );
+  store32( index + 1, value );
 }
 
 
 function set_cell_value( cell : InoxCell, value : InoxValue ) : void {
 // eqv cell.value = value
-  // if( cell == 5230 )debugger;
   store32( cell, value );
-  mem_de&&mand_eq( get_cell_value( cell ), value );
 }
 
 
@@ -243,7 +236,6 @@ function get_cell_value( cell : InoxCell ) : InoxValue {
 function set_cell_info( cell : InoxCell, info : InoxInfo ) : void {
 // eqv cell.info = info
   store32info( cell, info );
-  mem_de&&mand_eq( get_cell_info( cell ), info );
 }
 
 
@@ -722,6 +714,15 @@ function copy_cell( source : InoxCell, destination : InoxCell ) : void {
   }
   // If the source was a reference, increment the reference counter
   if( is_reference_cell( source ) ){
+    // This would not be necessary if there were a classical GB
+    // However, I may implement some destructor logic when an object
+    // goes out of scope and it sometimes make sense to have that logic
+    // excuted immediately instead of later on as would happen with a
+    // classical GB. I could also have the best of both world depending
+    // on some flag set inside the referenced object.
+    // ToDo: make sure copy cell is called when a destructor could be
+    // executed without corrupting anything. Alternatively the queue of
+    // destructors could be processed by inox-return.
     increment_object_refcount( get_cell_value( source ) );
   }
 }
@@ -1001,7 +1002,7 @@ function make_proxy( object : any ){
   de&&mand_eq( get_cell_value( proxy ), 0 );
   de&&mand_eq( get_cell_info(  proxy ), 0 );
   const class_name = tag( object.constructor.name );
-  // Proxy cell points to itself, ease copying
+  // Proxy cell points to itself, ease copying. ToDo: unused yet
   set_cell_value( proxy, proxy );
   set_cell_info(  proxy, pack( type_proxy_id, class_name ) );
   // ToDo: use info field to store rtti, runtime type identification?
@@ -1288,9 +1289,11 @@ function is_inline_inox_word( id : InoxIndex ) : InoxValue {
  *  See https://github.com/ReactiveSets/toubkal
  */
 
-const type_flow_id  = type_word_id + 1;
+const type_flow_id = type_word_id + 1;
 const tag_set_cell = make_tag_cell( "flow" );
 const tag_set      = get_cell_name( tag_set_cell );
+
+// a flow is about statefull/stateless, sync/async, greedy...lazy
 
 de&&mand_eq( type_flow_id, 0x7 );
 
@@ -1527,7 +1530,7 @@ const tag_inox_return = tag( "inox-return" );
 
 
 function get_primitive_function_by_id( id : InoxIndex ){
-  return all_primitive_functions_by_id( id );
+  return all_primitive_functions_by_id[id ];
 }
 
 
@@ -2327,7 +2330,7 @@ primitive( "inox-while-1", function primitive_inox_while_1(){
   // : inox-while
   //   inox-while-1 ( save blocks in control stack )
   //   inox-while-2 ( run condition block )
-  //   inox-while-3 ( run body or exit word )
+  //   inox-while-3 ( if condition ok, run body & jump to while-2 )
   // . inox-inline
   const body_block      = this.pop();
   const condition_block = this.pop();
@@ -2406,8 +2409,8 @@ function primitive_inox_while_3(){
 
   // The while condition is not met, it's time to exit the loop
   }else{
-    // Drop loop sentinel, condition and body from control stack
-    // ToDo: use lookup instead of fixed value
+    // Drop loop sentinel, condition and body from control stack.
+    // ToDo: use lookup instead of fixed value if optimistic guess failed.
     const new_csp = csp + 3 * words_per_cell;
     de&&mand_eq(
       get_cell_name( new_csp - words_per_cell ),
@@ -2421,6 +2424,7 @@ function primitive_inox_while_3(){
     }
   }
 }
+
 
 primitive( "inox-while-3", primitive_inox_while_3 );
 
@@ -3414,7 +3418,7 @@ let the_current_cpu_context : CpuContext;
 const type_primitive_id = type_void_id;
 
 
-function run_fast( ctx : CpuContext ){
+function run_fast( ctx? : CpuContext ){
 // This is the one function that needs to run fast.
 // It should be optimized by hand depending on the target CPU.
   // See https://muforth.nimblemachines.com/threaded-code/
@@ -3494,7 +3498,11 @@ function run_fast( ctx : CpuContext ){
         if( type == type_word_id ){
           CSP -= words_per_cell;
           set_cell_value( CSP, IP + words_per_cell );
+          // I could use a cached new IP
+          // IP = get_cell_value( cell ); if( IP )continue;
           IP = get_inox_word_definition_by_id( unpack_name( word ) );
+          // ToDo: I could cache the result inside the cell's value
+          // set_cell_value( cell, IP );
           continue loop;
         }
         if( type == type_primitive_id ){
@@ -3507,6 +3515,8 @@ function run_fast( ctx : CpuContext ){
         IP += words_per_cell;
         continue loop;
       }
+
+      // The debug mode version has plenty checks and traces
 
       assert( IP );
       if( !IP )break;
@@ -3541,9 +3551,12 @@ if( step_de )debugger;
         set_cell_value( CSP, IP + words_per_cell );
         // Store routine name also, cool for stack traces
         // ToDo: set type to Act?
+        // ToDo: i could encode a word to execute that would sometimes
+        // do something more sophisticated that just change the IP.
         set_cell_info( CSP, word & 0xfff );
         // ToDo: The indirection could be avoided.
-        // ToDo: store address of defininition into cell's value
+        // ToDo: cache the address of the defininition into cell's value
+        // ToDo: alternatively the cache could be orecomputed by add_code()
         IP = get_inox_word_definition_by_id( unpack_name( word ) );
         // bug( inox_word_to_text_definition( unpack_name( word ) ) );
         continue;
@@ -3554,11 +3567,7 @@ if( step_de )debugger;
       if( type == type_void_id ){
 
         IP += words_per_cell;
-        if( !de ){
-          all_primitive_functions_by_id[ word ].call( inox );
-          if( IP == 0 )break loop;
-          continue;
-        }
+
         // Some debug tool to detect bad control stack or IP manipulations
         let word_id = word;
         if( run_de && ( word_id ) != 61 ){  // inox-quote is special
@@ -5337,7 +5346,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
       level.codes[ level.codes_count++ ] = {
         type:  type_word_id,
         name:  code_id,
-        value: 0
+        value: 0 // ToDo: could precompute cache using value: definition
       }
     }
 

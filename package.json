@@ -28,6 +28,7 @@
   "dependencies": {
   },
   "devDependencies": {
-    "@types/node": "^18.11.15"
+    "typescript": "*",
+    "@types/node": "^18.11.18"
   }
 }
