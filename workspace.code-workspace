@@ -34,7 +34,7 @@
 		"editor.find.autoFindInSelection": "always",
 		"editor.fontSize": 16,
 		"editor.minimap.maxColumn": 80,
-		"editor.mouseWheelScrollSensitivity": 4,
+		"editor.mouseWheelScrollSensitivity": 2,
 		"editor.padding.bottom": 5,
 		"editor.semanticHighlighting.enabled": true,
 		"editor.smoothScrolling": true,
@@ -58,6 +58,13 @@
 		"debug.javascript.autoAttachFilter": "smart",
 		"npm.packageManager": "npm",
 		"files.autoSave": "onFocusChange",
-		"editor.folding": false
+		"editor.folding": false,
+		"editor.stickyScroll.enabled": true,
+		"terminal.integrated.smoothScrolling": true,
+		"editor.scrollbar.verticalScrollbarSize": 20,
+		"editor.cursorSurroundingLines": 3,
+		"terminal.integrated.mouseWheelScrollSensitivity": 10,
+		"terminal.integrated.fastScrollSensitivity": 20,
+		"terminal.integrated.scrollback": 10000
 	}
 }

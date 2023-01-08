@@ -1,145 +1,255 @@
-#!inox.sh
+#!/bin/inox
 # December 6 2022 by jhr, extracted from lib/inox.ts, adding oo stuff
 
 inox-dialect
+~~ Inox is multi dialects, Inox dialect is the main one, Forth is another one.
 
-// dont/inox-log
-to word-missing   "word-missing "   out( swap & ) debugger.
-to method-missing "method-missing " out( swap & ) debugger drop.
+to word-missing "word-missing " over inox-join-text inox-out inox-debugger.
+~~ It is dynamically possible to implement the behavior of undefined words.
+~~ word-missing is what Ruby use for method-missing, see below.
+
+to method-missing "method-missing " over inox-join-text inox-debugger drop.
+~~ The same is true for methods, ie words for objects.
+~~ This is like doesNotUnderstand in Smalltalk.
+~~ See http://rmod-pharo-mooc.lille.inria.fr/OOPMooc/07-DeeperIntoLookup/W7S01-InheritanceAndLookup-4-DoesNotUnderstand.pdf
+
 
 to log inox-log.
+~~ This is console.log or maybe stderr (ToDo)
 
-to debug
-  dont/log
-  eval/enable/log
-  run/enable/log
-  stack/enable/log
-  token/enable/log
-  do/log
-
-to no-debug
-  step/disable/log
-  token/disable/log
-  dont/log
-
-to test
-  dup out( "Testing " & swap )
-  dup inox-call-by-name( "test-" & swap )
-  out( "End of test for " & swap )
-
-to debug-test
-  dup out( "Testing " swap & )
-  dup ( "test-" & swap )
-  debug
-  inox-call-by-name
-  no-debug
-  out( "End of test for " & swap )
-
+~~ Casting is unsafe
 to cast inox-cast.
 to as-void    cast( void    ).
 to as-integer cast( integer ).
 
 to constant:is: inox-constant-create.
 to global:is:   inox-global-create.
+~~ There are global constants and global dynamic variables
 
 to init-constants
+~~ Setup some globals
   constant: inox-version is: "v0.2";
   constant: void         is: as-void( void:0 );
   constant: true         is: true:1;
   constant: false        is: false:0;
-
 init-constants
+
+~~ Some basic vocabulary
+to debugger      inox-debugger.
+to without       inox-without.
+to with-it       inox-with-it.
+to without-it    inox-without-it.
+to it            inox-it.
+to call          inox-call.
+to if            inox-if.
+to if-call       inox-if-call.
+to break         inox-break.
+to inline        inox-inline.
+to while         inox-while-1 inox-while-2 inox-while-3. inline
+to until         inox-while-1 inox-while-2 inox-until-3. inline
+to sentinel      inox-sentinel.
+to jump          inox-jump.
+to loop          inox-loop.
+to make-object   inox-make-object.
+to call:         inox-call.
+to if-else       inox-if-else.
+
+~~ Some more, using keyword syntax for ease
+to call:         call.          inline
+to if:then:      if call.       inline
+to if:then:else: if-else call.  inline
+to if:do:        if:then:.      inline
+to while:do:     while.         inline
+to until:do:     until.         inline
+to loop:         loop.          inline
+~~to loop-while  inox-loop-while.    inline
+~~to loop-until  inox-loop-until.    inline
+~~to loop:while: loop-while.         inline
+~~to loop:until: loop-until.         inline
+
+~~ ToDo: class hierarchy:
+~~ - thing
+~~  - value
+~~    - void
+~~    - tag
+~~    - number
+~~    - integer
+~~    - float
+~~    - text
+~~  - object
+~~    - native
+~~    - block
+~~    - word
+~~    - proxy
+~~    - interable
+~~      - array
+~~      - map
+~~    - flow
+
+to thing.class /thing.
+to thing.super-class /void.
+
+to value.class /value.
+to value.super-class /thing.
+
+to void.class /void.
+to void.super-class /value.
+
+to tag.class /tag.
+to tag.super-class /value.
+
+to number.class /number.
+to number.super-class /value.
+
+to integer.class /integer.
+to integer.super-class /value.
+
+to float.class /float.
+to float.super-class /value.
+
+to object.class /object.
+to object.super-class /thing.
+
+to native.class /native.
+to native.super-class /object.
+
+to block.class /block.
+to block.super-class /object.
+
+to word.class  /block.
+to word.super-class /object.
+
+
+to object.then: if call.
+to object.else: not if call.
+to block.while: while. inline.
+to block.until: until. inline.
+
 
 to ToDo: out( "ToDo: " & swap ).
 
-to dump
-// Debug dump of top of stack. TOS is preserved.
+to dump  ~~ something --
+~~ Debug dump of top of stack. TOS is not preserved.
+  ~~ ToDo |tos| to avoid tos| |tos sequences
   dup
-  |tos|
-  |tos inox-get-class
-  |tos inox-get-type
-  |tos inox-get-name
-  |tos inox-get-value
-  |tos
+  dup                        ~~ someting something
+  inox-get-class             ~~ something _class
+  swap                       ~~ _class something
+  dup                        ~~ _class something something
+  inox-get-type              ~~ _class something _type
+  swap                       ~~ _class _type something
+  dup                        ~~ _class _type something something
+  inox-get-name              ~~ _class _type something _name
+  swap                       ~~ _class _type _name something
+  dup                        ~~ _class _type _name something something
+  inox-get-value             ~~ _class _type _name something _value
+  swap                       ~~ _class _type _name _value something
   out(
       "class: "  & _class
     & " type: "  & _type
     & " name: "  & _name
     & " value: " & _value
   )
-  tos/without
+  drop drop drop drop  drop ~~ ToDo: nn drops or some trick like xxxx nn times
 
-to dump-object
-  dup dump
+to dump-object  ~~ any -- any
+  dump
   ToDo: "dump each member";
 
-to with-it     inox-with-it.
-to without-it  inox-without-it.
-to it          inox-it.
-to call        inox-call.
-to if          inox-if.
-to break       inox-break.
-to inline      inox-inline.
-to while       inox-while-1 inox-while-2 inox-while-3. inline
-to until       inox-while-1 inox-while-2 inox-until-3. inline
-to sentinel    inox-sentinel.
-to jump        inox-jump.
-to loop        inox-loop.
-
-
-to call:      call.
-to if:then:   if call.
-to if:do:     if:then:.
-to while:do:  while.
-to until:do:  until.
-to loop:      loop.
-
-// to object.then: if call.
-// to object.else: not if call.
-// to block.while: while.
-// to block.until: until.
-// to object.class xxxx.
-
-to method:
-  // Store target into the it control variable
-  swap
-  inox-with-it
-    // ToDo: optimize with adding inox-method-call primitive
+to method:  ~~ a-block --
+~~ Execute a block with an "it" local variable that points to the target
+~~ object. Use { b| a| ... } to get more local variables. Use (| a| b| |)
+~~ to reverse the order of these parameters like most languages do, some
+~~ small overhead is involved however.
+~~ ToDo: function-method:
+  ~~ Store target into the it control variable
+  swap with-it
+    ~~ ToDo: optimize with some inox-method-call primitive
     call
-  // Clear the control stack down to the it variable included
-  inox-without-it
+  ~~ Clear the control stack down to the it variable included
+  without-it
 
-to make-object inox-make-object.
+
+to debug
+~~ During developpment I need a lot of traces often
+  dont/log ~~ Do not log this
+  token/enable/log
+  parse/enable/log
+  eval/enable/log
+  run/enable/log
+  stack/enable/log
+  do/log ~~ now log!
+
+
+to no-debug
+~~ Back to normal
+  step/disable/log
+  token/disable/log
+  dont/log
+
+
+to join-text inox-join-text.            ~~ A B -- AB
+to prefix    over join-text.            ~~ A B -- A BA
+to postfix   over swap inox-join-text.  ~~ A B -- A AB
+
+
+to test ~~ name --
+~~ Helper to test words. It runs the test-xxx testing word.
+  ~~ add a sentinel to detect stack mismatch
+  dup                  ~~ name name
+  /test-sentinel swap  ~~ name /test-sentinel name
+  inox-tag             ~~ name /test-sentinel tag
+  inox-rename swap     ~~ tag:/test-sentinel name
+  ~~ run test
+  "Testing"          prefix out
+  "test-"            prefix inox-call-by-name
+  "End of test for " prefix out
+  drop
+  ~~ checks that stack is unchanged, ie sentinel is still at the top
+  /test-sentinel <>? { out( "Stack mismatch!" ) debugger } inox-if-call
+
+
+to debug-test
+~~ Helper for tests that needs to be debugged
+  "Testing " prefix out
+  "test-"    prefix debug inox-call-by-name no-debug
+  ~~ ToDo: developer must check that data stack is unchanged
+  "End of debug-test for " prefix out
+  drop
 
 to make-point x:0 y:0 point:2 inox-make-object.
 
-make-point
+to test-point
+  make-point
+  dump
+  1 _point.x! ~~ ToDo: _point x:1.!
+  2 _point.y!
+  out( "( x:" & _point.x & ", y:" & _point.y & " )" )
+  drop ~~ forget point object
+point/test
 
-_point dup dump
 
-1 _point.x! // ToDo: _point x:1.!
-2 _point.y!
-out( "(x:" & _point.x & ",y:" & _point.y & ")" )
+to point.out method: { out( "( x:" & it.x & ", y:" & it.y & " )" ) };.
 
-to point.out method: { out( "(x:" & it.x & ",y:" & it.y & ")" ) };.
+to test-method-call
+  make-point
+  _point .:out
+  _point .out()
+  drop ~~ forget point object
+method-call/test
 
-
-to test-mcall
-  dup .:out
-  dup .out()
-test-mcall
 
 to decrement ( 1 - ).
 to increment ( 1 + ).
 
-to with-ii 0 |ii|. inline
+to with-ii 0 ii|. inline
 to without-ii /ii inox-without. inline
 to with-ii-do: with-ii call without-ii.
 to ii! |ii!. inline
 to ii  |ii. inline
 to decrement-ii ii decrement ii!.
 to increment-ii ii increment ii!.
-to --ii ii decrement dup ii!. // |ii 1 - dup |ii!
+to --ii ii decrement dup ii!. ~~ |ii 1 - dup |ii!
 to ++ii ii increment dup ii!.
 to ii-- ii decrement-ii.
 to ii++ ii increment-ii.
@@ -161,13 +271,16 @@ to test-ii-operations
   without-ii
 ii-operations/test
 
+
 to test-false-while
   while: { 0 } do: { out( "!!! never reached" ) };
 false-while/test
 
+
 to test-break
-  while: { true } do: { break }.
+  while: { true } do: { break }. ~~ ToDo: issue with dot, use token-debugger }.
 break/test
+
 
 to test-forever-while
   while: { true } do: {
@@ -188,25 +301,23 @@ to test-forever-while
   out( "test forever ok" )
 forever-while/test
 
-to if-else inox-if-else.
-to if:then:else: if-else call.
 
-to loop:while: swap dup call while.
-
-to test-loop-while
+to test-loop-break
   with-ii
-  3 ii!
+  2 ii!
   loop: {
+    out( "loop-while body" )
     out( "Hello loop " & ii )
     decrement-ii
-  } while: { out( "test" ), ii >0? };
+    if: ii <0? then: { break };
+  };
   without-ii
-loop-while/test
+loop-break/test
 
 
 to times:do:
   times:do/sentinel
-  |blk| |nn| // begin
+  blk| nn| ~~ begin
   if: |nn >0? then: {
     while: {
       ( |nn - 1 ) dup |nn! >=0?
@@ -216,34 +327,46 @@ to times:do:
   };
   times:do/jump
 
-to times:loop: time:do:.
+to times:loop: times:do:.
 
 to test-times-do
   times: 3 do: { out( "Time´goes on" ) } ;
 times-do/test
 
 
-to try:
-  try/sentinel
-    call
-  try/jump
+~~ words with formal parameters are functions called with arguments
 
-to try:catch:
-  try:catch/sentinel
-    |catch|
-    if: inox-mark then: {
-      call
-    } else: {
-      |catch call
-    };
-  try:catch/jump
+to with /inox-with.
+to (| inox-with-control.
+to |) inox-without-with-control. inox-inline
 
-to try:catch:finally:
-  try:catch:finally/sentinel
-    |finally|
-    try:catch:;
-    |finally call
-  try:catch:finally/jump
+~~ ToDo: closures, partial, complete, shared
+~~ to closure inox-copy-closure.
+~~ to stack-closure inox-copy-stack-closure.
+
+~~ ToDo: array builder using a sentinel in the data stack
+~~ to [# with.
+~~ to #] inox-create-with-array.
+
+~~ Test call to function. By convention a word that is a function
+~~ ends with a / meaning "word is applied on parameters, it's a function"
+
+~~ Functions run with arguments and can have local variables, dynamic ones.
+to swap/ with /a /b (| |a x|, |b y|, |y |x |).
+
+~~ ToDo: to swap/ with /a /b function: { xxxx }.
+
+to test-swap/
+  2 3 swap/
+  "2 3 swap/, top should be 2, is "  prefix out
+  if: <>? 2 then: { out( "Expected 2 but got " prefix ) debugger };
+  "2 3 swap/, next should be 3, is " prefix out drop
+  swap/( 4, 5 )
+  "swap/( 4, 5 ), top should be 4, is "  prefix out drop
+  "swap/( 4, 5 ), next should be 5, is " prefix out drop
+
+out( "About to /swap /debug-test")
+"swap/" test
 
 to say:to: swap out out( " " ) out.
 
@@ -258,7 +381,7 @@ forth-dialect ( forth )
 : HELLO CR ." Hello forth world!" ;
 HELLO
 
-inox-dialect // inox
+inox-dialect ~~ inox
 
 to test-HELLO
   "HELLO" inox-call-by-name
@@ -297,17 +420,21 @@ loop1/test
 to InoxStyle
   inox-dialect
   inox-alias( "To",          " to "            )
+  inox-alias( "EndTo",       " . "             )
   inox-alias( "While",       " while: { "      )
-  inox-alias( "Until",       " until: { "      )
   inox-alias( "Do",          " } do: { "       )
+  inox-alias( "EndWhile",    " } ; "           )
   inox-alias( "Loop",        " loop: { "       )
+  inox-alias( "Until",       " } until: { "    )
+  inox-alias( "EndLoop",     " } ; "           )
   inox-alias( "Break",       " break "         )
-  inox-alias( "Begin",       " { "             )
-  inox-alias( "End",         " } ; "           )
   inox-alias( "If",          " if: "           )
   inox-alias( "Then",        " then: { "       )
   inox-alias( "Else",        " } else: { "     )
+  inox-alias( "EndIf",       " } ; "           )
   inox-alias( "Times",       " times: "        )
+  inox-alias( "Begin",       " { "             )
+  inox-alias( "End",         " } ; "           )
 InoxStyle
 
 debug
@@ -320,18 +447,45 @@ To test-Loop2
         out( ii & " is even" )
       Else
         out( ii & " is odd" )
-      End
-    End
+      EndIf
+    EndWhile
     Times 3 Loop
       out( "bravo" )
-    End
+    EndLoop
     Loop
       out( "great" )
       Break
-    End
+    EndLoop
+    Loop
+      out( "wonder" )
+      Break
+    EndLoop
   End
-End
+EndTo
 
 Loop2/test
+
+
+to try:
+  try/sentinel
+    call
+  try/jump
+
+to try:catch:
+  try:catch/sentinel
+    catch|
+    if: inox-mark then: {
+      call
+    } else: {
+      |catch call
+    };
+  try:catch/jump
+
+to try:catch:finally:
+  try:catch:finally/sentinel
+    finally|
+    try:catch:;
+    |finally call
+  try:catch:finally/jump
 
 out( "End of smoke test" )

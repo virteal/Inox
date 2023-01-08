@@ -3,6 +3,7 @@
     "target": "es2022",
     "module": "Commonjs",
     "sourceMap": true,
+    "outDir": "builds",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
