@@ -1,8 +1,4 @@
-[![Netlify Status](https://api.netlify.com/api/v1/badges/d4d3fa7e-d9ff-407e-b750-9c41e038c006/deploy-status)](https://app.netlify.com/sites/inox/deploys)
-
-
-
-# Inox
+# The Inox programming language
 
 Inox is a concatenative script language. It is designed to operate in the context of edge computing, in the Internet of Things, in ML times. It will hopefully run on nodejs (first), wasm (second), metal, micro controlers (esp32), etc.
 
