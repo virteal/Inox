@@ -11,11 +11,12 @@
 		"javascript.format.semicolons": "insert",
 		"workbench.colorTheme": "Default Dark+",
 		"editor.tokenColorCustomizations": {
-			"comments": { "foreground": "#5c5f91" }
+			"comments": { "foreground": "#f1f37b" }
 		},
 		"workbench.colorCustomizations": {
+
 			"[Solarized Light]": {
-				"terminal.foreground" : "#e4ece7",
+				"terminal.foreground" : "#f87878",
 				"terminal.background" : "#383737",
 				"debugConsole.warningForeground": "#800",
 				"debugConsole.errorForeground": "#d00",
@@ -25,16 +26,15 @@
 		},
 		"javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": true,
 		"javascript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis": true,
-		"javascript.referencesCodeLens.enabled": false,
-		"js/ts.implicitProjectConfig.module": "CommonJS",
+		"javascript.referencesCodeLens.enabled": true,
+		"js/ts.implicitProjectConfig.module": "ES2022",
 		"js/ts.implicitProjectConfig.target": "ES2022",
-		"typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": false,
+		"typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": true,
 		"typescript.format.semicolons": "insert",
 		"editor.bracketPairColorization.independentColorPoolPerBracketType": true,
-		"editor.find.autoFindInSelection": "always",
 		"editor.fontSize": 16,
 		"editor.minimap.maxColumn": 80,
-		"editor.mouseWheelScrollSensitivity": 2,
+		"editor.mouseWheelScrollSensitivity": 3,
 		"editor.padding.bottom": 5,
 		"editor.semanticHighlighting.enabled": true,
 		"editor.smoothScrolling": true,
@@ -50,7 +50,7 @@
 		"typescript.enablePromptUseWorkspaceTsdk": true,
 		"typescript.format.insertSpaceAfterKeywordsInControlFlowStatements": false,
 		"typescript.format.insertSpaceAfterOpeningAndBeforeClosingEmptyBraces": false,
-		"typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": false,
+		"typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBraces": true,
 		"typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyParenthesis": true,
 		"typescript.format.insertSpaceAfterTypeAssertion": true,
 		"typescript.suggest.completeFunctionCalls": true,
@@ -65,6 +65,15 @@
 		"editor.cursorSurroundingLines": 3,
 		"terminal.integrated.mouseWheelScrollSensitivity": 10,
 		"terminal.integrated.fastScrollSensitivity": 20,
-		"terminal.integrated.scrollback": 10000
+		"terminal.integrated.scrollback": 10000,
+		"github.copilot.enable": {
+			"*": true,
+			"yaml": false,
+			"plaintext": true,
+			"markdown": false
+		},
+		"editor.find.autoFindInSelection": "multiline",
+		"search.seedWithNearestWord": true,
+		"editor.dragAndDrop": false
 	}
 }

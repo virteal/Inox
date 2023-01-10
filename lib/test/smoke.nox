@@ -14,8 +14,10 @@ to method-missing "method-missing " over inox-join-text inox-debugger drop.
 ~~ See http://rmod-pharo-mooc.lille.inria.fr/OOPMooc/07-DeeperIntoLookup/W7S01-InheritanceAndLookup-4-DoesNotUnderstand.pdf
 
 
-to log inox-log.
-~~ This is console.log or maybe stderr (ToDo)
+to log inox-log.  ~~ This is console.log or maybe stderr (ToDo)
+
+~~ clear both the data and the control stacks.
+to clear-stacks inox-data-clear inox-control-clear.
 
 ~~ Casting is unsafe
 to cast inox-cast.
@@ -36,6 +38,7 @@ init-constants
 
 ~~ Some basic vocabulary
 to debugger      inox-debugger.
+to out           inox-out.
 to without       inox-without.
 to with-it       inox-with-it.
 to without-it    inox-without-it.
@@ -171,7 +174,7 @@ to method:  ~~ a-block --
 
 
 to debug
-~~ During developpment I need a lot of traces often
+~~ During developpment I often need a lot of traces
   dont/log ~~ Do not log this
   token/enable/log
   parse/enable/log
@@ -188,25 +191,26 @@ to no-debug
   dont/log
 
 
+~~ Some basic text manipulations
 to join-text inox-join-text.            ~~ A B -- AB
 to prefix    over join-text.            ~~ A B -- A BA
-to postfix   over swap inox-join-text.  ~~ A B -- A AB
+to suffix    over swap inox-join-text.  ~~ A B -- A AB
 
 
 to test ~~ name --
 ~~ Helper to test words. It runs the test-xxx testing word.
-  ~~ add a sentinel to detect stack mismatch
+  ~~ add a sentinel to detect stack mismatch, it should be the TOS at the end.
   dup                  ~~ name name
   /test-sentinel swap  ~~ name /test-sentinel name
   inox-tag             ~~ name /test-sentinel tag
   inox-rename swap     ~~ tag:/test-sentinel name
   ~~ run test
-  "Testing"          prefix out
+  "Testing "         prefix inox-out
   "test-"            prefix inox-call-by-name
-  "End of test for " prefix out
+  "End of test for " prefix inox-out
   drop
   ~~ checks that stack is unchanged, ie sentinel is still at the top
-  /test-sentinel <>? { out( "Stack mismatch!" ) debugger } inox-if-call
+  /test-sentinel <>? { inox-out( "Stack mismatch!" ) debugger } inox-if-call
 
 
 to debug-test
