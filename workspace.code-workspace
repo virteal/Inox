@@ -74,6 +74,8 @@
 		},
 		"editor.find.autoFindInSelection": "multiline",
 		"search.seedWithNearestWord": true,
-		"editor.dragAndDrop": false
+		"editor.dragAndDrop": false,
+		"editor.acceptSuggestionOnEnter": "off",
+		"editor.inlineSuggest.enabled": true
 	}
 }

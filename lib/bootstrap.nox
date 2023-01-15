@@ -1,0 +1,305 @@
+~| bootstrap.nox
+     Inox standard library.
+
+JHR, 2023/01/11, created from test/smoke.nox
+
+|~
+
+
+~~ Some basic vocabulary, primitive
+to debugger         inox-debugger
+to out              inox-out
+to without          inox-without
+to with-it          inox-with-it
+to without-it       inox-without-it
+to it               inox-it
+to call             inox-call
+to if               inox-if
+to ?call            inox-if-call
+to call-by-name     inox-call-by-name
+to call-by-tag      inox-call-by-tag
+to break            inox-break
+to inline           inox-inline
+to while            inox-while-1 inox-while-2 inox-while-3. inline
+to until            inox-while-1 inox-while-2 inox-until-3. inline
+to sentinel         inox-sentinel
+to jump             inox-jump
+to loop             inox-loop
+to make-object      inox-make-object
+to call             inox-call
+to if-else          inox-if-else
+to remame           inox-rename
+to log              inox-log
+to cast             inox-cast
+to loop-while       inox-loop-while. inline
+to loop-until       inox-loop-until. inline
+to join-text        inox-join-text  ~| A B -- AB |~
+to alias            inox-alias
+to clear-data       inox-clear-data
+to clear-control    inox-clear-control
+to create-constant  inox-create-constant
+to tag              inox-tag
+to class            inox-class
+to type             inox-type
+to name             inox-name
+to value            inox-value
+to definition       inox-definition
+to create-global    inox-create-global
+to create-control   inox-create-control
+to upper-data       inox-upper-data
+to upper            inox-upper-control
+to upper!           inox-set-upper-control
+to upper-data!      inox-set-upper-data
+to immediate!       inox-immediate
+to ascii-character  inox-ascii-character
+to ascii-code       inox-ascii-code
+to inox-dialect     inox-inox-dialect
+to forth-dialect    inox-forth-dialect
+
+
+~~ Some more, using keyword syntax for ease
+to call:          call.          inline
+to if:then:       ?call.         inline
+to if:then:else:  if-else call.  inline
+to if:do:         if:then:.      inline
+to while:do:      while.         inline
+to until:do:      until.         inline
+to loop:          loop.          inline
+to loop:while:    loop-while.    inline
+to loop:until:    loop-until.    inline
+
+to missing-word     "missing-word "     over join-text out debugger
+to missing-method   "missing-method "   over join-text out debugger drop
+to missing-operator "missing-operator " over join-text out debugger drop
+
+to clear-stacks  clear-data clear-control.
+
+to constant:is:  create-constant. inline
+to global:is:    create-global.   inline
+
+to init-globals
+  constant: /inox-version is: "v0.3.0";
+  constant: /void         is: cast( 0, 0 );
+  constant: /true         is: true:1;
+  constant: /false        is: false:0;
+init-globals
+
+~~ Some basic text manipulations
+to prefix  over join-text       ~| A B -- A BA |~
+to suffix  over swap join-text  ~| A B -- A AB |~
+
+
+~~ Class hierarchy
+to thing.class          /thing
+to thing.super-class    /void
+to value.class            /value
+to value.super-class      /thing
+to void.class               /void
+to void.super-class         /value
+to tag.class                /tag
+to tag.super-class          /value
+to number.class             /number
+to number.super-class       /value
+to integer.class            /integer
+to integer.super-class      /value
+to float.class              /float
+to float.super-class        /value
+to object.class           /object
+to object.super-class     /thing
+to native.class             /native
+to native.super-class       /object
+to block.class              /block
+to block.super-class        /object
+to word.class               /block
+to word.super-class         /object
+
+
+~~ OO style
+
+to object.then:       ?call.         inline
+to object.else:       not? ?call.    inline
+to object.then:else:  if-else call.  inline
+
+to block.do:     call    inline
+to block.loop:   loop.   inline
+to block.while:  while.  inline
+to block.until:  until.  inline
+
+
+to ToDo:  "ToDo: " prefix out
+
+
+to dump  ~| any -- any |~  ~~ Debug dump of top of stack. TOS is preserved.
+  dup, dup    ~~ any  any    any
+  class       ~~ any  any   _class
+  swap, dup   ~~ any _class  any   any
+  type        ~~ any _class  any  _type
+  swap, dup   ~~ any _class _type  any   any
+  name        ~~ any _class _type  any  _name
+  swao, dup   ~~ any _class _type _name  any    any
+  value       ~~ any _class _type _name  any   _value
+  swap        ~~ any _class _type _name _value  any
+  out(
+      "class: "  & _class
+    & " type: "  & _type
+    & " name: "  & _name
+    & " value: " & _value
+  )
+  5 drops
+
+to dump-object  ~| any -- any |~
+  dump
+  ToDo: "dump each member";
+
+
+to method:  ~| target a-block -- |~  call-with-it without-it ~~ ToDo: one word
+
+
+to debug  ~~ During developpment I often need a lot of traces
+  do-not/log
+    token/enable/log
+    parse/enable/log
+    eval/enable/log
+    run/enable/log
+    stack/enable/log
+  do/log
+
+to no-debug
+  step/disable/log
+  token/disable/log
+
+
+to test ~| name |~
+~~ Helper to test words. It runs the test-xxx testing word.
+  ~~ add a sentinel to detect stack mismatch, it should be the TOS at the end.
+  dup                  ~~ name name
+  /test-sentinel swap  ~~ name /test-sentinel name
+  tag                  ~~ name /test-sentinel tag
+  rename swap          ~~ tag:/test-sentinel name
+  ~~ run test
+  "Testing "         prefix out
+  "test-"            prefix call-by-name
+  "End of test for " prefix out
+  drop
+  ~~ checks that stack is unchanged, ie sentinel is still at the top
+  /test-sentinel <>? { out( "Stack mismatch!" ) debugger } ?call
+
+to debug-test  ~~ Helper for tests that needs to be debugged
+  "Testing " prefix out
+  "test-"    prefix debug call-by-name no-debug
+  ~~ ToDo: developer must check that data stack is unchanged
+  "End of debug-test for " prefix out
+  drop
+
+
+~~ words with formal parameters are functions called with arguments
+to with  /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with
+to do:   call
+to (|    with-control. inline.
+to |)    without-control. inline
+
+to decrement 1 -
+to increment 1 +
+
+
+to with-ii       0 ii|. inline
+to without-ii    /ii without. inline
+to with-ii-do:   with-ii call without-ii
+to ii!           |ii!. inline
+to ii            |ii.  inline
+to decrement-ii  ii decrement ii!
+to increment-ii  ii increment ii!
+to --ii          ii decrement dup ii!. ~~ |ii 1 - dup |ii!
+to ++ii          ii increment dup ii!
+to ii--          ii decrement-ii
+to ii++          ii increment-ii
+to jj            /ii 1 upper
+to jj!           /ii 1 upper!
+to kk            /ii 2 upper
+to kk!           /ii 2 upper!
+
+to from:to:do:
+  /ii-do with ii-block| ii-to| ii|
+    if: |ii-from <=? |ii-to then: {
+      do: |ii-block while: { ++ii <=? |ii-to };
+    };
+  /ii-do without
+
+to from:down-to:do:
+  /ii-do with ii-block| ii-down-to| ii|
+    if: |ii-from >=? |ii-down-to then: {
+      do: |ii-block while: { --ii <=? |ii-to };
+    };
+  /ii-do without
+
+to from:to:by:do:
+  /ii-do with ii-block| ii-by| ii-to| ii|
+    if |ii-by >0? then: {
+      if |ii-from <=? |ii-to then: {
+        do: |ii-block while: { ii + |ii-by, ii!, ii <=? |ii-to };
+      };
+    } else: {
+      if |ii-from >= |ii-to then: {
+        do: |ii-block while: { ii + |ii-by, ii!, ii >=? |ii-to };
+      };
+    };
+  /ii-do without
+
+
+
+
+~~ ToDo: closures, partial, complete, shared
+~~ to closure inox-copy-closure.
+~~ to stack-closure inox-copy-stack-closure.
+
+
+~~ ToDo: array builder using a sentinel in the data stack
+~~ to #[     with.
+~~ to    ]#  inox-create-with-array
+
+
+to try:
+  inox-try/sentinel
+    call
+  inox-try/jump
+
+to try:catch:
+  inox-try:catch/sentinel
+    catch|
+    if: inox-mark then: {
+      call
+    } else: {
+      |catch call
+    };
+  inox-try:catch/jump
+
+to try:catch:finally:
+  inox-try:catch:finally/sentinel
+    finally|
+    try:catch:;
+    |finally call
+  inox-try:catch:finally/jump
+
+
+to InoxStyle
+  inox-dialect
+  alias(  "To"           "to "             )
+  alias(  "EndTo"        ". "              )
+  alias(  "While"        " while: { "      )
+  alias(  "Do"           " } do: { "       )
+  alias(  "EndWhile"     " } ; "           )
+  alias(  "Loop"         " loop: { "       )
+  alias(  "Until"        " } until: { "    )
+  alias(  "EndLoop"      " } ; "           )
+  alias(  "Break"        " break "         )
+  alias(  "If"           " if: "           )
+  alias(  "Then"         " then: { "       )
+  alias(  "Else"         " } else: { "     )
+  alias(  "EndIf"        " } ; "           )
+  alias(  "Times"        " times: "        )
+  alias(  "Begin"        " { "             )
+  alias(  "End"          " } ; "           )
+InoxStyle
+
+
+to /" /".  ~~ To please forth.nox
