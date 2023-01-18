@@ -1,64 +1,75 @@
 ~| bootstrap.nox
-     Inox standard library.
-
-JHR, 2023/01/11, created from test/smoke.nox
-
-|~
+ |   Inox standard library.
+ |
+ | JHR, 2023/01/11, created from test/smoke.nox
+ |
+ |~
 
 
 ~~ Some basic vocabulary, primitive
-to debugger         inox-debugger
-to out              inox-out
-to without          inox-without
-to with-it          inox-with-it
-to without-it       inox-without-it
-to it               inox-it
-to call             inox-call
-to if               inox-if
-to ?call            inox-if-call
-to call-by-name     inox-call-by-name
-to call-by-tag      inox-call-by-tag
-to break            inox-break
-to inline           inox-inline
-to while            inox-while-1 inox-while-2 inox-while-3. inline
-to until            inox-while-1 inox-while-2 inox-until-3. inline
-to sentinel         inox-sentinel
-to jump             inox-jump
-to loop             inox-loop
-to make-object      inox-make-object
-to call             inox-call
-to if-else          inox-if-else
-to remame           inox-rename
-to log              inox-log
-to cast             inox-cast
-to loop-while       inox-loop-while. inline
-to loop-until       inox-loop-until. inline
-to join-text        inox-join-text  ~| A B -- AB |~
-to alias            inox-alias
-to clear-data       inox-clear-data
-to clear-control    inox-clear-control
-to create-constant  inox-create-constant
-to tag              inox-tag
-to class            inox-class
-to type             inox-type
-to name             inox-name
-to value            inox-value
-to definition       inox-definition
-to create-global    inox-create-global
-to create-control   inox-create-control
-to upper-data       inox-upper-data
-to upper            inox-upper-control
-to upper!           inox-set-upper-control
-to upper-data!      inox-set-upper-data
-to immediate!       inox-immediate
-to ascii-character  inox-ascii-character
-to ascii-code       inox-ascii-code
-to inox-dialect     inox-inox-dialect
-to forth-dialect    inox-forth-dialect
+to debugger            inox-debugger
+to breakpoint          inox-breakpoint
+to call-with-it        inox-call-with-it
+to without             inox-without
+to with-it             inox-with-it
+to without-it          inox-without-it
+to it                  inox-it
+to with                inox-with  ~~ ToDo: use possibly faster /inox-with
+to with-parameters     inox-with-parameters
+to without-parameters  inox-without-parameters
+to call                inox-call
+to if                  inox-if
+to ?call               inox-if-call
+to call-by-name        inox-call-by-name
+to call-by-tag         inox-call-by-tag
+to break               inox-break
+to inline              inox-inline
+to while               inox-while-1 inox-while-2 inox-while-3. inline
+to until               inox-while-1 inox-while-2 inox-until-3. inline
+to sentinel            inox-sentinel
+to jump                inox-jump
+to loop                inox-loop
+to make-object         inox-make-object
+to call                inox-call
+to if-else             inox-if-else
+to rename              inox-rename
+to log                 inox-log
+to cast                inox-cast
+to loop-while          inox-loop-while. inline
+to loop-until          inox-loop-until. inline
+to join-text           inox-join-text  ~| A B -- AB |~
+to alias               inox-alias
+to clear-data          inox-clear-data
+to clear-control       inox-clear-control
+to create-constant     inox-create-constant
+to tag                 inox-tag
+to class               inox-class
+to type                inox-type
+to name                inox-name
+to value               inox-value
+to definition          inox-definition
+to create-global       inox-create-global
+to create-control      inox-create-control
+to upper-data          inox-upper-data
+to upper               inox-upper-control
+to upper!              inox-set-upper-control
+to upper-data!         inox-set-upper-data
+to immediate!          inox-immediate
+to ascii-character     inox-ascii-character
+to ascii-code          inox-ascii-code
+to inox-dialect        inox-inox-dialect
+to forth-dialect       inox-forth-dialect
+to current-dialect     inox-current-dialect
+to dialect             inox-dialect
+to object-set          inox-object-set
+to object-get          inox-object-get
 
+to basic-out           inox-out
+to out                 /basic-out call-by-tag  ~~ late binding
 
 ~~ Some more, using keyword syntax for ease
 to call:          call.          inline
+to do:            call.          inline
 to if:then:       ?call.         inline
 to if:then:else:  if-else call.  inline
 to if:do:         if:then:.      inline
@@ -66,23 +77,27 @@ to while:do:      while.         inline
 to until:do:      until.         inline
 to loop:          loop.          inline
 to loop:while:    loop-while.    inline
+to do:while:      loop-while.    inline
 to loop:until:    loop-until.    inline
+to do:until:      loop-until.    inline
 
-to missing-word     "missing-word "     over join-text out debugger
-to missing-method   "missing-method "   over join-text out debugger drop
-to missing-operator "missing-operator " over join-text out debugger drop
+to clear-stacks  clear-data clear-control
 
-to clear-stacks  clear-data clear-control.
+to missing-word     "missing-word "     over join-text out clear-stacks
+to missing-method   "missing-method "   over join-text out clear-stacks
+to missing-operator "missing-operator " over join-text out clear-stacks
+
 
 to constant:is:  create-constant. inline
 to global:is:    create-global.   inline
 
 to init-globals
   constant: /inox-version is: "v0.3.0";
-  constant: /void         is: cast( 0, 0 );
+  constant: "void"        is: cast( 0, 0 );
   constant: /true         is: true:1;
   constant: /false        is: false:0;
 init-globals
+
 
 ~~ Some basic text manipulations
 to prefix  over join-text       ~| A B -- A BA |~
@@ -120,7 +135,7 @@ to object.then:       ?call.         inline
 to object.else:       not? ?call.    inline
 to object.then:else:  if-else call.  inline
 
-to block.do:     call    inline
+to block.do:     call.   inline
 to block.loop:   loop.   inline
 to block.while:  while.  inline
 to block.until:  until.  inline
@@ -136,7 +151,7 @@ to dump  ~| any -- any |~  ~~ Debug dump of top of stack. TOS is preserved.
   type        ~~ any _class  any  _type
   swap, dup   ~~ any _class _type  any   any
   name        ~~ any _class _type  any  _name
-  swao, dup   ~~ any _class _type _name  any    any
+  swap, dup   ~~ any _class _type _name  any    any
   value       ~~ any _class _type _name  any   _value
   swap        ~~ any _class _type _name _value  any
   out(
@@ -171,32 +186,42 @@ to no-debug
 
 to test ~| name |~
 ~~ Helper to test words. It runs the test-xxx testing word.
-  ~~ add a sentinel to detect stack mismatch, it should be the TOS at the end.
-  dup                  ~~ name name
-  /test-sentinel swap  ~~ name /test-sentinel name
-  tag                  ~~ name /test-sentinel tag
-  rename swap          ~~ tag:/test-sentinel name
-  ~~ run test
-  "Testing "         prefix out
-  "test-"            prefix call-by-name
-  "End of test for " prefix out
-  drop
-  ~~ checks that stack is unchanged, ie sentinel is still at the top
+  "Testing " prefix out
+  /test-sentinel, over
+  "test-" swap join-text call-by-name
+  ~~ che cks that stack is unchanged, ie sentinel is still at the top
   /test-sentinel <>? { out( "Stack mismatch!" ) debugger } ?call
+  drop ~~ drop sentinel
+  "End of test for " prefix out
 
 to debug-test  ~~ Helper for tests that needs to be debugged
   "Testing " prefix out
-  "test-"    prefix debug call-by-name no-debug
+  "test-" prefix, debug, call-by-name, no-debug
   ~~ ToDo: developer must check that data stack is unchanged
   "End of debug-test for " prefix out
-  drop
-
 
 ~~ words with formal parameters are functions called with arguments
-to with  /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with
-to do:   call
-to (|    with-control. inline.
-to |)    without-control. inline
+to with      /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with
+
+to ({        with-parameters.    inline
+to })        without-parameters. inline
+to function: /inox-function-block ({ |inox-function-block call })
+
+
+to times:do:
+  times:do/sentinel
+  blk| nn| ~~ begin
+  if: |nn >0? then: {
+    while: {
+      ( |nn - 1 ) dup |nn! >=0?
+    } do: {
+      |blk call
+    };
+  };
+  times:do/jump
+
+to times:loop: times:do:.
+
 
 to decrement 1 -
 to increment 1 +
@@ -221,31 +246,29 @@ to kk!           /ii 2 upper!
 to from:to:do:
   /ii-do with ii-block| ii-to| ii|
     if: |ii-from <=? |ii-to then: {
-      do: |ii-block while: { ++ii <=? |ii-to };
+      do: |ii-block call while: { ++ii <=? |ii-to };
     };
   /ii-do without
 
 to from:down-to:do:
   /ii-do with ii-block| ii-down-to| ii|
     if: |ii-from >=? |ii-down-to then: {
-      do: |ii-block while: { --ii <=? |ii-to };
+      do: |ii-block call while: { --ii <=? |ii-to };
     };
   /ii-do without
 
 to from:to:by:do:
   /ii-do with ii-block| ii-by| ii-to| ii|
-    if |ii-by >0? then: {
-      if |ii-from <=? |ii-to then: {
-        do: |ii-block while: { ii + |ii-by, ii!, ii <=? |ii-to };
+    if: |ii-by >0? then: {
+      if: |ii-from <=? |ii-to then: {
+        do: |ii-block call while: { ii + |ii-by, ii!, ii <=? |ii-to };
       };
     } else: {
-      if |ii-from >= |ii-to then: {
-        do: |ii-block while: { ii + |ii-by, ii!, ii >=? |ii-to };
+      if: |ii-from >=? |ii-to then: {
+        do: |ii-block call while: { ii + |ii-by, ii!, ii >=? |ii-to };
       };
     };
   /ii-do without
-
-
 
 
 ~~ ToDo: closures, partial, complete, shared
@@ -264,42 +287,31 @@ to try:
   inox-try/jump
 
 to try:catch:
-  inox-try:catch/sentinel
-    catch|
-    if: inox-mark then: {
-      call
-    } else: {
-      |catch call
-    };
-  inox-try:catch/jump
+  inox-try:catch|
+  call
 
 to try:catch:finally:
-  inox-try:catch:finally/sentinel
-    finally|
-    try:catch:;
-    |finally call
-  inox-try:catch:finally/jump
+  inox-try:catch:finally|
+  inox-try:catch|
+  call
+  |inox-try:catch:finally call
 
 
 to InoxStyle
   inox-dialect
-  alias(  "To"           "to "             )
-  alias(  "EndTo"        ". "              )
+  alias(  "To"           "to"              )
   alias(  "While"        " while: { "      )
   alias(  "Do"           " } do: { "       )
   alias(  "EndWhile"     " } ; "           )
   alias(  "Loop"         " loop: { "       )
   alias(  "Until"        " } until: { "    )
   alias(  "EndLoop"      " } ; "           )
-  alias(  "Break"        " break "         )
+  alias(  "Break"        "break"           )
   alias(  "If"           " if: "           )
   alias(  "Then"         " then: { "       )
   alias(  "Else"         " } else: { "     )
   alias(  "EndIf"        " } ; "           )
-  alias(  "Times"        " times: "        )
-  alias(  "Begin"        " { "             )
+  alias(  "Times"        "times:"          )
+  alias(  "Begin"        "{"               )
   alias(  "End"          " } ; "           )
 InoxStyle
-
-
-to /" /".  ~~ To please forth.nox

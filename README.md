@@ -1,9 +1,9 @@
 # The Inox programming language
 
 
-Inox is a concatenative script language. It is designed to operate in the context of edge computing, with the Internet of Things, in ML times. It will hopefully run on nodejs (first), wasm (second), micro controlers (esp32), etc.
+Inox is a concatenative script language. It is designed to operate in the context of edge computing, with the Internet of Things, in Machine Learning times. It will hopefully run on nodejs (first), wasm (second), micro controlers (esp32), etc.
 
-It is a basic/forth/smalltalk/erlang inspired stack based language with a virtual machine. The basic data element is a 64 bits cell made of two parts, a typed value and a name.
+It is a forth/smalltalk/erlang inspired stack based language with a virtual machine. The basic data element is a 64 bits cell made of two parts, a typed value and a name.
 
 This is the Typescript reference implementation. It defines the syntax and semantic of the language. Production quality version of the virtual machine would have to be hard coded in some machine code to be more efficient.
 
@@ -20,7 +20,7 @@ Yours,
 Overview
 ========
 
-Here is a short presentation of some of the main characteristics of the Inox programming language. There is no  stable set of features yet but it gives some ideas about the general spirit of the language. Enjoy!
+Here is a short presentation of some of the main characteristics of the Inox programming language. There is no stable set of features yet but it gives some ideas about the general spirit of the language. Enjoy!
 
 
 Words
@@ -63,7 +63,7 @@ to play
     dup, if not integer? then: { drop,               continue }
     dup, if: >?          then: { out( "Too big"   ), continue }
     dup, if: <?          then: { out( "Too small" ), continue }
-    out( "Yes!" ), break
+                                 out( "Yes!" ),      break
   }
   clear-data
 ```
@@ -79,7 +79,7 @@ Functions
 Functions are special words that name their parameters to access them in an easier way than is possible from the data stack.
 
 ``` sh
-to tell-to/  with /msg /dest function: {
+to tell-to/  with /msg /dest  function: {
   out( "Tell " & |msg & "to " & |dest )
 }
 
@@ -121,7 +121,7 @@ say: "Hello" to: "Bob";
 
 Keywords are multi parts words with a `:` (colon) after each part and a final `;` (dot comma).
 
-`swap` is a predefined word that swaps the value at the top of the data stack with the next value on that stack. `prefix` is like the `&` operator but it joins the two pieces of text in reverse order so that the second becomes the prefix of the first one on the final text result.
+`swap` is a predefined word that swaps the value at the top of the data stack with the next value on that stack. `prefix` is somehow like the `&` operator but it joins the two pieces of text in reverse order so that the second becomes the prefix of the first one on the final text result.
 
 ```sh
 to tell-sign
@@ -204,13 +204,13 @@ to make-point  make-object( x:0, y:0, point:2 )
 make-point, 2 _point.x!, 5 _point.y!, out( "x is " & _point.x )
 ```
 
-With the object class and the object variable, it becomes easy to define **method word** that manipulate the object.
+With the object class and the object variable, it becomes easy to define **method words** that manipulate the object.
 
 ```
 to point.dump  method: { out( "( x:" & it.x & ", y: " & it.y & ")" ) }.
 ```
 
-Such method words are typically defined using the `method:` word. It creates a local variable name **it** and then it runs the specified block. Some other language use _self_ or _this_ instead of _it_.
+Such method words are typically defined using the `method:` word. It creates a local variable named **it** and then it runs the specified block. Some other language use _self_ or _this_ instead of _it_.
 
 Values
 ======
@@ -403,11 +403,11 @@ defn Hello-world  ( "Hello" out )
 
 Contrary to _aliases_, words defined in one dialect are available is all the other ones.
 
-To create a new dialect, simply swith to it.
+To create a new dialect, simply swith to it. Then it is a matter of words, methods of object, syntaxic aliases and some advanced technics yet to be fully described.
 
 ```
 /MyDialEct dialect, alias( "Fun", "to" )
-Fun HeLlO  "WoLD" out
+Fun HeLlO  "WorLD" out
 HeLlo
 ```
 
@@ -438,3 +438,5 @@ Conclusion
 ==========
 
 None yet. _That's all folk!_
+
+BTW: there are many bugs in the sample code, can you spot them?

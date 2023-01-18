@@ -7,15 +7,16 @@
 
 inox-dialect
 
-to make-point x:0 y:0 point:2 inox-make-object.
+
+to make-point x:0 y:0 point:2 inox-make-object
 
 to test-point
   make-point
   dump
-  1 _point.x! ~~ ToDo: _point x:1 .! or even x:1.!
+  1 _point.x!  ~~ ToDo: _point x:1 .! or even x:1.!
   2 _point.y!
   out( "( x:" & _point.x & ", y:" & _point.y & " )" )
-  drop ~~ forget point object
+  drop  ~~ forget point object
 point/test
 
 
@@ -23,9 +24,9 @@ to point.out method: { out( "( x:" & it.x & ", y:" & it.y & " )" ) };.
 
 to test-method-call
   make-point
-  _point .:out
-  _point .out()
-  drop ~~ forget point object
+  _point .:out   ~~ ToDo: _point.:out
+  _point .out()  ~~ ToDo: _point.out()
+  drop  ~~ forget point object
 method-call/test
 
 
@@ -89,35 +90,20 @@ to test-loop-break
   without-ii
 loop-break/test
 
-
-to times:do:
-  times:do/sentinel
-  blk| nn| ~~ begin
-  if: |nn >0? then: {
-    while: {
-      ( |nn - 1 ) dup |nn! >=0?
-    } do: {
-      |blk call
-    };
-  };
-  times:do/jump
-
-to times:loop: times:do:.
-
 to test-times-do
   times: 3 do: { out( "Time´goes on" ) } ;
 times-do/test
 
 
-to swap/ with /a /b (| |a x|, |b y|, |y |x |).
+to swap/ with /a /b ({ |a A|, |b B|, |B |A }).
 
 ~~ ToDo: to swap/ with /a /b function: { xxxx }.
 
 to test-swap/
-  2 3 swap/
-  "2 3 swap/, top should be 2, is "  prefix out
+  2 3 swap/()
+  "2 3 swap/(), top should be 2, is "  prefix out
   if: <>? 2 then: { out( "Expected 2 but got " prefix ) debugger };
-  "2 3 swap/, next should be 3, is " prefix out drop
+  "2 3 swap/(), next should be 3, is " prefix out drop
   swap/( 4, 5 )
   "swap/( 4, 5 ), top should be 4, is "  prefix out drop
   "swap/( 4, 5 ), next should be 5, is " prefix out drop
@@ -128,15 +114,15 @@ out( "About to /swap /debug-test")
 
 to say:to: swap out out( " " ) out.
 
-say: "Hello" to: "Smalltalk world!".
+say: "Hello" to: "Smalltalk world!";
 
-to hello out( "Hello world!" ).
+to hello out( "hello world!" ).
 
 hello()
 
 forth-dialect ( forth )
 
-: HELLO CR ." Hello forth world!" ;
+: HELLO CR ." HELLO forth world!" ;
 HELLO
 
 inox-dialect  ~~ back to inox
@@ -198,7 +184,6 @@ To test-Loop2
       Break
     EndLoop
   End
-EndTo
 
 Loop2/test
 

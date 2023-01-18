@@ -36,7 +36,8 @@
                         "program": "${workspaceFolder}\\lib\\inox.ts",
                         "skipFiles": [
                                 "<node_internals>/**"
-                        ]
+                        ],
+                        "outputCapture": "std"
                 }
         ]
 }

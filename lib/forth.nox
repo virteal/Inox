@@ -1,63 +1,53 @@
 ( forth.nox
     Forth dialect for Inox
 
-    Jan 11 2023 by JHR
+Jan 11 2023 by JHR
 
-    This file must be executed in order to get an approximately almost
-    non standard compliant Forth environment, an anarchist.
+This file must be executed in order to get an approximately almost non standard compliant Forth environment, an anarchist.
 
-    It assumes that bootstrap.nox has been executed first.
+It assumes that bootstrap.nox has been executed first.
 
-    This dialect of Forth is not based on the standard but on the work
-    of many people who have contributed to the Forth community over the
-    years. It is a mix of the ANS Forth standard, the Forth 2012 standard,
-    and the work of many others. It is not a complete implementation of
-    any of these standards but it is a good starting point for a Forth
-    post modern implementation.
+This dialect of Forth is not based on the standard but on the work of many people who have contributed to the Forth community over the years. It is a mix of the ANS Forth standard, the Forth 2012 standard, and the work of many others. It is not a complete implementation of any of these standards but it is a good starting point for a Forth post modern implementation.
 
-    This dialect is not intended to be used as a general purpose Forth
-    dialect but rather as an example for a new dialect.  The main
-    difference between this dialect and classical Forth dialects is that
-    cells are named values with a rich semantic instead of basic binary
-    words.
+This dialect is not intended to be used as a general purpose Forth dialect but rather as an example for a new dialect. The main difference between this dialect and classical Forth dialects is that cells are named values with a rich semantic instead of basic binary words.
 
-    The spirit of Forth is hopefully preserved in this dialect but the
-    purpose is focused on the developer's productivity more than on
-    speed or size considerations. VIC 20 had 3.5 kB of RAM. That was
-    in 1982. Nowadays, 2023, we have 64-bit machines with 64 GB of RAM and
-    microcontrollers like the ESP32 will soon have 1 MB of RAM and
-    will cost less than a dollar. Expect that, times 10, in 10 years.
+The spirit of Forth is hopefully preserved in this dialect but the purpose is focused on the developer's productivity more than on speed or size considerations. VIC 20 had 3.5 kB of RAM. That was in 1982. Nowadays, 2023, we have 64-bit machines with 64 GB of RAM and microcontrollers like the ESP32 will soon have 1 MB of RAM and will cost less than a dollar. Expect that, times 10, in 10 years.
 
-    The Forth spirit is still alive and well, you with the Forth be!
+The Forth spirit is still alive and well, you with the Forth be!
 
-    Dedicated to the memory of Charles Moore, the inventor of Forth.
-    "It’s too bad he won’t live. But then again, who does?”
-    - Douglas Adams
+Dedicated to the memory of Charles Moore, the inventor of Forth.
+"It’s too bad he won’t live. But then again, who does?”
+- Douglas Adams
 )
 
 
-: LITERAL    inox-literal            ;
-: SWAP       swap                    ;
-: DROP       drop                    ;
-: DUP        dup                     ;
-: OVER       over                    ;
-: PICK       pick                    ;
-: DUP        dup                     ;
-: ROT        rotate                  ;
+inox-dialect
+  "." "forth-dot"
+forth-dialect
+  alias
 
 
-: IMMEDIATE immediate!               ; immediate!
+: forth-dot  out                      ;
+: EMIT       inox-ascii-character out ;
+: LITERAL    inox-literal             ;
+: SWAP       swap                     ;
+: DROP       drop                     ;
+: DUP        dup                      ;
+: OVER       over                     ;
+: PICK       pick                     ;
+: DUP        dup                      ;
+: ROT        rotate                   ;
+: CR         10 EMIT                  ;
+: SPACE      32 EMIT                  ;
+: SPACES     { SPACE } SWAP times:do: ;
+: CHAR       ascii-code               ;
+: >R         inox-to-control          ;
+: R>         inox-from-control        ;
+: @R         inox-fetch-control       ;
+: IMMEDIATE  immediate!               ; IMMEDIATE
 
-: EMIT      inox-repl-emit           ;
-: CR        10 EMIT                  ;
-: SPACE     32 EMIT                  ;
-: SPACES    { SPACE } SWAP times-do  ;
-: CHAR      ascii-code               ;
-
-: .         inox-repl-dot            ;
-
-: ." /" inox-input-until LITERAL inox-quote . inox-machine-code ; IMMEDIATE
-
-: >R  inox-to-control    ;
-: R>  inox-from-control  ;
-: @R  inox-fetch-control ;
+: ."         34 inox-ascii-character  \ " character
+             inox-input-until
+             LITERAL
+             inox-quote .
+             inox-machine-code        ; IMMEDIATE
