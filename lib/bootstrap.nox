@@ -203,9 +203,9 @@ to debug-test  ~~ Helper for tests that needs to be debugged
 ~~ words with formal parameters are functions called with arguments
 to with      /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with
 
-to ({        with-parameters.    inline
-to })        without-parameters. inline
-to function: /inox-function-block ({ |inox-function-block call })
+to ({         with-parameters.    inline
+to })         without-parameters. inline
+to function:  /inox-function-block ({ |inox-function-block call })
 
 
 to times:do:

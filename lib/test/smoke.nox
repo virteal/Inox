@@ -1,6 +1,6 @@
 #!/bin/inox
 #  smoke.nox
-#   if it terminates, not all hope is lost
+#    if it terminates, not all hope is lost
 #
 # December 6 2022 by jhr, extracted from lib/inox.ts, adding oo stuff
 # January 11 2022 by jhr, extract to lib/bootstrap.nox
@@ -8,7 +8,7 @@
 inox-dialect
 
 
-to make-point x:0 y:0 point:2 inox-make-object
+to make-point  x:0 y:0 point:2 inox-make-object
 
 to test-point
   make-point
@@ -20,7 +20,7 @@ to test-point
 point/test
 
 
-to point.out method: { out( "( x:" & it.x & ", y:" & it.y & " )" ) };.
+to point.out  method: { out( "( x:" & it.x & ", y:" & it.y & " )" ) };.
 
 to test-method-call
   make-point
@@ -95,7 +95,7 @@ to test-times-do
 times-do/test
 
 
-to swap/ with /a /b ({ |a A|, |b B|, |B |A }).
+to swap/  with /a /b ({ |a A|, |b B|, |B |A }).
 
 ~~ ToDo: to swap/ with /a /b function: { xxxx }.
 
@@ -112,7 +112,7 @@ out( "About to /swap /debug-test")
 "swap/" test
 
 
-to say:to: swap out out( " " ) out.
+to say:to:  swap out out( " " ) out.
 
 say: "Hello" to: "Smalltalk world!";
 

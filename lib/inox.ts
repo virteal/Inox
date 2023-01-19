@@ -43,7 +43,7 @@ let mem_de   : boolean = de &&  true;  // Check for very low level load/store
 let alloc_de : boolean = de &&  true;  // Heap allocations integrity check
 let check_de : boolean = de &&  true;  // Enable runtime error checking, slow
 let token_de : boolean = de && false;  // Trace tokenization
-let parse_de : boolean = de && false;  // Trace parsing
+let parse_de : boolean = de && false;   // Trace parsing
 let eval_de  : boolean = de && false;  // Trace evaluation by text interpretor
 let run_de   : boolean = de && false;  // Trace execution by word runner
 let stack_de : boolean = de && false;  // Trace stacks
@@ -838,17 +838,21 @@ function cell_integer( c : Cell ) : Value {
  *  it is possible?
  *  All ptr are to regular InoxCells, all sizes are number of bytes. The header
  *  is two cells long and is stored before the area.
+ *  ToDo: size optimisation where name of ref counter also encodes the size.
+ *  This would be usefull for small areas, boxed values and proxied objects.
+ *  dynrc1 would mean one cell, ie 8 bytes + 8 bytes header. This
+ *  is a total of 16 bytes versus the non optimized 24 bytes.
  */
 
 
 // The first cell of a busy header is the reference counter.
-const tag_dynamic_ref_count = tag( "inox-dynamic-ref-count" );
+const tag_dynamic_ref_count = tag( "-dynrc" );
 
 // When the area is freed, that header is overwritten with this tag.
-const tag_dynamic_next_area = tag( "inox-dynamic-next-area" );
+const tag_dynamic_next_area = tag( "-dynxt" );
 
 // The second cell of the header is the ajusted size of the area in bytes.
-const tag_dynamic_area_size = tag( "inox-dynamic-area-size" );
+const tag_dynamic_area_size = tag( "-dynsz" );
 
 // This is where to find the size relative to the area first header address.
 const offset_of_area_size = size_of_cell / size_of_word;
@@ -861,6 +865,11 @@ var the_free_area_tail : Cell = the_free_area;
 function area_header( area : Cell ) : Cell {
 // Return the address of the first header cell of a byte area, the ref count.
   return area - 2 * size_of_cell / size_of_word;
+}
+
+function header_to_area( header : Cell ) : Cell {
+// Return the address of an area given the address of it's first header cell.
+  return header + 2 * size_of_cell / size_of_word;
 }
 
 
@@ -1535,11 +1544,11 @@ function definition_length( def : InoxAddress ) : InoxIndex {
  *  Flags for Inox words.
  */
 
-const immediate_word_flag = 0x80000;  // When compiling a new word, run vs store
-const hidden_word_flag    = 0x40000;  // ToDo: skipped when lookup
-const operator_word_flag  = 0x20000;  // Parser knows about left associativity
-const stream_word_flag    = 0x10000;  // ToDo: about generator
-const inline_word_flag    = 0x08000;  // When compiling inline definition
+const immediate_word_flag = 0x800000; // When compiling a new word, run vs store
+const hidden_word_flag    = 0x400000; // ToDo: skipped when lookup
+const operator_word_flag  = 0x200000; // Parser knows about left associativity
+const block_word_flag     = 0x100000; // True for blocks, false for words
+const inline_word_flag    = 0x080000; // When compiling inline definition
 
 
 function set_inox_word_flag( id : InoxWord, flag : Value ){
@@ -1584,15 +1593,19 @@ function is_operator_inox_word( id : InoxIndex ) : Value {
 }
 
 
-function set_stream_inox_word_stream_flag( id : InoxIndex ) : void {
-  // See Icon language goal directed backtrackings
-  // https://lib.dr.iastate.edu/cgi/viewcontent.cgi?article=1172&context=cs_techreports
-  set_inox_word_flag( id, stream_word_flag );
+function set_inox_word_block_flag( id : InoxIndex ) : void {
+  set_inox_word_flag( id, block_word_flag );
 }
 
 
-function is_stream_inox_word( id : InoxIndex ) : Value {
-  return test_inox_word_flag( id, stream_word_flag );
+function is_block_inox_word( id : InoxIndex ) : Value {
+  return test_inox_word_flag( id, block_word_flag );
+}
+
+
+function is_block_ip( ip : InoxAddress ) : boolean {
+  de&&mand_name( name( ip ), tag_inox_block );
+  return ( value( ip ) & block_word_flag ) != 0;
 }
 
 
@@ -2440,27 +2453,109 @@ function is_tag_singleton( c : Cell ) : boolean {
 }
 
 
+// The header of each block of machine codes.
+const tag_inox_block = tag( "inox-block" );
+
+
+function is_block( c : Cell ) : boolean {
+  return name( c ) == tag_inox_block;
+}
+
+
+function is_word_block( c : Cell ) : boolean {
+// True when block is the definition of a word vs inline code.
+  return is_block( c ) && !is_block_inox_word( c );
+}
+
+
+function block_dump( ip : InoxAddress ) : text {
+  de&&mand( is_block( ip ) );
+  const length = block_length( ip );
+  let buf = "";
+  buf += "Block " + ip + ", length " + length;
+  // ToD: decode flags
+  if( is_immediate_inox_word( ip ) ){
+    buf += ", immediate";
+  }
+  if( is_block_inox_word( ip ) ){
+    buf += ", inline {]";
+  }else{
+    buf += ", word definition";
+  }
+  return buf;
+}
+
+
+let cell_dump_entered = false;
+
+
 function cell_dump( c : Cell ) : text {
+
+  // Detect recursive calls
+  if( cell_dump_entered ){
+    return "cell_dump( " + c + " )";
+  }
+  cell_dump_entered = true;
 
   const is_valid = safe_cell( c );
 
   let v : Value = value( c );
-  let i : Info  = info( c );
+  let i : Info  = info(  c );
   let t : Type  = unpack_type( i );
-  let n : InoxName  = unpack_name( i );
+  let n : Tag   = unpack_name( i );
 
   let buf : text = "";
 
   switch( t ){
 
     case type_void :
+
+      if( n == tag_dynamic_ref_count ){
+        // Check integrity of dynamic area
+        if( !is_safe_area( header_to_area( c ) ) ){
+          buf += "Invalid dynamic area, ";
+        }else{
+          cell_dump_entered = false;
+          return "busy " + v;
+        }
+
+      }else if( n == tag_dynamic_next_area ){
+        // Check integrity of dynamic area
+        if( !is_safe_area( header_to_area( c ) ) ){
+          buf += "Invalid dynamic free area, ";
+        }else{
+          cell_dump_entered = false;
+          return "free " + v;
+        }
+
+      }else if( n == tag_dynamic_area_size ){
+        // Check integrity of dynamic area
+        if( !is_safe_area( header_to_area( c - words_per_cell ) ) ){
+          buf += "Invalid dynamic area size, ";
+        }else{
+          cell_dump_entered = false;
+          if( is_busy_area( header_to_area( c - words_per_cell ) )){
+            return "length " + ( v - 2 * size_of_cell ) / size_of_cell;
+          }else{
+            return "size " + v;
+          }
+        }
+
+      }else if( n == tag_inox_block ){
+        // Block description often comes next
+        if( is_block( c + words_per_cell ) ){
+          cell_dump_entered = false;
+          return "inox-block definition";
+        }
+      }
+
       if( n != tag_void || v != 0 ){
-        buf += tag_to_text( n ) + ":";
+        buf += tag_to_text( n );
       }
       if( v == 0 ){
-        buf += "<void>";
+        // buf += ":<void>";
       }else{
-        buf += "<void:" + v + ">";
+        buf += ":<void:" + v + ">";
       }
     break;
 
@@ -2468,7 +2563,7 @@ function cell_dump( c : Cell ) : text {
       if( n == v ){
         buf += "/" + tag_to_text( n );
         if( is_tag_singleton( c ) ){
-          buf += "<SINGLETON>";
+          buf += " - <SINGLETON>";
         }
       }else{
         buf += tag_to_text( n ) + ":/" + tag_to_text( v );
@@ -2476,6 +2571,11 @@ function cell_dump( c : Cell ) : text {
     break;
 
     case type_integer :
+      if( n == tag_inox_block ){
+        const block_dump_text = block_dump( c );
+        cell_dump_entered = false;
+        return block_dump_text;
+      }
       if( n != tag_integer ){
         buf += tag_to_text( n ) + ":";
       }
@@ -2515,15 +2615,18 @@ function cell_dump( c : Cell ) : text {
       .replace( "\\",  () => "\\\\" )
       buf += "\"" + text + "\"";
       if( c == the_empty_text_cell ){
-        buf += "<SINGLETON>";
+        buf += " - <SINGLETON>";
       }else if( text.length == 0 && v != 0 ){
-        buf += "<INVALID_EMPTY_TEXT>";
+        buf += " - <INVALID_EMPTY_TEXT>";
       }
     break;
 
     case type_word :
       // ToDo: add name
-      buf += tag_to_text( n ) + ":<word:" + v + ">";
+      buf += tag_to_text( n );
+      if( v != 0 ){
+        buf += ":<word:" + v + ">";
+      }
     break;
 
     case type_flow :
@@ -2538,6 +2641,9 @@ function cell_dump( c : Cell ) : text {
     break;
 
   }
+
+
+  cell_dump_entered = false;
 
   buf += " - " + t + "/" + n + "/" + v
   + " " + type_to_text( t ) + " @" + c
@@ -2729,9 +2835,9 @@ primitive( "inox-type", primitive_inox_type );
 function                primitive_inox_type(){
 // Get type as a tag
   const t = type( TOS );
-  const ttag = type_to_tag( t );
-  clear_cell(     TOS );
-  init_cell(      TOS, t, pack( type_tag, tag_type ) );
+  const tag = type_to_tag( t );
+  clear_cell( TOS );
+  init_cell(  TOS, tag, pack( type_tag, tag_type ) );
 }
 
 
@@ -2739,8 +2845,8 @@ primitive( "inox-name", primitive_inox_name );
 function                primitive_inox_name(){
 // Get name as a tag
   const n = name( TOS );
-  clear_cell(     TOS );
-  init_cell(      TOS, n, pack( type_tag, tag_name ) );
+  clear_cell( TOS );
+  init_cell(  TOS, n, pack( type_tag, tag_name ) );
 }
 
 
@@ -2748,8 +2854,8 @@ primitive( "inox-value", primitive_inox_value );
 function primitive_inox_value(){
 // Get value as an integer
   let v = value( TOS );
-  clear_cell(    TOS );
-  init_cell(     TOS, v, pack( type_integer, tag_value ) );
+  clear_cell( TOS );
+  init_cell(  TOS, v, pack( type_integer, tag_value ) );
 }
 
 
@@ -2764,12 +2870,13 @@ primitive( "inox-info", function primitive_inox_info(){
 primitive( "inox-pack-info", primitive_inox_pack_info );
 function                     primitive_inox_pack_info(){
 // Pack type and name into an integer, see inox-unpack-type and inox-unpack-name
-  const name = POP();
-  const type = TOS;
-  const type_id = tag_to_type( type );
-  const info = pack( type_tag, value( name ) );
-  clear_cell( type );
-  clear_cell( name );
+  const name_cell= POP();
+  const type_cell = TOS;
+  const type_id = tag_to_type( value( type_cell ) );
+  de&&mand( type_id != type_invalid );
+  const info = pack( type_tag, value( name_cell ) );
+  clear_cell( type_cell );
+  clear_cell( name_cell );
   init_cell(  TOS, info, pack( type_integer, tag_info ) );
 }
 
@@ -2805,51 +2912,51 @@ function                       primitive_inox_unpack_name(){
 
 
 // Type is encoded using 3 bits, hence there exists at most 8 types.
-const type_to_text_array        = new Array< text >;
-const type_to_tag_array         = new Array< InoxIndex >;
-const type_name_to_type_id_map  = new Map< text, Type >;
-const tag_to_type_id_map        = new Map< Tag, InoxIndex >;
+const all_type_text_names_by_type_id  = new Array< text >;
+const all_type_tags_by_type_id        = new Array< Tag >;
+const all_type_ids_by_text_name       = new Map< text, Type >;
+const all_type_ids_by_tag             = new Map< Tag, InoxIndex >;
 
 
-type_to_text_array[ type_void    ] = "void";
-type_to_text_array[ type_tag     ] = "tag";
-type_to_text_array[ type_integer ] = "integer";
-type_to_text_array[ type_pointer ] = "pointer";
-type_to_text_array[ type_proxy   ] = "proxy";
-type_to_text_array[ type_text    ] = "text";
-type_to_text_array[ type_word    ] = "word";
-type_to_text_array[ type_flow    ] = "flow";
-type_to_text_array[ type_invalid ] = "invalid";
+all_type_text_names_by_type_id[ type_void    ] = "void";
+all_type_text_names_by_type_id[ type_tag     ] = "tag";
+all_type_text_names_by_type_id[ type_integer ] = "integer";
+all_type_text_names_by_type_id[ type_pointer ] = "pointer";
+all_type_text_names_by_type_id[ type_proxy   ] = "proxy";
+all_type_text_names_by_type_id[ type_text    ] = "text";
+all_type_text_names_by_type_id[ type_word    ] = "word";
+all_type_text_names_by_type_id[ type_flow    ] = "flow";
+all_type_text_names_by_type_id[ type_invalid ] = "invalid";
 
-type_to_tag_array[ type_void    ] = tag_void;
-type_to_tag_array[ type_tag     ] = tag_tag;
-type_to_tag_array[ type_integer ] = tag_integer;
-type_to_tag_array[ type_pointer ] = tag_pointer;
-type_to_tag_array[ type_proxy   ] = tag_proxy;
-type_to_tag_array[ type_text    ] = tag_text;
-type_to_tag_array[ type_word    ] = tag_word;
-type_to_tag_array[ type_flow    ] = tag_flow;
-type_to_tag_array[ type_invalid ] = tag_invalid;
+all_type_tags_by_type_id[ type_void    ] = tag_void;
+all_type_tags_by_type_id[ type_tag     ] = tag_tag;
+all_type_tags_by_type_id[ type_integer ] = tag_integer;
+all_type_tags_by_type_id[ type_pointer ] = tag_pointer;
+all_type_tags_by_type_id[ type_proxy   ] = tag_proxy;
+all_type_tags_by_type_id[ type_text    ] = tag_text;
+all_type_tags_by_type_id[ type_word    ] = tag_word;
+all_type_tags_by_type_id[ type_flow    ] = tag_flow;
+all_type_tags_by_type_id[ type_invalid ] = tag_invalid;
 
-type_name_to_type_id_map.set( "void",    type_void    );
-type_name_to_type_id_map.set( "tag",     type_tag     );
-type_name_to_type_id_map.set( "integer", type_integer );
-type_name_to_type_id_map.set( "pointer", type_pointer );
-type_name_to_type_id_map.set( "proxy",   type_proxy   );
-type_name_to_type_id_map.set( "text",    type_text    );
-type_name_to_type_id_map.set( "word",    type_word    );
-type_name_to_type_id_map.set( "flow",    type_flow    );
-type_name_to_type_id_map.set( "invalid", type_invalid );
+all_type_ids_by_text_name.set( "void",    type_void    );
+all_type_ids_by_text_name.set( "tag",     type_tag     );
+all_type_ids_by_text_name.set( "integer", type_integer );
+all_type_ids_by_text_name.set( "pointer", type_pointer );
+all_type_ids_by_text_name.set( "proxy",   type_proxy   );
+all_type_ids_by_text_name.set( "text",    type_text    );
+all_type_ids_by_text_name.set( "word",    type_word    );
+all_type_ids_by_text_name.set( "flow",    type_flow    );
+all_type_ids_by_text_name.set( "invalid", type_invalid );
 
-tag_to_type_id_map.set( tag_void,    type_void    );
-tag_to_type_id_map.set( tag_tag,     type_tag     );
-tag_to_type_id_map.set( tag_integer, type_integer );
-tag_to_type_id_map.set( tag_pointer, type_pointer );
-tag_to_type_id_map.set( tag_proxy,   type_proxy   );
-tag_to_type_id_map.set( tag_text,    type_text    );
-tag_to_type_id_map.set( tag_word,    type_word    );
-tag_to_type_id_map.set( tag_flow,    type_flow    );
-tag_to_type_id_map.set( tag_invalid, type_invalid );
+all_type_ids_by_tag.set( tag_void,    type_void    );
+all_type_ids_by_tag.set( tag_tag,     type_tag     );
+all_type_ids_by_tag.set( tag_integer, type_integer );
+all_type_ids_by_tag.set( tag_pointer, type_pointer );
+all_type_ids_by_tag.set( tag_proxy,   type_proxy   );
+all_type_ids_by_tag.set( tag_text,    type_text    );
+all_type_ids_by_tag.set( tag_word,    type_word    );
+all_type_ids_by_tag.set( tag_flow,    type_flow    );
+all_type_ids_by_tag.set( tag_invalid, type_invalid );
 
 
 function type_to_text( type_id : InoxIndex ) : text {
@@ -2857,27 +2964,27 @@ function type_to_text( type_id : InoxIndex ) : text {
   if( type_id < 0 || type_id > 7 ){
     return "invalid";
   }
-  return type_to_text_array[ type_id ];
+  return all_type_text_names_by_type_id[ type_id ];
 }
 
 
 function type_to_tag( type_id : InoxIndex ) : Tag {
 // Convert a type id, 0..7, into it's tag.
   if( type_id < 0 || type_id > 7 )return tag_invalid;
-  return type_to_tag_array[ type_id ];
+  return all_type_tags_by_type_id[ type_id ];
 }
 
 
-function tag_to_type( tag : InoxIndex ) : Type {
+function tag_to_type( tag : Tag ) : Type {
 // Convert a tag into a type id in range 0..8 where 8 is invalid.
-  if( tag_to_type_id_map.has( tag ) )return tag_to_type_id_map.get( tag );
+  if( all_type_ids_by_tag.has( tag ) )return all_type_ids_by_tag.get( tag );
   return type_invalid;
 }
 
 
 function type_name_to_type( name : text ) : Type {
 // Convert a type text name into a type id in range 0..8 where 8 is invalid.
-  if( type_name_to_type_id_map.has( name ) )return type_name_to_type_id_map.get( name );
+  if( all_type_ids_by_text_name.has( name ) )return all_type_ids_by_text_name.get( name );
   return type_invalid;
 }
 
@@ -2899,7 +3006,7 @@ function mand_name( actual : InoxIndex, expected : InoxIndex ){
 
 
 function mand_cell_type( cell : Cell, type_id : InoxIndex ): void {
-// Assert that the type of a cell is the integer type.
+// Assert that the type of a cell is the expected type.
   const actual_type = type( cell );
   if( actual_type == type_id )return;
   bug( "Bad type for cell " + cell
@@ -3736,6 +3843,7 @@ primitive( "inox-join-text", primitive_inox_join_text );
 operator_primitive( "as\"\"", function primitive_as_text(){
   const p = TOS;
   if( type( p ) == type_text )return;
+  // ToDo: free cell
   copy_cell( make_text_cell( cell_to_text( p ) ), p );
 } );
 
@@ -5608,16 +5716,34 @@ primitive( "inox-run", function primitive_inox_run(){
 } );
 
 
-const tag_block_length = tag( "block-length" );
+function block_length( ip : InoxAddress ){
+// Get the length of the block at ip.
+  check_de&&mand_eq( name( ip ), tag_inox_block );
+  const block_length = value( ip ) & 0xffff;
+  return block_length;
+}
+
+
+function block_flags( ip : InoxIndex ){
+// Get the flags of the block at ip.
+  check_de&&mand_eq( name( ip ), tag_inox_block );
+  const block_flags = value( ip ) >> 16;
+  return block_flags;
+}
 
 
 primitive( "inox-block", function primitive_inox_block(){
 // Skip block code after IP but push it's address. Ready for inox-call
   const ip = IP;
-  check_de&&mand_eq( name( ip ), tag_block_length );
-  const block_length = value( ip );
+  check_de&&mand_type( type( ip ), type_integer );
+  check_de&&mand_name( name( ip ), tag_inox_block );
+  let length = block_length( ip );
+  // If block is actually the block of a word then it is stored elsewhere
+  if( de && is_block_ip( ip ) ){
+    de&&mand_neq( length, 0 );
+  }
   if( check_de ){
-    de&&mand( block_length != 0 );
+    de&&mand( length != 0 || !is_block_ip( ip ) );
     // For debugging purpose I store the block's ip somewhere
     set_value( the_block_work_cell, ip );
     copy_cell( the_block_work_cell, PUSH() );
@@ -5626,7 +5752,7 @@ primitive( "inox-block", function primitive_inox_block(){
     de&&mand_eq( value( new_tos ), 0 );
     set_value( new_tos, ip );
   }
-  const new_ip = ip + ( 1 + block_length ) * words_per_cell;
+  const new_ip = ip + ( 1 + length ) * words_per_cell;
   if( de ){
     // There should be a return opcode at the end of the block
     const previous_cell = new_ip - words_per_cell;
@@ -6748,7 +6874,7 @@ primitive( "inox-input-token", function primitive_inox_input_token(){
  *  interpretor that can be found in the RUN() function.
  */
 
-const tag_inox_block               = tag( "inox-block"               );
+//const tag_inox_block             = tag( "inox-block"               );
 const tag_inox_call_method_by_name = tag( "inox-call-method-by-name" );
 const tag_inox_call_method_by_tag  = tag( "inox-call-method-by-tag"  );
 const tag_inox_get_control         = tag( "inox-get-control"         );
@@ -6890,8 +7016,9 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
   type MachineCode = { type: InoxIndex, name: InoxName, value: Value };
 
   // A block is an array of encoded words from {} delimited source code.
-  // The first cell is named block-length, it is the number of cells after it.
-  // ToDo: it should be a normal array of cells, dynamically allocated.
+  // The first cell is named inox-block, it contains the number of cells
+  // in the block, including the first one and flags.
+  // ToDo: it could be a normal array of cells, dynamically allocated.
   type InoxBlock = Array< MachineCode >;
 
   // Some syntactic constructions can nest: calls, sub expressions, etc.
@@ -7027,6 +7154,9 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     let w : MachineCode;
     while( ii < new_word_level.codes_count ){
       w = new_word_level.codes[ ii ];
+      if( de && w.name == tag_inox_block && w.type != 0 ){
+        mand_neq( w.value & block_word_flag, 0 );
+      }
       set_cell( def + ii * words_per_cell, w.type, w.name, w.value );
       ii++;
     }
@@ -7239,7 +7369,7 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     // Reserve one word for block's length, like for word definitions
     level.codes[ level.codes_count++ ] = {
       type:  type_integer,
-      name:  tag_block_length,
+      name:  tag_inox_block,
       value: 0
     };
   }
@@ -7256,10 +7386,10 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
     };
     const block_length = level.codes_count - level.block_start;
     // Set argument for inox-block, make it look like a valid literal
-    de&&mand_eq( level.codes[ level.block_start ].name, tag_block_length )
+    de&&mand_eq( level.codes[ level.block_start ].name, tag_inox_block )
     level.codes[ level.block_start ].value
     // = 0x80000000 | 0x20000000 | ( block_length - 1 );
-    = block_length - 1;
+    = ( block_length - 1 ) | block_word_flag;
     // -1 not to add the length word
     leave_level();
   }
@@ -7519,7 +7649,8 @@ primitive( "inox-eval", function primitive_inox_eval() : void {
           word_id = inox_word_tag_by_text_name( val );
           if( word_id == 0 ){
             parse_de&&bug( "Parser. Undefined word: " + val );
-            indebugger;
+            // ToDo: warning, user enabled
+            // debugger;
           }
         }
       }
@@ -8084,6 +8215,7 @@ function                      primitive_inox_repl_dot(){
   Fun.clear_cell( Fun.POP() );
 }
 
+
 I.evaluate( "~| redefine output stream |~ to basic-out inox-repl-out." );
 I.evaluate( "( . writes TOS on stdout )  : .  out ;" );
 
@@ -8096,9 +8228,17 @@ const loop = repl.start( {
     callback( null, result );
   },
   input:  process.stdin,
-  output: process.stdout
+  output: process.stdout,
+  ignoreUndefined: true,
+  writer : ( result ) => result;
 } );
 
+
+loop.setupHistory( "inox-repl-history", ( err, repl ) => {
+  if( err ){
+    console.log( "Inox. Error while loading history: " + err );
+  }
+} );
 
 loop.on( "exit", () => {
   console.log( "Inox. Received exit event from repl" );
