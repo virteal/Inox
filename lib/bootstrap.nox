@@ -63,6 +63,13 @@ to current-dialect     inox-current-dialect
 to dialect             inox-dialect
 to object-set          inox-object-set
 to object-get          inox-object-get
+to void?               inox-is-a-void
+to boolean?            inox-is-a-boolean
+to tag?                inox-is-a-tag
+to integer?            inox-is-an-integer
+to pointer?            inox-is-a-pointer
+to proxy?              inox-is-a-proxy
+to word?               inox-is-a-word
 
 to basic-out           inox-out
 to out                 /basic-out call-by-tag  ~~ late binding

@@ -37,16 +37,16 @@ forth-dialect
 : PICK       pick                     ;
 : DUP        dup                      ;
 : ROT        rotate                   ;
-: CR         10 EMIT                  ;
+: CR         13 EMIT                  ;
 : SPACE      32 EMIT                  ;
-: SPACES     { SPACE } SWAP times:do: ;
+: SPACES     { SPACE } SWAP times:do: ; \ ToDo: { and } defining words
 : CHAR       ascii-code               ;
 : >R         inox-to-control          ;
 : R>         inox-from-control        ;
 : @R         inox-fetch-control       ;
 : IMMEDIATE  immediate!               ; IMMEDIATE
 
-: ."         34 inox-ascii-character  \ " character
+: ."         34 inox-ascii-character
              inox-input-until
              LITERAL
              inox-quote .
