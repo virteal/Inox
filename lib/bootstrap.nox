@@ -99,10 +99,10 @@ to constant:is:  create-constant. inline
 to global:is:    create-global.   inline
 
 to init-globals
-  constant: /inox-version is: "v0.3.0";
+  constant: /inox-version is: "v0.3.1";
   constant: "void"        is: cast( 0, 0 );
-  constant: /true         is: true:1;
-  constant: /false        is: false:0;
+  constant: /true         is: cast( true:1,  1 );
+  constant: /false        is: cast( false:0, 1 );
 init-globals
 
 
@@ -206,6 +206,7 @@ to debug-test  ~~ Helper for tests that needs to be debugged
   "test-" prefix, debug, call-by-name, no-debug
   ~~ ToDo: developer must check that data stack is unchanged
   "End of debug-test for " prefix out
+
 
 ~~ words with formal parameters are functions called with arguments
 to with      /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with

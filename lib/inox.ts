@@ -113,7 +113,6 @@ de&&bug( "Inox starting." );
 // Let's say Typescript is AssemblyScript for a while (june 7 2021)
 type u8    = number;
 type u32   = number;
-type float = number;  // assumed to be larger then isize
 
 // ToDo: should do that when?
 // require( "assemblyscript/std/portable" );
@@ -189,49 +188,64 @@ const mem8  = new ArrayBuffer( INOX_HEAP_SIZE  ); // 256 kb
 const mem32 = new Int32Array( mem8 );
 // ToDo: with AssemblyScript const mem64 = new Int64Array( mem8 );
 
+
+const breakpoint_cell = 100000; // Write access triggers a debugger breakpoint
+
 function set_value( c : Cell, v : Value ) : void  {
-  // de&&mand( ( c & 1 ) == 0 );
-  if( c == 2126 )debugger;
-  if( v == 2122 )debugger;
+  if( de && c == breakpoint_cell )debugger;
   mem32[ c << 1 ] = v |0;
 }
 
 function set_info( c : Cell, i : Info  ) : void  {
-  // de&&mand( ( c & 1 ) == 0 );
-  if( c == 2126 )debugger;
-  if( unpack_name( i ) == 2122 )debugger;
+  if( de && c == breakpoint_cell )debugger;
   mem32[ ( c << 1 ) + 1 ] = i |0;
 }
 
 function value( c : Cell ) : Value {
-  // de&&mand( ( c & 1 ) == 0 );
   // return mem64[ c ] & 0xffffffff
   return mem32[ c << 1 |0 ];
 }
 
 function info( c : Cell ) : Info {
-  // de&&mand( ( c & 1 ) == 0 );
   // return mem64[ c ] >>> 32;
   return mem32[ ( c << 1 ) + 1 ] |0;
 }
 
 function reset_cell( c : Cell ) : void {
-   init_cell( c, 0, 0 );
+  if( de && c == breakpoint_cell )debugger;
+  // mem64[ c ] = 0;
+  mem32[   c << 1       ] = 0;
+  mem32[ ( c << 1 ) + 1 ] = 0;
 }
 
+
+function reset_cell_value( c : Cell ) : void {
+  if( de && c == breakpoint_cell )debugger;
+  mem32[ c << 1 ] = 0;
+}
+
+
+function reset_cell_info( c : Cell ) : void {
+  if( de && c == breakpoint_cell )debugger;
+  mem32[ ( c << 1 ) + 1 ] = 0;
+}
+
+
 function init_cell( c : Cell, v : Value, i : Info ) : void{
-  // if( c == 2 )debugger;
-  // if( c == 2126 )debugger;
-  // de&&mand( ( c & 1 ) == 0 );
+  if( de && c == breakpoint_cell )debugger;
   // mem64[ c ] = v | ( i << 32 );
   mem32[   c << 1       ] = v |0;
   mem32[ ( c << 1 ) + 1 ] = i |0;
 }
 
-function init_copy_cell( dest : Cell, src : Cell ) : void {
-// Initialize a cell, using another one.
-  init_cell( dest, value( src ), info(  src ) );
+
+function init_copy_cell( dst : Cell, src : Cell ) : void {
+// Initialize a cell, using another one, raw copy.
+  if( de && dst == breakpoint_cell )debugger;
+  mem32[   dst << 1       ] = mem32[   src << 1       ] |0;
+  mem32[ ( dst << 1 ) + 1 ] = mem32[ ( src << 1 ) + 1 ] |0;
 }
+
 
 function pack( t : Type, n : InoxName ) : Info { return n | t << 28; }
 function unpack_type( i : Info )        : Type { return i >>> 28; } // 4 bits
@@ -254,7 +268,6 @@ function set_type( c : Cell, t : Type ) : void{
 }
 
 function set_name( c : Cell, n : Tag ) : void{
-  if( c == 2 )debugger;
   // The name of the tag cell that defines the tag must never change.
   if( de && type( c ) == 1 && c == value( c ) ){
     de&&mand_eq( n, c );
@@ -492,9 +505,7 @@ function set_cell( c : Cell, t : Type, n : InoxName, v : Value ){
 }
 
 
-
-
-function is_list_cell( c : Cell ) : boolean {
+function is_a_list_cell( c : Cell ) : boolean {
 // Returns true if the cell is a list cell
   return name( c ) == tag_list;
 }
@@ -510,6 +521,7 @@ function next_cell( c : Cell ) : Cell {
 // Assuming cell is a list member, return next cell in list
   // When a cell is unused, the name is changed into "list" and the value
   // is used to store the next cell in some list.
+  // ToDo: use a native type instead of this trickery?
   de&&mand_list_cell( c );
   return value( c );
 }
@@ -533,7 +545,7 @@ function copy_cell( source : Cell, destination : Cell ) : void {
   }
   // If the source was a reference, increment the reference counter
   if( is_reference_cell( source ) ){
-    // This would not be necessary if there were a classical GB
+    // This would not be necessary if there were a classical GC.
     // However, I may implement some destructor logic when an object
     // goes out of scope and it sometimes make sense to have that logic
     // excuted immediately instead of later on as would happen with a
@@ -564,46 +576,53 @@ function raw_move_cell( source : Cell, destination : Cell ) : void {
 
 
 function clear_cell_value( cell : Cell ) : void {
-// If reference, decrement reference counter and free if needed.
-  if( ! is_reference_cell( cell ) ){
-    if( de ){
-      if( type( cell ) == type_tag
-      &&  value( cell ) == cell
-      ){
-        de&&bug( "clear_cell_value() on a tag cell" );
-        debugger;
-        return;
-      }
-    }
-    set_value( cell, 0 );
-    return;
-  }
-  const reference = value( cell );
-  if( is_last_reference_to_area( reference ) ){
-    if( is_a_pointer_cell( reference ) ){
-      // Clear all attributes
-      // ToDo: avoid recursion?
-      const length = object_length( reference );
-      let ii : InoxIndex = 0;
-      while( ii++ < length ){
-        clear_cell( reference + ii * size_of_cell );
-      }
-    }else{
-      // ToDo: handle array/map/lists
-      free_proxy( reference );
-    }
-    free_area( reference );
-    set_value( cell, 0 );
-  }else{
-    decrement_object_ref_count( reference );
-  }
+  de&&mand( ! is_reference_cell( cell ) );
+  reset_cell_value( cell );
 }
 
 
 function clear_cell( cell : Cell ) : void {
-// Clear both value and info of cell, handle references
-  clear_cell_value( cell );
+// If reference, decrement reference counter and free if needed.
+
+  if( ! is_reference_cell( cell ) ){
+    if( de ){
+      if( type(  cell ) == type_tag
+      &&  value( cell ) == cell
+      ){
+        FATAL( "clear_cell() on " + cell_dump( cell ) );
+        return;
+      }
+    }
+    reset_cell( cell );
+    return;
+  }
+
+  const is_pointer = is_a_pointer_cell( cell );
+  const reference  = value( cell );
   reset_cell( cell );
+
+  if( !is_last_reference_to_area( reference ) ){
+    decrement_object_ref_count( reference );
+    return;
+  }
+
+  // Last reference reached, need to free the area
+
+  // If object, first clear all it's attributes
+  if( is_pointer ){
+    // ToDo: avoid recursion?
+    const length = object_length( reference );
+    for( let ii = 0 ; ii < length ; ii++ ){
+      clear_cell( reference + ii * words_per_cell );
+    }
+
+  // Else it is some other type of reference, a proxy ultimately
+  }else{
+    free_proxy( reference );
+  }
+
+  // Then safely free the area
+  free_area( reference );
 }
 
 
@@ -631,6 +650,7 @@ const boolean_true  = 1;
 
 
 function make_boolean_cell( v : Value ) : Cell {
+  de&&mand( v == boolean_false || v == boolean_true );
   return make_cell( type_boolean, tag_boolean, v );
 }
 
@@ -650,10 +670,11 @@ function cell_boolean( c : Cell ) : Value {
  *  is used.
  *
  *  Special tag /void is a falsy value. It's id is 0.
+ *  ToDo: maybe only boolean false is false and all other values are truthy?
  *
  *  For each tag there exists a singleton cell whose address is the id
  *  of the tag. Other cells can then reference that singleton cell so
- *  that two tag cells with the same id are considered equal.
+ *  that two tag cells with the same value are considered equal.
  */
 
 const type_tag = 2;
@@ -661,7 +682,7 @@ const type_tag = 2;
 
 // the dictionary of tag ids <-> tag cells
 // ToDo: should be a regular object
-const all_tag_singleton_cells_by_text_name = new Map< text, Tag >();
+const all_tag_singleton_cells_by_text_name = new Map< text, Tag  >();
 const all_tag_singleton_text_names_by_id   = new Map< Tag,  text >()
 
 
@@ -672,7 +693,7 @@ function tag( tag : text ) : Tag {
     init_cell( cell, cell, pack( type_tag, cell ) );
     eval_de&&bug( "Creating tag " + tag );
     all_tag_singleton_cells_by_text_name.set( tag, cell );
-    all_tag_singleton_text_names_by_id.set( cell, tag );
+    all_tag_singleton_text_names_by_id.set(  cell, tag  );
     // ToDo: create a /xxx word, a constant?
     // I would then be able to use that word id as the tag id?
     // This would make the tags available in the Forth dialect.
@@ -735,7 +756,7 @@ de&&mand_eq( type( tag( "void" ) ), type_void );
 // /true comes next. It should ideally be id 1, but it's not if
 // cells needs multiple words. Fortunately, size_of_word can be
 // set to size of cell, in this implementation. But this may
-// prove impossible in some future case.
+// prove impossible in some future cases.
 tag( "true" );
 de&&mand_eq( tag( "true" ), 1 * words_per_cell ); // ToDo: 1 vs 2?
 de&&mand_eq( type( tag( "true" ) ), type_tag );
@@ -813,7 +834,7 @@ function tag_singleton_cell_by_name( n : text ) : Cell {
  *  Integer, type 3, 32 bits
  *  ToDo: Double integers, 64 bits.
  *  ToDo: BigInt objects to deal with arbitrary long integers.
- *  ToDo: type_boolean, type_f64, type_bigint, type_f32
+ *  ToDo: type_f64, type_bigint, type_f32
  */
 
 
@@ -854,13 +875,13 @@ function cell_integer( c : Cell ) : Value {
 
 
 // The first cell of a busy header is the reference counter.
-const tag_dynamic_ref_count = tag( "-dynrc" );
+const tag_dynamic_ref_count = tag( "_dynrc" );
 
 // When the area is freed, that header is overwritten with this tag.
-const tag_dynamic_next_area = tag( "-dynxt" );
+const tag_dynamic_next_area = tag( "_dynxt" );
 
 // The second cell of the header is the ajusted size of the area in bytes.
-const tag_dynamic_area_size = tag( "-dynsz" );
+const tag_dynamic_area_size = tag( "_dynsz" );
 
 // This is where to find the size relative to the area first header address.
 const offset_of_area_size = words_per_cell;
@@ -914,7 +935,20 @@ function is_free_area( area : Cell ) : boolean {
 
 function is_dynamic_area( area : Cell ) : boolean {
 // Return true if the area is a dynamic area, false otherwise
-  return is_busy_area( area ) || is_free_area( area );
+  // This is maybe not 100% reliable, but it is good enough.
+  const first_header_ok  = is_busy_area( area ) || is_free_area( area );
+  if( ! first_header_ok )return false;
+  const second_header_ok
+  = name( area_header( area ) + words_per_cell ) == tag_dynamic_area_size;
+  return second_header_ok;
+}
+
+
+function free_if_area( area : Cell ) : void {
+// Unlock the area if it is a dynamic area
+  if( is_dynamic_area( area ) ){
+    free_area( area );
+  }
 }
 
 
@@ -940,7 +974,7 @@ function set_area_ref_count( area : Cell, v : Value ) : void {
 
 
 function area_size( area : Cell ) : InoxSize {
-// Return the size of a byte area
+// Return the size of a byte area, in bytes
   return value( area_header( area ) + offset_of_area_size );
 }
 
@@ -953,6 +987,7 @@ function set_area_size( area : Cell, v : InoxSize ) : void {
 
 function set_area_size_tag( area : Cell ) : void {
 // Set the tag of the second header of a byte area to tag_dynamic_area_size
+  // The second header is after the first one, ie after the ref count.
   set_name(
     area_header( area ) + offset_of_area_size,
     tag_dynamic_area_size
@@ -961,41 +996,179 @@ function set_area_size_tag( area : Cell ) : void {
 
 
 function adjusted_bytes_size( size : InoxSize ) : InoxSize {
-// Align on 64 bits then add size for heap management
-  let aligned_size = 2 * size_of_cell;
-  aligned_size
-  += ( size       + ( size_of_cell - 1 ) )
-  & ( 0xffffffff - ( size_of_cell - 1 ) );
+// Align on size of cells and add size for heap management
+  // The header is two cells, first is the ref count, second is the size.
+  let aligned_size = 2 * size_of_cell
+  + ( size + ( size_of_cell - 1 ) ) & ~( size_of_cell - 1 );
+  //+ ( size         + ( size_of_cell - 1 ) )
+  //  & ( 0xffffffff - ( size_of_cell - 1 )
+  //);
   return aligned_size;
 }
 
 
+// All budy lists are empty at first, index is number of cells in area
+const all_free_lists_by_area_length : Array< Cell >
+= [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ];
+
+
+let   last_visited_cell = 0;
+const collector_increment = 1000;
+let   something_was_collected : boolean = false;
+
+
+function area_garbage_collector() : boolean {
+// Garbage collect the dynamic areas. Return false if nothing was collected.
+
+  // Set the default return value
+  something_was_collected = false;
+
+  // First empty all the "per length" free lists, they interfere.
+  for( let ii = 0 ; ii < 10 ; ii++ ){
+    let free : Cell;
+    while( ( free = all_free_lists_by_area_length[ ii ] ) != 0 ){
+      if( free == 0 )continue;
+      all_free_lists_by_area_length[ ii ] = next_area( free );
+      set_next_area( free, the_free_area_tail );
+      the_free_area_tail = free;
+      something_was_collected = true;
+    }
+  }
+
+  // Then scan the entire heap and coalesce consecutive free areas.
+  // Limiting the time taken using incremental garbage collection.
+  let cell = last_visited_cell;
+  let count_visited = 0;
+
+  while( true ){
+
+    // Exit loop if too much time has been spent, unless nothing was collected
+    if( count_visited > collector_increment && something_was_collected )break;
+
+    // Time is proportional to the number of cells visited
+    count_visited++;
+
+    // We're not supposed to visit cells after the last cell
+    if( de && count_visited > the_last_cell ){
+      bug( "Error, internal, area_garbage_collector: infinite loop" );
+      return false;
+    }
+
+    // OK, advance to next cell
+    cell += words_per_cell;
+
+    // Time to stop if last cell was reached
+    if( cell >= the_last_cell ){
+      // Next time it will start from the beginning
+      last_visited_cell = 0;
+      // If nothing was collected, return false
+      if( something_was_collected )break;
+      return false;
+    }
+
+    // If something looks like two consecutive free areas, maybe coalesce them
+    if( !is_free_area( cell ) )continue;
+
+    // Coalesce consecutive free areas, as long as there are some
+    while( true ){
+
+      const potential_next_area = cell + area_size( cell );
+
+      if( potential_next_area >= the_last_cell
+      || !is_free_area( potential_next_area )
+      || !is_dynamic_area(  cell )
+      || !is_dynamic_area(  potential_next_area )
+      )break;
+
+      // Coalesce consecutive two free areas
+      let total_size = area_size( cell ) + area_size( potential_next_area );
+      set_area_size( cell, total_size );
+      set_next_area( cell, next_area( potential_next_area ) );
+      raw_clear_cell( area_header( potential_next_area ) );
+      raw_clear_cell( area_header( potential_next_area ) + words_per_cell );
+      something_was_collected = true;
+
+    } // End of while( true ) over consecutive free areas
+
+  } // End of while( true ) over all cells
+
+  return something_was_collected;
+
+}
+
+
+function area_garbage_collector_all() : void {
+// Run garbage collector until nothing is collected
+  while( area_garbage_collector() );
+}
+
+
 function allocate_area( size : InoxSize ) : InoxAddress {
-// Allocate a byte area, return its address
+// Allocate a byte area, return its address, or 0 if not enough memory
 
   if( de ){
     if( size > 1000 ){
-      bug( "Large memory allocation, " + size );
-      if( size != 8192 )debugger;
+      if( size != 4096 ){
+        bug( "Large memory allocation, " + size );
+        debugger;
+      }
     }
-    alloc_de&&mand( size != 0 );
+    // alloc_de&&mand( size != 0 );
   }
 
-  // Align on 64 bits, size of a cell, plus size of header
+  // Align on 64 bits, size of a cell, plus size of headers
   var adjusted_size = adjusted_bytes_size( size );
+
+  // Search in "per length" free lists if size is small enough
+  if( adjusted_size <= 10 * size_of_cell ){
+    let try_length = adjusted_size / size_of_cell;
+    while( true ){
+      let buddy_free_area
+      = all_free_lists_by_area_length[ try_length ];
+      if( buddy_free_area ){
+        all_free_lists_by_area_length[ try_length ]
+        = next_area( buddy_free_area );
+        set_area_busy(      buddy_free_area );
+        set_area_ref_count( buddy_free_area, 1 );
+        set_area_size(      buddy_free_area, try_length * size_of_cell );
+        return buddy_free_area;
+      }else{
+        // Try with a bigger area
+        try_length++;
+        if( try_length > 10 )break;
+      }
+    }
+  }
 
   // ToDo: search for free area
   let area : InoxAddress = the_free_area;
+  let previous_area : InoxAddress = cell_0;
   while( area ){
     alloc_de&&mand_eq( info( area ), tag_dynamic_next_area );
     const area_sz = area_size( area );
-    if( area_sz < size ){
+    if( area_sz < adjusted_size ){
+      previous_area = area;
       area = next_area( area );
       continue;
     }
     // The area is big enough, use it
-    // ToDo: break area and release extra space
-    area = next_cell( area );
+    // Break big area and release extra space
+    let remaining_size = area_sz - adjusted_size;
+    // Only split if the remaining area is big enough for headers
+    if( remaining_size >= 2 * size_of_cell ){
+      let remaining_area = area + size / size_of_cell;
+      set_area_free( remaining_area );
+      set_area_size( remaining_area, remaining_size );
+      set_next_area( remaining_area, next_area( area ) );
+      if( previous_area ){
+        set_next_area( previous_area, remaining_area );
+      }else{
+        the_free_area = remaining_area;
+      }
+    }else{
+      // The area is too small to split, use it all
+      adjusted_size = area_sz;
+    }
     break;
   }
 
@@ -1009,12 +1182,12 @@ function allocate_area( size : InoxSize ) : InoxAddress {
   }
 
   // Area is locked initialy, once, see lock_bytes()
-  set_area_busy( area );
+  set_area_busy(      area );
   set_area_ref_count( area, 1 );
 
   // Remember size of area, this does include the header overhead
   set_area_size_tag( area );
-  set_area_size( area, adjusted_size );
+  set_area_size(     area, adjusted_size );
 
   // Return an address that is after the header, at the start of the payload
   alloc_de&&mand( is_safe_area( area ) );
@@ -1050,20 +1223,43 @@ function free_area( area : InoxAddress ){
   // Other malloc/free style solution would not be much more complex.
   if( area == 0 ){
     // Assume it's about the empty text, ""
+    debugger;
     return;
   }
-  if( area == 6400 )debugger
   alloc_de&&mand( is_safe_area( area ) );
   const old_count = area_ref_count( area );
   // Free now if not locked
   if( old_count == 1 ){
+
+    const size = area_size( area );
+
+    // The whole area should be full of zeros, ie cleared
+    if( de ){
+      // The size includes the header overhead, currently 2 cells
+      let ncells = size / size_of_cell - 2;
+      for( let ii = 0 ; ii < ncells ; ii += words_per_cell ){
+        mand_eq( value( area + ii ), 0 );
+        mand_eq( info(  area + ii ), 0 );
+      }
+    }
+
+    // Add to a "per length" free list if small enough area
+    if( size <= 10 * size_of_cell ){
+      set_area_free( area );
+      set_next_area( area, all_free_lists_by_area_length[ size / size_of_cell ] );
+      all_free_lists_by_area_length[ size / size_of_cell ] = area;
+      // ToDo: this can degenerate when too many small areas are unused.
+      // I should from time to time empty the free lists and add areas to the
+      // global pool, the older areas first to maximize locality.
+      return;
+    }
+
     // Add area in free list, at the end to avoid premature reallocation
     // ToDo: insert area in sorted list instead of at the end?
     // I should do this to coalesce adjacent free areas to avoid fragmentation
     set_area_free( area );
     set_next_area( area, the_free_area_tail );
     the_free_area_tail = area;
-    set_next_cell( area, nil_cell );
     return;
   }
   // Decrement reference counter
@@ -1105,6 +1301,8 @@ function is_safe_area( area : InoxAddress ) : boolean {
 // Try to determine if the address points to a valid area allocated
 // using allocates_area() and not already released.
 
+  if( !de )return true;
+
   // This helps to debug unbalanced calls to lock_area() and free_area().
   // zero is ok for both reference counter & size because it never happens
   if( area == 0 ){
@@ -1124,8 +1322,14 @@ function is_safe_area( area : InoxAddress ) : boolean {
   }
 
   if( area > the_last_cell ){
-    bug( "Invalid area " + area + " after the last cell" );
-    return false;
+    if( area_size( area ) == 2 * size_of_cell
+    && area == the_last_cell + words_per_cell
+    ){
+      // It's ok, it's a recent alloc( 0 ) for a proxy
+    }else{
+      bug( "Invalid area " + area + " after the last cell" );
+      return false;
+    }
   }
 
 
@@ -1138,8 +1342,8 @@ function is_safe_area( area : InoxAddress ) : boolean {
       return false;
     }
 
-    // When one of the 3 most significant bits is set, that's a type id probably
-    if( reference_counter >= ( 1 << 29 ) ){
+    // When one of the 4 most significant bits is set, that's a type id probably
+    if( reference_counter >= ( 1 << 28 ) ){
       const type = unpack_type( reference_counter );
       bug( "Invalid counter for area " + area + ", type " + type + "?" );
       return false;
@@ -1154,7 +1358,7 @@ function is_safe_area( area : InoxAddress ) : boolean {
     return false;
   }
 
-  // When one of the 3 most significant bits is set, that's a type id probably
+  // When one of the 4 most significant bits is set, that's a type id probably
   if( size >= ( 1 << 29 ) ){
     const type = unpack_type( size );
     bug( "Invalid counter for area " + area + ", type " + type + "?" );
@@ -1264,15 +1468,13 @@ let all_proxied_objects_by_id = new Map< Cell, any >();
 
 
 function make_proxy( object : any ){
-  const proxy = allocate_area( size_of_cell );
+  const proxy = allocate_area( 0 ); // size_of_cell );
   all_proxied_objects_by_id.set( proxy, object );
-  de&&mand_eq( value( proxy ), 0 );
-  de&&mand_eq( info(  proxy ), 0 );
+  // de&&mand_eq( value( proxy ), 0 );
+  // de&&mand_eq( info(  proxy ), 0 );
   // ToDo: cache an _inox_tag into the constructor to avoid call to tag()
-  const class_name = tag( object.constructor.name );
-  // Proxy cell points to itself, ease copying. ToDo: unused yet
-  init_cell( proxy, proxy, pack( type_proxy, class_name ) );
-  // ToDo: use info field to store rtti, runtime type identification?
+  // const class_name = tag( object.constructor.name );
+  // Proxy cell does not actually exists, only the id is used
   alloc_de&&mand( is_safe_area( proxy ) );
   return proxy;
 }
@@ -1296,6 +1498,7 @@ function make_proxy_cell( object : any ) : Cell {
 function free_proxy( proxy : Cell ){
   // This is called by clear_cell() when reference counter reaches zero
   alloc_de&&mand( is_safe_area( proxy ) );
+  // reset_cell( proxy );
   all_proxied_objects_by_id.delete( proxy );
 }
 
@@ -1695,6 +1898,9 @@ area_test_suite();
 
 
 function memory_dump() : number {
+  // First, let's collect all garbage.
+  area_garbage_collector_all();
+  // Then let's dump each cell.
   let count = 0
   let delta_void = 0;
   let count_voids = 0;
@@ -1706,6 +1912,11 @@ function memory_dump() : number {
     i = i >> 1; // ToDo: change that if size of word changes
     // Skip void cells.
     if( v == 0 && info( i ) == 0 ) return;
+    // Non void after the_last_cell is problematic...
+    if( i > the_last_cell ){
+      console.log( "Warning: " + i + " > the_last_cell" );
+    }
+    // Trace about consecutive skipped void cells
     if( i != last + words_per_cell ){
       delta_void = ( i - last ) / words_per_cell
       console.log( "void - " + delta_void + " cells" );
@@ -1755,7 +1966,8 @@ set_name( the_block_work_cell, tag( "block" ) );
  *  ToDo: implement lists using name and value of cell?
  */
 
-function make_float( f : float ){
+
+function make_float( f : number ){
   return make_proxy_cell( f );
 }
 
@@ -1817,12 +2029,12 @@ class CpuContext {
 class Actor {
 // Inox machines run cooperative actors.
 
-  cell          : Cell;   // Proxy cell that references this object
-  parent        : Cell;   // Parent actor
-  act           : Cell;   // ToDo: Current activation record
-  memory        : Cell;   // Memory pointer, in ram array
-  stack         : Cell;   // Base address of data stack
-  control_stack : Cell;   // Base address of control stack
+  cell          : Cell;     // Proxy cell that references this object
+  parent        : Cell;     // Parent actor
+  act           : Cell;     // ToDo: Current activation record
+  size          : InoxSize; // Total size of data stack and control stack
+  stack         : Cell;     // Base address of data stack
+  control_stack : Cell;     // Base address of control stack
   ctx           : CpuContext; // ip, tos & csp
 
   constructor(
@@ -1842,19 +2054,16 @@ class Actor {
   }
 
   init( ip : InoxAddress, ram_size : InoxSize ){
-    // Round size to the size of a cell
-    var size = ( ram_size / size_of_cell ) * size_of_cell;
-    // Room for stacks, both data and control
-    // ToDo: allocate two distinct areas so that each can grow
-    this.memory = allocate_area( size );
-    // Control stack is at the very end, with small room for underflow
-    this.control_stack
-    = this.memory + ( ( size / size_of_word ) - 2 * words_per_cell );
-    // Data stack is just below the control stack made of 512 entries
-    this.stack = this.control_stack - ( words_per_cell * 512 );
+    // Round size to the size of a cell, half for data, half for control
+    var size = ( ram_size / size_of_cell ) * size_of_cell / 2;
+    this.size  = size;
+    this.stack         = allocate_area( size )
+    + size / size_of_cell - 1 * words_per_cell;
+    this.control_stack = allocate_area( size )
+    + size / size_of_cell - 1 * words_per_cell;
     this.ctx = new CpuContext( ip, this.stack, this.control_stack );
     de&&mand_eq( this.ctx.tos, this.stack );
-    de&&mand( this.ctx.tos > this.memory );
+    de&&mand_eq( this.ctx.csp, this.control_stack );
   }
 
   context() : CpuContext {
@@ -1941,7 +2150,6 @@ function primitive_inox_make_actor() : void {
   // ToDo: should be move_cell instead of copy_cell ?
   copy_cell( new_actor, TOS );
   de&&mand( t.ctx.tos <= t.stack );
-  de&&mand( t.ctx.tos >  t.memory );
 };
 
 
@@ -2524,37 +2732,52 @@ function cell_looks_safe( c : Cell ) : boolean {
   const i : Info  = info( c );
   const t : Type  = unpack_type( i );
 
-  if( t == type_text ){
-    const proxy = v;
-    if( !is_safe_proxy( proxy ) ){
-      bug( "Invalid proxy " + proxy + " for text cell " + c );
+  let referencee : Cell = v;
+
+  switch( t ){
+
+  case type_boolean :
+    if( v != 0 && v != 1 ){
+      bug( "Invalid boolean value " + v + " for cell " + c );
+      return false;
+    }
+    break;
+
+  case type_text :
+    if( !is_safe_proxy( referencee ) ){
+      bug( "Invalid proxy " + referencee + " for text cell " + c );
       return false;
     }
     // ToDo: check it is a string
     return true;
-  }else if( t == type_proxy ){
-    const proxy = v;
-    return is_safe_proxy( proxy );
-  }else if( t == type_pointer ){
-    const pointer = v;
-    return is_safe_pointer( pointer );
-    return true;
-  }else if( t == type_tag ){
+
+  case type_proxy :
+    return is_safe_proxy( referencee );
+
+  case type_pointer :
+    return is_safe_pointer( referencee );
+
+  case type_tag :
     const tag = v;
     if( ! is_valid_tag( tag ) ){
       bug( "Invalid tag " + tag + " for cell " + c );
     }
     return true;
-  }else if( t == type_integer ){
+
+  case type_integer :
     return true;
-  }else if( t == type_word ){
+
+  case type_word :
     // ToDo: check
     return true;
-  }else if( t == type_void ){
+
+  case type_void :
     return true;
-  }else{
+
+  default :
     bug( "Invalid type " + t + " for cell " + c );
     return false;
+
   }
 }
 
@@ -2652,7 +2875,7 @@ function cell_dump( c : Cell ) : text {
 
   // Detect recursive calls
   if( cell_dump_entered ){
-    return "cell_dump( " + c + " )";
+    return "Error, reentered cell_dump( " + c + " )";
   }
   cell_dump_entered = true;
 
@@ -2690,11 +2913,22 @@ function cell_dump( c : Cell ) : text {
       }else if( n == tag_dynamic_area_size ){
         // Check integrity of dynamic area
         if( !is_safe_area( header_to_area( c - words_per_cell ) ) ){
-          buf += "Invalid dynamic area size, ";
+          buf += "Invalid dynamic area, ";
         }else{
           cell_dump_entered = false;
           if( is_busy_area( header_to_area( c - words_per_cell ) )){
-            return "length " + ( v - 2 * size_of_cell ) / size_of_cell;
+            let length = ( v - 2 * size_of_cell ) / size_of_cell;
+            // 0 length is what proxied objects use
+            if( length == 0 ){
+              const proxy_id = c + words_per_cell;
+              const obj = proxied_object_by_id( proxy_id );
+              const proxy_class_name = obj.constructor.name;
+              buf += " - <PROXY-" + proxy_id + "> "
+              + proxy_class_name + "@" + c + ">";
+              return buf;
+            }else{
+              return "length " + ( v - 2 * size_of_cell ) / size_of_cell;
+            }
           }else{
             return "size " + v;
           }
@@ -2756,7 +2990,6 @@ function cell_dump( c : Cell ) : text {
     break;
 
     case type_proxy :
-      // ToDo: add class
       const obj = proxied_object_by_id( v );
       const proxy_class_name = obj.constructor.name;
       buf += tag_to_text( n )
@@ -2807,7 +3040,6 @@ function cell_dump( c : Cell ) : text {
     break;
 
   }
-
 
   cell_dump_entered = false;
 
@@ -4886,33 +5118,38 @@ primitive( "inox-make-object", function primitive_inox_make_object() {
 // When the counter reaches zero, each member is also disposed and the
 // dynamic memory to store the object is released back to the heap of
 // cells.
-  const header = TOS;
-  const n      = name( header );
-  const length = value( header );
+
+  const class_name = name( TOS );
+  check_de&&mand_type( type( TOS ), type_integer );
+  const nattr  = value( TOS );
+  const length = nattr + 1; // +1 for the header
+  check_de&&mand( length > 1 && length < 100 );
+
   // Allocate a cell for the class/length and cells for the values
-  const dest   = allocate_area( ( 1 + length ) * size_of_cell );
+  const dest   = allocate_area( length * size_of_cell );
   if( dest == 0 ){
     // ToDo: raise an exception
     set_value( the_integer_work_cell, 0 );
     copy_cell( the_integer_work_cell, TOS );
     return;
   }
-  // ToDo: no values should raise an exception
-  let ii : InoxIndex = 0;
-  while( true ){
+
+  // Set header, name is class, value is length, type is integer
+  move_cell( TOS, dest );
+  set_value( dest, length )
+
+  // Move values from the stack to the object
+  for( let ii = 1 ; ii < length; ii++ ) {
     move_cell(
-      header + ii * words_per_cell,
-      dest   + ii * words_per_cell
+      TOS + ( length - ii ) * words_per_cell,
+      dest + ii * words_per_cell
     );
-    if( ii == length )break;
-    ii++;
   }
   // The first element is the named length
-  // ToDo: the length is redundant with info in malloc
   de&&mand_eq( value( dest ), length );
-  const tos = header + ii * words_per_cell
-  SET_TOS( tos );
-  set_cell( tos, type_pointer, n, dest );
+  // Adjust TOS to pop the values and the name
+  TOS += nattr * words_per_cell;
+  set_cell( TOS, type_pointer, class_name, dest );
 } );
 
 
@@ -5479,15 +5716,15 @@ if( step_de )debugger;
 
 function run(){
 
+  // ToDo: better check for stacks overflow and underflow
   const actor = ACTOR;
   de&&mand( TOS <= ACTOR.stack );
-  de&&mand( TOS >  ACTOR.memory );
 
   RUN();
 
+  // ToDo: better check for stacks overflow and underflow
   de&&mand( actor == ACTOR );
   de&&mand( TOS <= ACTOR.stack );
-  de&&mand( TOS >  ACTOR.memory );
 
 }
 
