@@ -17,6 +17,53 @@ Yours,
 ---
 ---
 
+Why?
+====
+
+Keep reading only if you care about programming language design. You've been warned. Welcome.
+
+The Inox programming language explores hopefully innovative features not found in mainstream languages like Javascript, C, Python or PHP. Some of Inox specificities do exist in more some more esoteric languages like Lisp, Forth, Smalltalk, etc. Some are radically new, until proven otherwise ;)
+
+So, what's new?
+
+Named values
+------------
+
+Every Inox value as a name attached to it. That name comes in addition to the classic type and value that most scripting languages provide.
+
+Because values are named, using a tag, it becomes possible to access them using that name. This is similar to the indirect access that pointers provide but without the notion of identity normaly associated to objects. That is so because many values can have the same name whereas the identity of an object is necesseraly unique.
+
+This is superficialy similar to the notion of property, attribute, field, instance variables, etc. But it has deeper additional consequences and usages.
+
+Among other usages, Inox uses names to access variables in stacks. Most other languages use index insteads, a position in the stack. A position that is most often relative to the level of the stack when some function is entered/activated. This is the classical notions of activation record and local variables associated to function calls.
+
+Because Inox access variables by names there is no need to provide a user friendly syntax to figure out the numerical position of a variable in a stack. Hence local variables in Inox are dynamically scoped, no lexical scope, not yet.
+
+Inox also uses named values to implement control structures (if, loop, etc) without the computation of complex changes to the instruction pointer. It is still possible to manipule that instruction pointer to implements diverses form of branching (goto, jump, call, exceptions, etc) ahead of time, at compile time, but this is more an optimization than a natural way of expressing things using names instead of labels like in the dark age of assembler languages.
+
+An Inox compiler is somewhere is the road map, we'll come to it somedays, just in time.
+
+
+Hints
+-----
+
+Interpreters are slow, this is inevitable to some extend. That disadvange is compensated by some additionnal level of safety. No more dangling pointers, overflow/underflow, off by one back doors, eisenbugs that disappear when observed and all the drama of low level debugging, core dumps, viruses and unanticipated corner cases. Less pain.
+
+Yet, no pain, no gain. If you dare, Inox lets you enter adventure land. You then giveup asserts, type checking, boundaries guards and maybe even dynamic memory management in exhange for speed. Up to C speed for those who are willing to take the risk.
+
+Runtime checks are enabled/disabled at user's will, at run time potentially. This provides a speed boost that is well deserved when sufficient test coverage was conducted by the mature programmer using state of art technics.
+
+Type checking at compile time is a mode that sustains the passage of time, it is not going to disappear soon. On the other end of the spectrum, script languages favor late binding and run time type identification. Let's try to unite these too often opposite preferences.
+
+Syntax is also a matter of state. Inox is rather opiniated about that. To some reasonnable extend it provide mechanisms to alter the syntax of the language, sometimes radically. I thanks Forth for that :)
+
+It is up to each programmer to apply the style he prefers, life is brief. There is more than one way to do it as they say in the wonderfull world of Perl. The principle of least surprise is cautios but girls love bad guys, don't they?
+
+So, be surprised, be surprising, get inspirational if you can, endorse the Inox spirit!
+
+Vive Inox ! Or else, stay calm and carry on, c'est la vie, a tale maybe.
+
+
 Overview
 ========
 
@@ -83,7 +130,7 @@ to tell-to/  with /msg /dest  function: {
   out( "Tell " & |msg & "to " & |dest )
 }
 
-`tell-to/( "Hello", "Alice" )`
+tell-to/( "Hello", "Alice" )
 ```
 
 
@@ -92,6 +139,43 @@ By convention the name of functions terminates with a `/` that means _applied on
 The `{}` enclosed _block_ that defines the function can then access the arguments, using the name of the corresponding formal parameter with a `|` (pipe) prefix. This is the syntax for _local variables_ too.
 
 `&` is an operator that joins two pieces of text found on the data stack.
+
+
+```
+to tell-to/ w/ /m /d f{ out( "T " & |m & "t " && |d }
+```
+
+This is an abbreviated syntax that is defined in the _standard library_. `f{ ... }` is like `f( ... )` but the former invokes the `f{` word with the block as sole parameter whereas the later invokes the word `f` when `)` is reached with the parameters on the stack.
+
+
+Assertions
+==========
+
+```
+assert{ check_xxx }
+```
+
+Assertions are conditions to expect when things go normally, ie with no bugs. Assertions before something are called _pre conditions_ whereas assertions after something are called _post conditions_. This is usefull to detect bugs early.
+
+Note: the word `assert{` does not evaluate it's block parameter when running in _fast_ mode. Hence there is little overhead involved to keep lots of assertions even when the code is ready for production. Who knows, they may prove valuable later on when some maintenance breaks something. It's like tests, but inline instead of in some independant test suite.
+
+The default definition of `assert{` use the `inox-FATAL` primitive. However it uses it via an indirection by the `FATAL` word.
+
+
+Word redefinition
+=================
+
+```
+to FATAL  /FATAL-hook call-by-tag.  ~~ late binding
+```
+
+This kind of late binding makes it easy to hook some new code to old word definition. Without those indirections there would be no solution for old words to use redefined words. That's because redefined word definition impact words defined after the redefinition only, the old word keep using the older definition.
+
+```
+to FATAL-hook handle-it-my-way.
+```
+
+The default implementation use `inox-FATAL`. That primitive displays a stack trace and then forces the exist of the Inox process. This is brutal but safe when Inox processes are managed by some orchestration layer. One that will automatically restrart the dead process for example.
 
 
 Blocks
@@ -357,19 +441,6 @@ out( _stack.pop & stack.pop )
 Note : the result of `make-stack` is a _pointer_ value named `stack`, this is the reason why `_stack` easely finds it inside the data stack.
 
 
-Actors
-======
-
-Actors are active objects that communicate the ones with others using _messages_.
-
-Whereas a passive objects execute locally a word definition when told to do so and suspend the invoker until done, active objects run words in parallel. Sometimes it is inside the same machine, either a virtual Inox machine or a physical machine. Sometimes it is inside distant machines, with messages transmitted over a network.
-
-Actors are necessary for distributed computing and usefull for asynchronous programming. They are utilized for both purposes often. Actors receive messages from a queue, their _data stack_, and send messages to other actors that they know about either because they created them or because they knew about them by querying some registry.
-
-Like objects, actors have an identity, a class and variables that define their
-_state_. However each actor runs in a different thread of execution. Using objects you play solo, with actors it's an orchestra!
-
-
 Dialects
 ========
 
@@ -432,6 +503,27 @@ missing-operator
 ----------------
 
 _Operators_ are special words that help to write code in the infix notation. At this time (january 2023) there is no precedence and only left association. But this is expected to evolve with multiple precedences, right associativity and possibly ternary operators.
+
+
+Actors
+======
+
+Actors are active objects that communicate the ones with others using _messages_.
+
+Whereas a passive objects execute locally a word definition when told to do so and suspend the invoker until done, active objects run words in parallel. Sometimes it is inside the same machine, either a virtual Inox machine or a physical machine. Sometimes it is inside distant machines, with messages transmitted over a network.
+
+Actors are necessary for distributed computing and usefull for asynchronous programming. They are utilized for both purposes often. Actors receive messages from a queue, their _data stack_, and send messages to other actors that they know about either because they created them or because they knew about them by querying some registry.
+
+Like objects, actors have an identity, a class and variables that define their
+_state_. However each actor runs in a different thread of execution. Using objects you play solo, with actors it's an orchestra!
+
+
+Orchestration
+=============
+
+The grand plan is to built an orchestration solution on top of Inox defined actors. Such a control plane would automaticcaly restart failing actors, allocate ressources wisely, control hot reloads and migrations, etc.
+
+This is not at all available yet. Please don't use Inox in production.
 
 
 Conclusion

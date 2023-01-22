@@ -95,9 +95,7 @@ to test-times-do
 times-do/test
 
 
-to swap/  with /a /b ({ |a A|, |b B|, |B |A }).
-
-~~ ToDo: to swap/ with /a /b function: { xxxx }.
+to swap/  with /a /b fn{ |a A|, |b B|, |B |A }.
 
 to test-swap/
   2 3 swap/()
@@ -107,8 +105,6 @@ to test-swap/
   swap/( 4, 5 )
   "swap/( 4, 5 ), top should be 4, is "  prefix out drop
   "swap/( 4, 5 ), next should be 5, is " prefix out drop
-
-out( "About to /swap /debug-test")
 "swap/" test
 
 

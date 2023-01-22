@@ -32,7 +32,7 @@
 		"typescript.format.insertSpaceAfterOpeningAndBeforeClosingNonemptyBrackets": true,
 		"typescript.format.semicolons": "insert",
 		"editor.bracketPairColorization.independentColorPoolPerBracketType": true,
-		"editor.fontSize": 16,
+		"editor.fontSize": 15,
 		"editor.minimap.maxColumn": 80,
 		"editor.mouseWheelScrollSensitivity": 3,
 		"editor.padding.bottom": 5,
@@ -63,7 +63,7 @@
 		"terminal.integrated.smoothScrolling": true,
 		"editor.scrollbar.verticalScrollbarSize": 20,
 		"editor.cursorSurroundingLines": 3,
-		"terminal.integrated.mouseWheelScrollSensitivity": 10,
+		"terminal.integrated.mouseWheelScrollSensitivity": 5,
 		"terminal.integrated.fastScrollSensitivity": 20,
 		"terminal.integrated.scrollback": 10000,
 		"github.copilot.enable": {
@@ -75,7 +75,8 @@
 		"editor.find.autoFindInSelection": "multiline",
 		"search.seedWithNearestWord": true,
 		"editor.dragAndDrop": false,
-		"editor.acceptSuggestionOnEnter": "off",
-		"editor.inlineSuggest.enabled": true
+		"editor.acceptSuggestionOnEnter": "on",
+		"editor.inlineSuggest.enabled": true,
+		"editor.lineHeight": 1.6
 	}
 }

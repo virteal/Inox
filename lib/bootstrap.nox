@@ -1,7 +1,7 @@
 ~| bootstrap.nox
  |   Inox standard library.
  |
- | JHR, 2023/01/11, created from test/smoke.nox
+ | JHR, 2023/01/11, made from test/smoke.nox
  |
  |~
 
@@ -41,18 +41,20 @@ to join-text           inox-join-text  ~| A B -- AB |~
 to alias               inox-alias
 to clear-data          inox-clear-data
 to clear-control       inox-clear-control
-to create-constant     inox-create-constant
+to make-constant       inox-make-constant
 to tag                 inox-tag
 to class               inox-class
 to type                inox-type
 to name                inox-name
 to value               inox-value
 to definition          inox-definition
-to create-global       inox-create-global
-to create-control      inox-create-control
-to upper-data          inox-upper-data
+to make-global         inox-make-global
+to make-control        inox-make-control
+to control             inox-control
 to upper               inox-upper-control
 to upper!              inox-set-upper-control
+to data                inox-data
+to upper-data          inox-upper-data
 to upper-data!         inox-set-upper-data
 to immediate!          inox-immediate
 to ascii-character     inox-ascii-character
@@ -61,8 +63,8 @@ to inox-dialect        inox-inox-dialect
 to forth-dialect       inox-forth-dialect
 to current-dialect     inox-current-dialect
 to dialect             inox-dialect
-to object-set          inox-object-set
-to object-get          inox-object-get
+to object-set          inox-object-set  ~~ ToDo: @.!
+to object-get          inox-object-get  ~~ ToDo: @.
 to void?               inox-is-a-void
 to boolean?            inox-is-a-boolean
 to tag?                inox-is-a-tag
@@ -70,6 +72,18 @@ to integer?            inox-is-an-integer
 to pointer?            inox-is-a-pointer
 to proxy?              inox-is-a-proxy
 to word?               inox-is-a-word
+to text?               inox-is-a-text
+to make-actor          inox-make-actor
+to actor               inox-actor
+to switch-actor        inox-switch-actor
+to Ah                  inox-actor
+to Ah!                 inox-switch-actor
+to IP                  inox-IP
+to IP!                 inox-set-IP
+to CSP                 inox-CSP
+to CSP!                inox-set-CSP
+to TOS                 inox-TOS
+to TOS!                inox-set-TOS
 
 to basic-out           inox-out
 to out                 /basic-out call-by-tag  ~~ late binding
@@ -80,6 +94,7 @@ to do:            call.          inline
 to if:then:       ?call.         inline
 to if:then:else:  if-else call.  inline
 to if:do:         if:then:.      inline
+to unless:do:     not? if:do:.   inline
 to while:do:      while.         inline
 to until:do:      until.         inline
 to loop:          loop.          inline
@@ -95,57 +110,103 @@ to missing-method   "missing-method "   over join-text out clear-stacks
 to missing-operator "missing-operator " over join-text out clear-stacks
 
 
-to constant:is:  create-constant. inline
-to global:is:    create-global.   inline
+to constant:is:  make-constant. inline
+to global:is:    make-global.   inline
 
 to init-globals
   constant: /inox-version is: "v0.3.1";
   constant: "void"        is: cast( 0, 0 );
-  constant: /true         is: cast( true:1,  1 );
-  constant: /false        is: cast( false:0, 1 );
+  constant: /true         is: cast( true:1,    1 );
+  constant: /false        is: cast( false:0,   1 );
+  constant: /on           is: cast( on:1,      1 );
+  constant: /off          is: cast( off:0,     1 );
+  constant: /yes          is: cast( yes:1,     1 );
+  constant: /no           is: cast( no:0,      1 );
+  constant: /failure      is: cast( failure:0, 1 );
+  constant: /success      is: cast( success:1, 1 );
 init-globals
 
+~~ ToDo: :xx? special form?
+to :success? name /success =?.
+to :failure? name /failure =?.
+to :on?      name /on      =?.
+to :off?     name /off     =?.
+to :yes?     name /yes     =?.
+to :no?      name /no      =?.
 
 ~~ Some basic text manipulations
 to prefix  over join-text       ~| A B -- A BA |~
 to suffix  over swap join-text  ~| A B -- A AB |~
+~~ text-length
+~~ text-splice
+~~ text-but
+~~ text-first
+~~ text-last
+~~ text-but-last
+~~ text-starts-with?
+~~ text-ends-with?
+~~ text-contains?
+~~ text-replace
+~~ text-replace-all
+~~ text-replace-first
+~~ text-replace-last
+~~ text-trim
+~~ text-trim-left
+~~ text-trim-right
+~~ text-split-by
+~~ text-join-by
+~~ text-join join-text
+~~ text-split-lines
+~~ text-join-lines
+~~ text-join-pieces
+~~ text-split-pieces
+~~ text-split-words
+~~ text-join-words
+~~ text-split-characters
+~~ text-join-characters
+
 
 
 ~~ Class hierarchy
+
+to thing.super-class      void
 to thing.class          /thing
-to thing.super-class    /void
-to value.class            /value
-to value.super-class      /thing
-to void.class               /void
-to void.super-class         /value
-to tag.class                /tag
-to tag.super-class          /value
-to number.class             /number
-to number.super-class       /value
-to integer.class            /integer
-to integer.super-class      /value
-to float.class              /float
-to float.super-class        /value
-to object.class           /object
-to object.super-class     /thing
-to native.class             /native
-to native.super-class       /object
-to block.class              /block
-to block.super-class        /object
-to word.class               /block
-to word.super-class         /object
 
+to value.super-class         /thing
+to value.class              /value
 
-~~ OO style
+to void.super-class            /value
+to void.class                 /void
 
-to object.then:       ?call.         inline
-to object.else:       not? ?call.    inline
-to object.then:else:  if-else call.  inline
+to boolean.super-class         /value
+to boolean.class              /boolean
 
-to block.do:     call.   inline
-to block.loop:   loop.   inline
-to block.while:  while.  inline
-to block.until:  until.  inline
+to tag.super-class             /value
+to tag.class                  /tag
+
+to number.super-class          /value
+to number.class               /number
+
+to integer.super-class           /number
+to integer.class                /integer
+
+to float.super-class             /value
+to float.class                  /float
+
+to object.super-class        /thing
+to object.class             /object
+
+to native.super-class            /object
+to native.class                 /native
+
+to proxy.super-class             /object
+to proxy.class                  /proxy
+
+to block.super-class             /object
+to block.class                  /block
+
+to word.super-class              /object
+to word.class                   /word
 
 
 to ToDo:  "ToDo: " prefix out
@@ -211,9 +272,8 @@ to debug-test  ~~ Helper for tests that needs to be debugged
 ~~ words with formal parameters are functions called with arguments
 to with      /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with
 
-to ({         with-parameters.    inline
-to })         without-parameters. inline
-to function:  /inox-function-block ({ |inox-function-block call })
+to fn{        with-parameters call without-parameters. inline
+to function:  with-parameters call without-parameters. inline
 
 
 to times:do:
@@ -286,7 +346,7 @@ to from:to:by:do:
 
 ~~ ToDo: array builder using a sentinel in the data stack
 ~~ to #[     with.
-~~ to    ]#  inox-create-with-array
+~~ to    ]#  inox-make-with-array
 
 
 to try:
@@ -303,6 +363,8 @@ to try:catch:finally:
   inox-try:catch|
   call
   |inox-try:catch:finally call
+
+  ~~ to FATAL inox-FATAL
 
 
 to InoxStyle
@@ -323,3 +385,6 @@ to InoxStyle
   alias(  "Begin"        "{"               )
   alias(  "End"          " } ; "           )
 InoxStyle
+
+~~ Other ideas to consider
+~~ defined?( /word )  ~~ return true if word is defined
