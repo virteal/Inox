@@ -77,6 +77,11 @@
 		"editor.dragAndDrop": false,
 		"editor.acceptSuggestionOnEnter": "on",
 		"editor.inlineSuggest.enabled": true,
-		"editor.lineHeight": 1.6
+		"editor.lineHeight": 1.6,
+		"editor.minimap.autohide": true,
+		"terminal.integrated.copyOnSelection": true,
+		"terminal.integrated.minimumContrastRatio": 7,
+		"terminal.integrated.tabs.focusMode": "singleClick",
+		"terminal.integrated.defaultLocation": "editor"
 	}
 }

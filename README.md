@@ -1,7 +1,7 @@
-# The Inox programming language
+# The Iɴᴏx programming language
 
 
-Inox is a concatenative script language. It is designed to operate in the context of edge computing, with the Internet of Things, in Machine Learning times. It will hopefully run on nodejs (first), wasm (second), micro controlers (esp32), etc.
+Iɴᴏx is a concatenative script language. It is designed to operate in the context of edge computing, with the Internet of Things, in Machine Learning times. It will hopefully run on nodejs (first), wasm (second), micro controlers (esp32), etc.
 
 It is a forth/smalltalk/erlang inspired stack based language with a virtual machine. The basic data element is a 64 bits cell made of two parts, a typed value and a name.
 
@@ -22,26 +22,26 @@ Why?
 
 Keep reading only if you care about programming language design. You've been warned. Welcome.
 
-The Inox programming language explores hopefully innovative features not found in mainstream languages like Javascript, C, Python or PHP. Some of Inox specificities do exist in more some more esoteric languages like Lisp, Forth, Smalltalk, etc. Some are radically new, until proven otherwise ;)
+The Iɴᴏx programming language explores hopefully innovative features not found in mainstream languages like Javascript, C, Python or PHP. Some of Iɴᴏx specificities do exist in more some more esoteric languages like Lisp, Forth, Smalltalk, etc. Some are radically new, until proven otherwise ;)
 
 So, what's new?
 
 Named values
 ------------
 
-Every Inox value as a name attached to it. That name comes in addition to the classic type and value that most scripting languages provide.
+Every Iɴᴏx value as a name attached to it. That name comes in addition to the classic type and value that most scripting languages provide.
 
 Because values are named, using a tag, it becomes possible to access them using that name. This is similar to the indirect access that pointers provide but without the notion of identity normaly associated to objects. That is so because many values can have the same name whereas the identity of an object is necesseraly unique.
 
 This is superficialy similar to the notion of property, attribute, field, instance variables, etc. But it has deeper additional consequences and usages.
 
-Among other usages, Inox uses names to access variables in stacks. Most other languages use index insteads, a position in the stack. A position that is most often relative to the level of the stack when some function is entered/activated. This is the classical notions of activation record and local variables associated to function calls.
+Among other usages, Iɴᴏx uses names to access variables in stacks. Most other languages use index insteads, a position in the stack. A position that is most often relative to the level of the stack when some function is entered/activated. This is the classical notions of activation record and local variables associated to function calls.
 
-Because Inox access variables by names there is no need to provide a user friendly syntax to figure out the numerical position of a variable in a stack. Hence local variables in Inox are dynamically scoped, no lexical scope, not yet.
+Because Iɴᴏx access variables by names there is no need to provide a user friendly syntax to figure out the numerical position of a variable in a stack. Hence local variables in Iɴᴏx are dynamically scoped, no lexical scope, not yet.
 
-Inox also uses named values to implement control structures (if, loop, etc) without the computation of complex changes to the instruction pointer. It is still possible to manipule that instruction pointer to implements diverses form of branching (goto, jump, call, exceptions, etc) ahead of time, at compile time, but this is more an optimization than a natural way of expressing things using names instead of labels like in the dark age of assembler languages.
+Iɴᴏx also uses named values to implement control structures (if, loop, etc) without the computation of complex changes to the instruction pointer. It is still possible to manipule that instruction pointer to implements diverses form of branching (goto, jump, call, exceptions, etc) ahead of time, at compile time, but this is more an optimization than a natural way of expressing things using names instead of labels like in the dark age of assembler languages.
 
-An Inox compiler is somewhere is the road map, we'll come to it somedays, just in time.
+An Iɴᴏx compiler is somewhere is the road map, we'll come to it somedays, just in time.
 
 
 Hints
@@ -49,25 +49,25 @@ Hints
 
 Interpreters are slow, this is inevitable to some extend. That disadvange is compensated by some additionnal level of safety. No more dangling pointers, overflow/underflow, off by one back doors, eisenbugs that disappear when observed and all the drama of low level debugging, core dumps, viruses and unanticipated corner cases. Less pain.
 
-Yet, no pain, no gain. If you dare, Inox lets you enter adventure land. You then giveup asserts, type checking, boundaries guards and maybe even dynamic memory management in exhange for speed. Up to C speed for those who are willing to take the risk.
+Yet, no pain, no gain. If you dare, Iɴᴏx lets you enter adventure land. You then giveup asserts, type checking, boundaries guards and maybe even dynamic memory management in exhange for speed. Up to C speed for those who are willing to take the risk.
 
 Runtime checks are enabled/disabled at user's will, at run time potentially. This provides a speed boost that is well deserved when sufficient test coverage was conducted by the mature programmer using state of art technics.
 
-Type checking at compile time is a mode that sustains the passage of time, it is not going to disappear soon. On the other end of the spectrum, script languages favor late binding and run time type identification. Let's try to unite these too often opposite preferences.
+Type checking at compile time is a mode that sustains the passage of time, it is not going to disappear soon. On the other end of the spectrum, script languages favor late binding and run time type identification. Let's try to unite these opposite preferences.
 
-Syntax is also a matter of state. Inox is rather opiniated about that. To some reasonnable extend it provide mechanisms to alter the syntax of the language, sometimes radically. I thanks Forth for that :)
+Syntax is also a matter of state. Iɴᴏx is rather opiniated about that. To some reasonnable extend it provide mechanisms to alter the syntax of the language, sometimes radically. I thanks Forth for that :)
 
-It is up to each programmer to apply the style he prefers, life is brief. There is more than one way to do it as they say in the wonderfull world of Perl. The principle of least surprise is cautios but girls love bad guys, don't they?
+It is up to each programmer to apply the style he prefers, life is brief. There is more than one way to do it as they say in the wonderfull world of Perl. The principle of least surprise is cautious but girls love bad guys, don't they?
 
-So, be surprised, be surprising, get inspirational if you can, endorse the Inox spirit!
+So, be surprised, be surprising, get inspirational if you can, endorse the Iɴᴏx spirit!
 
-Vive Inox ! Or else, stay calm and carry on, c'est la vie, a tale maybe.
+Vive Iɴᴏx ! Or else, stay calm and carry on, c'est la vie, a tale maybe.
 
 
 Overview
 ========
 
-Here is a short presentation of some of the main characteristics of the Inox programming language. There is no stable set of features yet but it gives some ideas about the general spirit of the language. Enjoy!
+Here is a short presentation of some of the main characteristics of the Iɴᴏx programming language. There is no stable set of features yet but it gives some ideas about the general spirit of the language. Enjoy!
 
 
 Words
@@ -175,7 +175,7 @@ This kind of late binding makes it easy to hook some new code to old word defini
 to FATAL-hook handle-it-my-way.
 ```
 
-The default implementation use `inox-FATAL`. That primitive displays a stack trace and then forces the exist of the Inox process. This is brutal but safe when Inox processes are managed by some orchestration layer. One that will automatically restrart the dead process for example.
+The default implementation use `inox-FATAL`. That primitive displays a stack trace and then forces the exist of the Iɴᴏx process. This is brutal but safe when Iɴᴏx processes are managed by some orchestration layer. One that will automatically restrart the dead process for example.
 
 
 Blocks
@@ -406,7 +406,7 @@ to fib/  with /n function: {
   }
  ```
 
-Note: if the current word is the last word of a definition, using `again` instead is a better solution because it avoids a potential overflow of the control stack. This classic optimisation is called _"tail call elimination"_ and it is done by the Inox compiler (ToDo).
+Note: if the current word is the last word of a definition, using `again` instead is a better solution because it avoids a potential overflow of the control stack. This classic optimisation is called _"tail call elimination"_ and it is done by the Iɴᴏx compiler (ToDo).
 
 Unfortunately it does not apply to the fidonacci function because the actual last word of the definition is the `if` word. This is clearly visible in the postfix notation only.
 
@@ -444,12 +444,12 @@ Note : the result of `make-stack` is a _pointer_ value named `stack`, this is th
 Dialects
 ========
 
-Inox was designed to be extensible. It supports multiple dialects in addition to it's own dialect. The Forth language was a primary source of inspiration. This is why a Forth dialect is proposed.
+Iɴᴏx was designed to be extensible. It supports multiple dialects in addition to it's own dialect. The Forth language was a primary source of inspiration. This is why a Forth dialect is proposed.
 
 ``` sh
 forth-dialect ( speaks Forth )  : HELLO ." Hello" ; HELLO
 
-inox-dialect ~| speaks Inox |~  to Hello  out( "Hello" ). Hello
+inox-dialect ~| speaks Iɴᴏx |~  to Hello  out( "Hello" ). Hello
 ```
 
 
@@ -510,7 +510,7 @@ Actors
 
 Actors are active objects that communicate the ones with others using _messages_.
 
-Whereas a passive objects execute locally a word definition when told to do so and suspend the invoker until done, active objects run words in parallel. Sometimes it is inside the same machine, either a virtual Inox machine or a physical machine. Sometimes it is inside distant machines, with messages transmitted over a network.
+Whereas a passive objects execute locally a word definition when told to do so and suspend the invoker until done, active objects run words in parallel. Sometimes it is inside the same machine, either a virtual Iɴᴏx machine or a physical machine. Sometimes it is inside distant machines, with messages transmitted over a network.
 
 Actors are necessary for distributed computing and usefull for asynchronous programming. They are utilized for both purposes often. Actors receive messages from a queue, their _data stack_, and send messages to other actors that they know about either because they created them or because they knew about them by querying some registry.
 
@@ -521,9 +521,9 @@ _state_. However each actor runs in a different thread of execution. Using objec
 Orchestration
 =============
 
-The grand plan is to built an orchestration solution on top of Inox defined actors. Such a control plane would automaticcaly restart failing actors, allocate ressources wisely, control hot reloads and migrations, etc.
+The grand plan is to built an orchestration solution on top of Iɴᴏx defined actors. Such a control plane would automaticcaly restart failing actors, allocate ressources wisely, control hot reloads and migrations, etc.
 
-This is not at all available yet. Please don't use Inox in production.
+This is not at all available yet. Please don't use Iɴᴏx in production.
 
 
 Conclusion
