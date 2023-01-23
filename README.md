@@ -22,26 +22,26 @@ Why?
 
 Keep reading only if you care about programming language design. You've been warned. Welcome.
 
-The Iɴᴏx programming language explores hopefully innovative features not found in mainstream languages like Javascript, C, Python or PHP. Some of Iɴᴏx specificities do exist in more some more esoteric languages like Lisp, Forth, Smalltalk, etc. Some are radically new, until proven otherwise ;)
+The Iɴᴏx programming language explores hopefully innovative features not found in mainstream languages like Javascript, C, Python or PHP. Some of Iɴᴏx specificities do exist in some more esoteric languages like Lisp, Forth, Smalltalk, etc. Some other specifities are radically new. Well... until proven otherwise that is ;)
 
 So, what's new?
 
 Named values
 ------------
 
-Every Iɴᴏx value as a name attached to it. That name comes in addition to the classic type and value that most scripting languages provide.
+Every Iɴᴏx value as a name attached to it. That name comes in addition to the classic type and value that most languages provide.
 
 Because values are named, using a tag, it becomes possible to access them using that name. This is similar to the indirect access that pointers provide but without the notion of identity normaly associated to objects. That is so because many values can have the same name whereas the identity of an object is necesseraly unique.
 
-This is superficialy similar to the notion of property, attribute, field, instance variables, etc. But it has deeper additional consequences and usages.
+This is similar to the notion of property, attribute, field, instance variables, etc. But it has deeper additional consequences and usages.
 
-Among other usages, Iɴᴏx uses names to access variables in stacks. Most other languages use index insteads, a position in the stack. A position that is most often relative to the level of the stack when some function is entered/activated. This is the classical notions of activation record and local variables associated to function calls.
+Among other usages, Iɴᴏx uses names to access variables in stacks. Most other languages use index insteads, a position in the stack. A position that is most often relative to the level of the stack when some function is entered/activated. These are the classical notions of activation records and local variables associated to function calls.
 
 Because Iɴᴏx access variables by names there is no need to provide a user friendly syntax to figure out the numerical position of a variable in a stack. Hence local variables in Iɴᴏx are dynamically scoped, no lexical scope, not yet.
 
-Iɴᴏx also uses named values to implement control structures (if, loop, etc) without the computation of complex changes to the instruction pointer. It is still possible to manipule that instruction pointer to implements diverses form of branching (goto, jump, call, exceptions, etc) ahead of time, at compile time, but this is more an optimization than a natural way of expressing things using names instead of labels like in the dark age of assembler languages.
+Iɴᴏx also uses named values to implement control structures (if, loop, etc) without the computation of complex changes to the instruction pointer. It is still possible to manipule that instruction pointer to implements diverses form of branching (goto, jump, call, exceptions, etc) ahead of time, at compile time, when words are defined, but this is more an optimization than a natural way of expressing things using names instead of labels like in the dark age of assembler languages.
 
-An Iɴᴏx compiler is somewhere is the road map, we'll come to it somedays, just in time.
+An Iɴᴏx optimizing compiler is somewhere is the road map, we'll come to it somedays, just in time.
 
 
 Hints
@@ -55,9 +55,9 @@ Runtime checks are enabled/disabled at user's will, at run time potentially. Thi
 
 Type checking at compile time is a mode that sustains the passage of time, it is not going to disappear soon. On the other end of the spectrum, script languages favor late binding and run time type identification. Let's try to unite these opposite preferences.
 
-Syntax is also a matter of state. Iɴᴏx is rather opiniated about that. To some reasonnable extend it provide mechanisms to alter the syntax of the language, sometimes radically. I thanks Forth for that :)
+Syntax is also a matter of taste. Iɴᴏx is rather opiniated about that. To some reasonnable extend it provide mechanisms to alter the syntax of the language, sometimes radically. Thanks Forth for that.
 
-It is up to each programmer to apply the style he prefers, life is brief. There is more than one way to do it as they say in the wonderfull world of Perl. The principle of least surprise is cautious but girls love bad guys, don't they?
+It is up to each programmer to apply the style she prefers, life is brief. There is more than one way to do it as they say in the wonderfull world of Perl. The principle of least surprise is cautious but girls love bad guys, don't they?
 
 So, be surprised, be surprising, get inspirational if you can, endorse the Iɴᴏx spirit!
 
@@ -67,35 +67,41 @@ Vive Iɴᴏx ! Or else, stay calm and carry on, c'est la vie, a tale maybe.
 Overview
 ========
 
-Here is a short presentation of some of the main characteristics of the Iɴᴏx programming language. There is no stable set of features yet but it gives some ideas about the general spirit of the language. Enjoy!
+Here is a short presentation of some of the main characteristics of the Iɴᴏx programming language. There is no stable set of features yet but it gives some ideas about the general spirit of the language.
+
+This introduction is more like a tutorial than a reference manual. That will come next, when design gets stable. Enjoy and stay tuned!
 
 
 Words
 =====
 
 ``` sh
-to hello "hello" out.
+to hello  "hello" out.
 
 hello
 ```
 
 This defines a **word** named `hello`. Then the word is invoked and as a result `hello` is displayed on some output device.
 
-Words take their parameters from a _data stack_. They can also push results onto that stack.
+Words take their arguments from a the _data stack_. They can also push results onto that stack.
 
 Word `to` starts a word _definition_ that an often optional `.` (dot) terminates. Inside that defintion there are other words and litteral values like numbers or pieces of text.
 
 Note: a _word_ can be made of anything, not just letters. As a result `even?` is a valid name, it could be the name of a word that tests if a number is even. By convention words with a `?` are _predicates_, their result is a _boolean value_ that is either true or false.
 
-`to say out. "hello" say`
+``` sh
+to say out.
+"hello" say
+```
 
 As a convenience the word to invoke can be specified before the pushed data, using `( )` paranthesis.
 
-`say( "hello" )`
+``` sh
+say( "hello" )  ~~ "infix" style
+"hello" say     ~~ "postfix" style
+```
 
-`"hello" say`
-
-It is the responsabily of whoever invokes a word to first push the parameters required by that word, in the proper order, in the proper number. Each word can define it's own _protocol_ about that.
+It is the responsabily of whoever invokes a word to first push the arguments required by that word, in the proper order, in the proper number. Each word can define it's own _protocol_ about that.
 
 
 Control structures
@@ -105,12 +111,12 @@ Control structures
 to play
   random-no( 100 )
   loop: {
-    out( "Guess? ")
+    out( "Guess? " )
     read-line, text-to-integer,
     dup, if not integer? then: { drop,               continue }
     dup, if: >?          then: { out( "Too big"   ), continue }
     dup, if: <?          then: { out( "Too small" ), continue }
-                                 out( "Yes!" ),      break
+    out( "Yes!" ), break
   }
   clear-data
 ```
@@ -123,7 +129,7 @@ This code is a small game where the player must guess a number between 0 and 100
 Functions
 =========
 
-Functions are special words that name their parameters to access them in an easier way than is possible from the data stack.
+Functions are special words with named _parameters_ to access _arguments_ in an easier way than is possible from the data stack.
 
 ``` sh
 to tell-to/  with /msg /dest  function: {
@@ -134,7 +140,7 @@ tell-to/( "Hello", "Alice" )
 ```
 
 
-By convention the name of functions terminates with a `/` that means _applied on_. When the function is invoked, it's actual arguments are moved from the _data stack_ to another stack named the _control stack_.
+By convention the name of functions terminates with a `/` that means _applied on_. When the function is invoked, it's actual arguments are moved from the _data stack_ to another stack named the _control stack_. In the process these values get renamed so that the names of the actual arguments get's replaced by the names of the formal parameters.
 
 The `{}` enclosed _block_ that defines the function can then access the arguments, using the name of the corresponding formal parameter with a `|` (pipe) prefix. This is the syntax for _local variables_ too.
 
@@ -142,40 +148,40 @@ The `{}` enclosed _block_ that defines the function can then access the argument
 
 
 ```
-to tell-to/ w/ /m /d f{ out( "T " & |m & "t " && |d }
+to tell-to/  with /m /d, fn{ out( "T " & |m & "t " && |d }
 ```
 
-This is an abbreviated syntax that is defined in the _standard library_. `f{ ... }` is like `f( ... )` but the former invokes the `f{` word with the block as sole parameter whereas the later invokes the word `f` when `)` is reached with the parameters on the stack.
+This is an abbreviated syntax that is defined in the _standard library_. `fn{ ... }` is like `fn( ... )` but the former invokes the `fn{` word with the block as sole argument whereas the later invokes the word `f` when `)` is reached, with the arguments on the stack.
 
 
 Assertions
 ==========
 
 ```
-assert{ check_xxx }
+assert{ check-something }
 ```
 
 Assertions are conditions to expect when things go normally, ie with no bugs. Assertions before something are called _pre conditions_ whereas assertions after something are called _post conditions_. This is usefull to detect bugs early.
 
-Note: the word `assert{` does not evaluate it's block parameter when running in _fast_ mode. Hence there is little overhead involved to keep lots of assertions even when the code is ready for production. Who knows, they may prove valuable later on when some maintenance breaks something. It's like tests, but inline instead of in some independant test suite.
+Note: the word `assert{` does not evaluate it's block argument when running in _fast_ mode. Hence there is little overhead involved to keep lots of assertions even when the code is ready for production. Who knows, they may prove valuable later on when some maintenance error breaks something. It's like tests, but inline instead of in some independant test suite.
 
-The default definition of `assert{` use the `inox-FATAL` primitive. However it uses it via an indirection by the `FATAL` word.
+The default definition of `assert{` use the `inox-FATAL` primitive. However it uses it via an indirection by the `FATAL` word so that the behaviour can be redefined freely.
 
 
 Word redefinition
 =================
 
-```
+``` sh
 to FATAL  /FATAL-hook call-by-tag.  ~~ late binding
 ```
 
-This kind of late binding makes it easy to hook some new code to old word definition. Without those indirections there would be no solution for old words to use redefined words. That's because redefined word definition impact words defined after the redefinition only, the old word keep using the older definition.
+This kind of late binding makes it easy to hook some new code to old word definitions. Without those indirections there would be no solution for old words to use redefined words. That's because redefined word definition impact words defined after the redefinition only, the old word keep using the older definition.
 
-```
+``` sh
 to FATAL-hook handle-it-my-way.
 ```
 
-The default implementation use `inox-FATAL`. That primitive displays a stack trace and then forces the exist of the Iɴᴏx process. This is brutal but safe when Iɴᴏx processes are managed by some orchestration layer. One that will automatically restrart the dead process for example.
+The default implementation in the _standard library_ uses `inox-FATAL`. That primitive displays a stack trace and then forces the exit of the Iɴᴏx process. This is brutal but safe when Iɴᴏx processes are managed by some orchestration layer. A layer that will automatically restart the dead process for example.
 
 
 Blocks
@@ -188,7 +194,7 @@ to tell-sign  if-else( <0?, { out( "negative" ) }, { out( "positive" ) }.
 
 -1 tell-sign  ~~ outputs negative
 
-tell-sign( -1 ) ~~ idem`
+tell-sign( -1 ) ~~ idem, infix style`
 ```
 
 Two consecutive `~~` (tildes) introduce a comment that goes until the end of the line. Use `~|` and `|~` for multi lines comments.
@@ -203,9 +209,26 @@ to say:to:  swap " " prefix prefix out().
 say: "Hello" to: "Bob";
 ```
 
-Keywords are multi parts words with a `:` (colon) after each part and a final `;` (dot comma).
+Keywords are multi parts words with a `:` (colon) after each part and a final `;` (semi colon).
 
 `swap` is a predefined word that swaps the value at the top of the data stack with the next value on that stack. `prefix` is somehow like the `&` operator but it joins the two pieces of text in reverse order so that the second becomes the prefix of the first one on the final text result.
+
+``` sh
+to prefix  over join-text  ~~ this is the standard definition, see bootstrap.nox
+```
+
+`over` is like `dup` but it duplicate NOS instead of TOS, ie it duplicates the next value on the stack instead of the top of stack value. Juggling with values on the stack gets tricky easely. That's why it is sometimes usefull to describe the _protocol_ of a _word_ with special comment about their _effect_ on the stack.
+
+Here are such comments for the most common words about the data stack:
+
+``` sh
+dup    ~| a -- a a |~
+drop   ~| x -- |~
+swap   ~| a b -- b a |~
+over   ~| a b -- a b a |~
+```
+
+Back to keywords.
 
 ```sh
 to tell-sign
@@ -218,53 +241,60 @@ to tell-sign
 
 `if:then:else:` is a keyword. It is predefined. If it were not, it could easly be defined using the `if-else` word.
 
-```
-to if:then:else  if-else
+``` sh
+to if:then:else  ~| cond block block -- |~
+~~ run first or second block depending on condition
+  if-else
 ```
 
-`if-else` is a word that expects to find three parameters on the data stack: a boolean value and two blocks. Depending on the boolean, it runs either the first or the second block.
+`if-else` is a word that expects to find three argument on the data stack: a boolean value and two blocks. Depending on the boolean, it runs either the first or the second block.
 
 ``` sh
-to tell-sign <0? { "negative" out } { "positive" out } if-else
+to tell-sign  <0? { "negative" out } { "positive" out } if-else.
 ```
 
-This definition of the word `tell-sign` uses a style that is unusual, it is a postfix notation. This is compact but sometimes difficult to read. Depending on your preferences you may use either that postfix style, a classical function call style or the multi parts keyword style.
+This definition of the word `tell-sign` uses a style that is unusual, it is a postfix notation. This is compact but sometimes difficult to read. Depending on your preferences you may use either that postfix style, a classical infix function call style or the multi parts keyword style.
 
 
 Variables
 =========
 
-Data variables
---------------
-
-Data variables have their value stored in the _data stack_. To retrieve such a value it should first be pushed with a proper name and than later on retrieve using that name with a `_` prefix.
-
-``` sh
-x:3 y:5 out( "Point x: " & _x & ", y: " & _y )  ~~ outputs Point x:3, y:5
-
-3 x_
-```
-
-To push such a data variable onto the data stack, it's initial value can also be taken from the top of the data stack itself using the syntax `xyz_`. It reads _"store the top of the data stack into data variable xyz"_ or _"rename xyz the value at the top of the data stack"_.
+Global variables
+----------------
 
 ```
-3 x_
-```
+variable: /global-state is: "initial state".
+constant: /error-state  is: "error".
+
+loop: {
+  if: global-state =? error-state then: { break };
+  ....
+  if: xxx then: { "next" global-state! };
+  ...
+}
+
+
+There are automatically two words that are created for each global variable. First word is the _getter_ word, which is simply the name of the variable as specified when the variable was created, using a tag. The second word is the _setter_ word, the same name with the `!` _suffix_.
+
+Constants are like variables but with no _setter_ word. Once set, at creation, the value cannot change anymore.
+
+Note that `constant: /error-state is: "error".` just means `to error-state "error".` Which form you use depends on the style you prefer.
+
 
 Local variables
 ---------------
 
 ``` sh
-to say-to/  (| dest| msg|
+to say-to/  fn{ dest| msg|
   out( "Say" & |msg & " to " & |dest
-|)
+}
 ```
 
-Local variables are variables stored into another stack, the _control stack_. Syntax `|xyz` creates such variables using the value at the top of the data stack. It reads _"pop the top of the data stack to create the local variable x"_. One uses `|xyz` to retrieve the value of the local variable. It reads _"get local variable x"_.
+Local variables are variables stored into another stack, the _control stack_. Syntax `xyz|` creates such variables using the value from the top of the data stack. It reads _"pop the top of the data stack to create the local variable x"_. One uses `|xyz` to retrieve the value of the local variable. It reads _"get local variable x"_.
 
 To set the value of a local variable using the top of the stack, use `|xyz!`. `!` (exclamation point) means "set" in this context and by convention it means _"some side effect or surprise involved"_ is a more general sense.
 
-``(|`` and `|)` specify respectively the begining and the end of the **scope** within which local variables are created and used. These scopes can nest in such a way that a local variable created by a word can be accessed from the other words invoked while the scope exists, unless that word created another local variable with the same name.
+``fn{`` and `}` specify respectively the begining and the end of the **scope** within which local variables are created and used. These scopes can nest in such a way that a local variable created by a word can be accessed from the other words invoked while the scope exists, unless that word created another local variable with the same name.
 
 This type of scoping for variables is named _"dynamic"_ by opposition to the more frequent static style named _"lexical"_ where a local variable stays purely local to the function that created it. Note: changing the value of a local variable outside the word that created it is usually considered _"harmful"_ and should be avoided.
 
@@ -272,7 +302,9 @@ This type of scoping for variables is named _"dynamic"_ by opposition to the mor
 Object variables
 ----------------
 
-**Object variables** are stored inside a stack that belongs to an object.
+**Object variables** are stored inside the stack that belongs to an _object_. Every object has an identity and a value that is a stack of values. The name of that stack is the _class_ of the object. The names of the values in the object's stack are the names of the _attributes_ of the object.
+
+Note: the OOP (Object Oriented Programming) literature uses many names for that concept: _fields_, _properties_, _attributes_, _instance variables_, _members_, etc. They all mean the same.
 
 ```
 x:3 y:2 point:2 make-object  ~~ create a point object with two variables.
@@ -296,6 +328,25 @@ to point.dump  method: { out( "( x:" & it.x & ", y: " & it.y & ")" ) }.
 
 Such method words are typically defined using the `method:` word. It creates a local variable named **it** and then it runs the specified block. Some other language use _self_ or _this_ instead of _it_.
 
+
+Data variables
+--------------
+
+Data variables have their value stored in the _data stack_. To retrieve such a value it should first be pushed with a proper name and than later on retrieve using that name with a `_` prefix.
+
+``` sh
+x:3 y:5 out( "Point x: " & _x & ", y: " & _y )  ~~ outputs Point x:3, y:5
+
+3 x_
+```
+
+To push such a data variable onto the data stack, it's initial value can also be taken from the top of the data stack itself using the syntax `xyz_`. It reads _"store the top of the data stack into data variable xyz"_ or _"rename xyz the value at the top of the data stack"_.
+
+```
+3 x_
+```
+
+
 Values
 ======
 
@@ -304,6 +355,20 @@ Values are simple things such as `1`, `"hello"`, `/msg` or the identity of some 
 Each value, either simple or complex, has a type and a name attached to it. These **named values** are often more convenient to manipulate than the classical anonymous values found in most computer languages.
 
 There are a few special values, including _falsy_ values such as `0`, `void` or `""` (the empty text) that are often usefull when a _boolean_ value is expected.
+
+
+Falsy values
+------------
+
+There is a `boolean` type of value with only two valid values, true and false.
+
+
+```
+if: "" then out( "true" )      ~~ => true
+if: "" ? then out( "true" )    ~~ nothing, "" is falsy
+if: void then out( "true" )    ~~ => true! only false is false actually
+if: void ? then out( "true" )  ~~ nothing, void is falsy
+```
 
 Constants are words that push a specific value onto the data stack, like `true`, `false` and `void` that push `1`, `0` and `void` respectively.
 
@@ -333,11 +398,13 @@ Objects have a value and an identity. The value is made of the class of the obje
 
 
 The class hierarchy
--------------------
+===================
 
 Every thing is something, hence **thing** is the base class of everything else, both values and objects. Values have a name and a type whereas objects have an identity and a value also made of more or less simple multiple values (object variables), potentially including pointer values when objects references each others. By convention the name of the value of a object is named it's _class_.
 
-`class( |xxx ) ~~ get the class of the thing in the xxx local variable.`
+```
+class( |xxx )  ~~ get the class of the thing in the xxx local variable.
+```
 
 - `thing`
   - `value`
@@ -390,55 +457,199 @@ The _control stack_ is for _control structures_ like loops, conditional branches
 
 When the definition of a word requires the execution of another word, or the application of a function, as most words do, the position inside the current word is stored onto the control stack. It is later retrieved there when the execution of the nested word is finished and when control needs to get back to the previous word.
 
-```
-to fib if: ( dup >? 2 ) then: { fib( dup - 1 ) + fib( swap - 2 ) }
+Note: this usage of the control stack is so frequent that most languages call it _the return stack_ instead.
 
-out( fib( 10 ) ) ~~ outputs the 10th number of the fibonacci suite
+
+Stack protocol
+--------------
+
+Words agree on protocols to manipule values on the data stack. The most simple, fast and accrobatic protocol is the _stack protocol_. With that protocol it is the order of the arguments on the stack that matters.
+
+```
+to fib
+  dup
+  if: >? 2 then: {
+    dup, fib( - 1 ) + fib( swap - 2 )
+  }
+
+out( fib( 10 ) )  ~~ outputs the 10th number of the fibonacci suite
 ```
 
-In this example, `dup` duplicates the TOS (Top Of the Stack) and `swap` swaps it with the NOS (Next On Stack). Dealing this way with the stack can become rather accrobatic and using functions produces a solution that is more readable.
+In this example, `dup` duplicates the TOS (Top Of the Stack) and `swap` swaps it with the NOS (Next On Stack). Dealing this way with the stack can become rather accrobatic and using functions produces a solution that is more readable (but sligthly less fast).
+
+
+Function protocol
+-----------------
+
+This protocol is very common in most programming languages. It states that _functions_ get _parameters_ thanks to _arguments_ that the _caller_ function _provides_ to the called function. That function is then expected to _consume_ these arguments in order to produce one or more results.
 
 ```
-to fib/  with /n function: {
-  if |n >? 2 then: {
-    fib/( |n - 1 ) + fib/( |n - 2 )
+to fib/  with nth/
+~~ Compute the nth number of the Fibonacci suite
+  function: {
+    if |nth >? 2 then: {
+      fib/( |nth - 1 ) + fib/( |nth - 2 )
+    } else: {
+      |nth
     }
   }
  ```
 
-Note: if the current word is the last word of a definition, using `again` instead is a better solution because it avoids a potential overflow of the control stack. This classic optimisation is called _"tail call elimination"_ and it is done by the Iɴᴏx compiler (ToDo).
+This definition of the fib word is _recursive_ because it references itself. If the current word were the last word of it's definition, using `again` instead would be a better solution because it avoids a potential overflow of the control stack. This classic optimisation is called _"tail call elimination"_ and it is done by the Iɴᴏx compiler (ToDo).
 
 Unfortunately it does not apply to the fidonacci function because the actual last word of the definition is the `if` word. This is clearly visible in the postfix notation only.
 
 ```
-to fib dup, 2 >? { dup, 1 - fib, swap, 2 - fib, + } if.
+to fib
+  dup
+  2 >? {
+    dup,  1, -, fib
+    swap, 2, -, fib
+    +
+  } if
 ```
 
 Note: the `,` (comma) is purely cosmetic, it is just there to make the source code clear, somehow.
 
+
+Named parameters protocol
+-------------------------
+
 Another style is possible using named values in the data stack.
 
 ```
-to fib if: _nth >? 2 then: { fib( _nth - 1 ) + fib( _nth - 2 ) }.
+to fib  ~| nth:n ... -- nth:n ... fib:n |~
+  ( if: _nth >? 2 then: {
+    fib( _nth - 1 :nth ) + fib( _nth - 2 :nth ) )
+  } )fib
 
-out( fib( nth:10 ) ) ~~ However the parameter now needs to be named
+out( fib( nth:10 ) )  ~~ However the parameter now needs to be named
 ```
+
+In this example `:nth` _renames_ the TOS (Top Of the Stack). It is necessary to do so because word `fib` uses `_nth` to get it's parameter. That's a different word _protocol_ than the ones of the previous definitions of `fib`, it's the `named parameters` protocol.
+
+Words often name their result. That way, it becomes easy to get theses results later on from the data stack. Syntax `( ... )something` makes it easy to rename a single result.
+
+When a word returns multiple results, it should name each of them to respect the _named protocol_, this is just a convention however.
+
+When the results are no longer need, they can be forgetten, ie removed from the data stack. Syntax `something/forget` does that, it removes all the values from the top of the stack up to the one named `something` included.
+
+Note: The _function protocol_ uses a special version of `forget` that operates on the _control stack_ because parameters and local variables are stored in that stack instead of beeing stored in the _data stack_.
+
 
 Other stacks
 ------------
 
-A stack is fairly usefull data structure and it is easy to create one using an array of values whose size grows and shrinks when values are pushed onto it and popped from it.
+A stack is fairly usefull data structure and it is easy to create one using an array of values whose size grows and shrinks when values are pushed onto the stack and popped from it.
 
 ``` sh
 make-stack
-"hello " _stack.push,
-"world!" _stack.push,
-out( _stack.pop & stack.pop )
+"hello " _stack.push
+"world!" _stack.push
+out( _stack.pop & _stack.pop )
 
 ~~ it outputs world!hello , out( _stack.pop _stack.pop prefix ) would produces hello world! instead.
 ```
 
 Note : the result of `make-stack` is a _pointer_ value named `stack`, this is the reason why `_stack` easely finds it inside the data stack.
+
+
+Method protocol
+---------------
+
+*Methods* are word that operate on something, often an object. They do very little but what they do is essential. They figure out the name of a word based on their own name and the _class_ of the value that they find on the stack.
+
+Because the name of final word is determined at run time, not compile time, this is called _late binding_.
+
+Inox is somehow special about that because methods work both with objects and with values. So much that it is fairly easy to implement the value semantic using objects, the user don't see the difference. A few methods needs to be implemented to handle _cloning_ and _value equality_. Cloning is about duplicating a value whereas value equality is about determining if two values are actually the same value even if their object representation is different.
+
+The opposite is true also, it is easy to implement the objet semantic of any value, it just needs to be _boxed_, ie put in some object.
+
+``` sh
+to text.box              :box text-box:1 make-object.
+to text-box.super-class  /value.
+to text-box.push         dup >R ( .box swap & .box! ) R>.
+to text-box.value        .box.
+to text-box.out          .box out.
+
+"Hello" .box       ~~ make a text-box object
+.push( " world" )  ~~ add text to it
+.push( " !" )
+out( .value() )    ~~ output it's value
+```
+
+This is a fairly inefficient version of a `text-box` buffer class but it works. Using it one can add text to the buffer until the result is used to output it using `.out()` or to get it's text value using `.value()`.
+
+A more efficient version may accumulate pieces of text inside a list and then join the members of the list when the text value is eventually needed.
+
+There will exist higher level words to help define such boxed values and much more, in the _standard librairy_. However, whatever the implementation, at the end it will always be about applying method words to objects.
+
+`>R` and `R>` move the TOS forth and back to the _control stack_, this is a simple solution to save something and restore it later. In the example, it is the pointer to the text-box object that is saved and restored. By convention method word that don't provide a result simply provide back the pointer they were provided. That pointer is the _target_ of the method. This is part of the _method protocol_.
+
+Note: the _target_ of a _method_ does not need to be a _pointer_ to an object, it can also be any other type of value. As a result _methods_ are ok for both types of value, builtin type and user defined objects.
+
+
+Modules
+=======
+
+There is no concept of _module_ per see at this point but this will come later. For now the solution is to encapsulate words into some _pseudo class_ and use `some-module.some-word()` to avoid collisions with words named identically in other modules. Alternatively one may use `some-module_some-word` or any other separator like ``some-module::some-word`. Until better.
+
+Note that using `class.some-word()`and `class.some-word` do not produce the same result because the second form only return the word, it does not call it. To call it, use syntax `class.some-word definition call` or shorter `class.some-word call-word`.
+
+
+Immediate words
+===============
+
+To improve speed, use syntax `[ /class.some-word definition ] literal call` as this will compute the address of the word _definition_ at compile time instead of run time, ie _early binding_ instead of _late binding_.
+
+Or, shorter, use `quote class.some-word word-literal`.
+
+``' class.some-word word-literal` is even shorter but less readable, at least until you get used to it.
+
+
+When defining a word, typically after ``to some-thing`` the Inox interpretor switches to a special _compile mode_. In that mode the following words are added to the _definition_ of word being compiled instead of beeing immediately executed.
+
+However, some words, _immediate words_, also called __defining words_, are still immediately executed. These special words are typically usefull to compute stuff immediately instead of later on when the word is invoked.
+
+Together with `word-literal` and other similar __defining words__, this concept of _compile mode_ versus __run time__ makes it easy to define words using the result of some computation instead of just adding plain word names to the definition.
+
+``literal`` is one such word, it adds a literal to the definition. A _literal_ is something like a number, a piece of text, a tag, etc. Ie, it's a simple value. As usual, the literal to add is found on the top of the stack.
+
+To define an _immediate_ word, simply invoke the `immediate` word right after the normal word definition.
+
+```
+variable: /profiling is: true;
+to profile increment-call#.
+to with-profiling
+  if: profiling then: {
+    inox-word tag-literal
+    /profile  word-literal
+  }
+immediate
+
+~~ simple profiling, counts numbers of calls, usage:
+true profiling!
+to do-it with-profiling do-something.
+```
+
+Because ``with-profiling`` is an _immediate_ word, it is called when the word ``do-it`` is defined, at _compile time_, not when it is called, not at _run time_.
+
+It then gets the name of the current word, which is `/do-it`,using ``ìnox-word``, and then add some code to the definition of that current word.
+
+Said code will call ``profile`` with the name of the word as parameter. That `profile` word would typically increment some counter associated with the word, this is not shown in the example.
+
+If _global variable_ `profiling` is false, nothing happens, ie no profiling code is added.
+
+Reminder: ``variable: xxx is: yyy;`` creates a _global variable_ with some initial value. It is the possible to get and set the value of that variable. Using `xxx` to get it and `xxx!` to change it.
+
+```
+to global-state   "initial-state".
+to global-state!  [ /initial-state definition literal ] @!.
+```
+
+This example is a tricky way to do what `variable:is:` does safely. It gets the address of the definition of the global-state word and changes it so that it provides a new value. ``@!```is a super powerfull word that can change any value anywhere you of, ie with the proper _address_. It's not a _safe_ word, use it at your own risk.
+
+Note: changing the definition of a word this ways is a kind of _self modifying code_. This can be convenient sometimes, rarely, for optimizations typically. Remember the advice: avoid premature optimization. First make it work, then you can make it better.
 
 
 Dialects

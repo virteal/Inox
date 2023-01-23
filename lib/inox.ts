@@ -49,8 +49,9 @@ let run_de   : boolean = de && false;  // Trace execution by word runner
 let stack_de : boolean = de && false;  // Trace stacks
 let step_de  : boolean = de && false;  // Invoke debugger before each step
 
+
 function debug_on(){
-  token_de = parse_de = eval_de = run_de = stack_de = true;
+  token_de = parse_de = eval_de = run_de = stack_de = step_de = true;
 }
 
 function debug_off(){
@@ -3127,12 +3128,15 @@ function stacks_dump() : text {
 primitive( "inox-debug", primitive_debug );
 function                 primitive_debug(){
 // Activate lots of trace and invoke host debugger if any
-  step_de  = true;
-  run_de   = true;
-  stack_de = true;
-  eval_de  = true;
-  token_de = true;
+  debug_on();
   debugger;
+}
+
+
+primitive( "inox-debug-off", primitive_debug_off );
+function                     primitive_debug_off(){
+// Deactivate lots of traces
+  debug_off();
 }
 
 
@@ -4355,11 +4359,13 @@ function inox_machine_code_cell_to_text( c : Cell ){
 
   // If code is a primitivse. That's when type is void; what a trick!
   if( t == type_void ){
+
     if( !all_primitive_cells_by_id.has( n ) ){
       debugger;
       return "Invalid primitive cell " + c + " named " + n
       + " (" + tag_to_text( n ) + ")";
     }
+
     primitive_cell = all_primitive_cells_by_id.get( n );
     primitive_name_id = name( primitive_cell );
     if( de && n != 0x0000 ){
@@ -4371,10 +4377,11 @@ function inox_machine_code_cell_to_text( c : Cell ){
       return "Invalid primitive cell " + c + ", bad function named " + n
       + " ( " + primitive_name_id + ", " + tag_to_text( n ) + ")";
     }
+
     fun = all_primitive_functions_by_id.get( n );
     name_text = tag_to_text( primitive_name_id );
-    return "cell " + c + " is " + name_text
-    + " ( primitive " + primitive_name_id + ", " + fun.name + " )";
+    return name_text + " ( cell " + c + " is primitive "
+    + primitive_name_id + ", " + fun.name + " )";
 
   // If code is the integer id of an Inox word, an execution token
   }else if ( t == type_word ){
@@ -4383,13 +4390,13 @@ function inox_machine_code_cell_to_text( c : Cell ){
     name_text    = tag_to_text( word_name_id );
     if( word_name_id == 0x0000 ){
       debugger;
-      name_text = "cell " + c + " is word inox-return 0x0000";
+      name_text = "inox-return ( cell " + c + " is word inox-return 0x0000 )";
     }
-    return "cell " + c + " is " + name_text + " ( word " + word_name_id + " )";
+    return name_text + " ( cell " + c + " is word " + word_name_id + " )";
 
   // If code is a literal
   }else{
-    return "cell " + c + " is " + cell_dump( c ) + " ( literal )";
+    return cell_dump( c ) + " ( cell " + c + " is a literal )";
   }
 
 }
@@ -4412,7 +4419,7 @@ function inox_word_to_text_definition( id : InoxIndex ) : text {
 
   // ToDo: add a pointer to the previous word definition
 
-  let buf = ": ( definition of " + text_name + ", word " + id
+  let buf = ": " + text_name + " ( definition of " + text_name + ", word " + id
   + ", cell " + def
   + ( flags ? ", flags " : "" )
   + ", length " + length + " )\n";
@@ -4429,7 +4436,7 @@ function inox_word_to_text_definition( id : InoxIndex ) : text {
       // de&&mand_eq( cell_name(  cell ), tag_return_id );
       break;
     }
-    buf += ip + ": " + inox_machine_code_cell_to_text( cell ) + "\n";
+    buf += "( " + ip + " ) " + inox_machine_code_cell_to_text( cell ) + "\n";
     ip++;
   }
 
