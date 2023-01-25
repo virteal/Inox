@@ -8,9 +8,12 @@
 
 ~~ Some basic vocabulary, primitive
 to debugger            inox-debugger
+to debug               inox-debug
+to debug-off           inox-debug-off
 to breakpoint          inox-breakpoint
 to call-with-it        inox-call-with-it
-to without             inox-without
+to without-control     inox-without-control
+to without-data        inox-without-data
 to with-it             inox-with-it
 to without-it          inox-without-it
 to it                  inox-it
@@ -71,7 +74,7 @@ to tag?                inox-is-a-tag
 to integer?            inox-is-an-integer
 to pointer?            inox-is-a-pointer
 to proxy?              inox-is-a-proxy
-to word?               inox-is-a-word
+to verb?               inox-is-a-verb
 to text?               inox-is-a-text
 to make-actor          inox-make-actor
 to actor               inox-actor
@@ -84,37 +87,52 @@ to CSP                 inox-CSP
 to CSP!                inox-set-CSP
 to TOS                 inox-TOS
 to TOS!                inox-set-TOS
+to to-control          inox-to-control
+to from-control        inox-from-control
+
+to ToDo                "ToDo: " swap join-text inox-out
+to toDo                ToDo  ~~ Literate mode friendly, it becomes ToDo
+
+~~ Some synonyms, shorter than the original name
+to without             without-control
+to clear               clear-data
 
 to basic-out           inox-out
 to out                 /basic-out call-by-tag  ~~ late binding
 
 ~~ Some more, using keyword syntax for ease
-to call:          call.          inline
-to do:            call.          inline
+to do             call.          inline
 to if:then:       ?call.         inline
 to if:then:else:  if-else call.  inline
 to if:do:         if:then:.      inline
 to unless:do:     not? if:do:.   inline
 to while:do:      while.         inline
 to until:do:      until.         inline
-to loop:          loop.          inline
 to loop:while:    loop-while.    inline
 to do:while:      loop-while.    inline
 to loop:until:    loop-until.    inline
 to do:until:      loop-until.    inline
 
+to no-debug      debug-off.
+
 to clear-stacks  clear-data clear-control
 
-to missing-word     "missing-word "     over join-text out clear-stacks
+to missing-verb     "missing-verb "     over join-text out clear-stacks
 to missing-method   "missing-method "   over join-text out clear-stacks
 to missing-operator "missing-operator " over join-text out clear-stacks
 
+to FATAL-hook    "FATAL" out debugger clear-stacks.
+to FATAL         /FATAL-hook call-by-tag.  ~~ late binding
 
-to constant:is:  make-constant. inline
-to global:is:    make-global.   inline
+to assert{  call ? not? { "ERROR. Assertion" breakpoint out FATAL } if.
+
+to constant:is:  make-constant.
+to global:is:    make-global.
+to local:is:     swap rename to-control.
 
 to init-globals
   constant: /inox-version is: "v0.3.1";
+  constant: /inox-version-time is: 1674589501315  ;
   constant: "void"        is: cast( 0, 0 );
   constant: /true         is: cast( true:1,    1 );
   constant: /false        is: cast( false:0,   1 );
@@ -124,7 +142,13 @@ to init-globals
   constant: /no           is: cast( no:0,      1 );
   constant: /failure      is: cast( failure:0, 1 );
   constant: /success      is: cast( success:1, 1 );
+  debug debugger
+  global:   /safe         is: "safe";
 init-globals
+
+to check-globals
+  assert{ ( safe =? "safe" ) }
+check-globals
 
 ~~ ToDo: :xx? special form?
 to :success? name /success =?.
@@ -166,7 +190,6 @@ to suffix  over swap join-text  ~| A B -- A AB |~
 ~~ text-join-characters
 
 
-
 ~~ Class hierarchy
 
 to thing.super-class      void
@@ -205,11 +228,8 @@ to proxy.class                  /proxy
 to block.super-class             /object
 to block.class                  /block
 
-to word.super-class              /object
-to word.class                   /word
-
-
-to ToDo:  "ToDo: " prefix out
+to verb.super-class              /object
+to verb.class                   /verb
 
 
 to dump  ~| any -- any |~  ~~ Debug dump of top of stack. TOS is preserved.
@@ -235,55 +255,43 @@ to dump-object  ~| any -- any |~
   ToDo: "dump each member";
 
 
-to method:  ~| target a-block -- |~  call-with-it without-it ~~ ToDo: one word
-
-
-to debug  ~~ During developpment I often need a lot of traces
-  do-not/log
-    token/enable/log
-    parse/enable/log
-    eval/enable/log
-    run/enable/log
-    stack/enable/log
-  do/log
-
-to no-debug
-  step/disable/log
-  token/disable/log
+to method  ~| target a-block -- |~  call-with-it without-it ~~ ToDo: one verb
 
 
 to test ~| name |~
-~~ Helper to test words. It runs the test-xxx testing word.
+~~ Helper to test verbs. It runs the test-xxx testing verb.
   "Testing " prefix out
   /test-sentinel, over
-  "test-" swap join-text call-by-name
-  ~~ che cks that stack is unchanged, ie sentinel is still at the top
+  "test-" swap join-text, call-by-name
+  ~~ checks that stack is unchanged, ie sentinel is still at the top
   /test-sentinel <>? { out( "Stack mismatch!" ) debugger } ?call
-  drop ~~ drop sentinel
-  "End of test for " prefix out
+  "End of test " prefix out
+  drop
 
 to debug-test  ~~ Helper for tests that needs to be debugged
   "Testing " prefix out
-  "test-" prefix, debug, call-by-name, no-debug
-  ~~ ToDo: developer must check that data stack is unchanged
+  "test-" swap join-text, debug, call-by-name, no-debug
+  ~~ ToDo: developer must also check that data stack is unchanged
   "End of debug-test for " prefix out
+  drop
 
 
-~~ words with formal parameters are functions called with arguments
+~~ verbs with formal parameters are functions called with arguments
 to with      /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with
 
-to fn{        with-parameters call without-parameters. inline
-to function:  with-parameters call without-parameters. inline
+
+to fn{       safe! with-parameters safe call without-parameters. inline
+to function  safe! with-parameters safe call without-parameters. inline
 
 
 to times:do:
   times:do/sentinel
-  blk| nn| ~~ begin
-  if: |nn >0? then: {
+  >blk >nn ~~ begin
+  if: nn> >0? then: {
     while: {
-      ( |nn - 1 ) dup |nn! >=0?
+      ( nn> - 1 ) dup >nn! >=0?
     } do: {
-      |blk call
+      blk> call
     };
   };
   times:do/jump
@@ -295,14 +303,14 @@ to decrement 1 -
 to increment 1 +
 
 
-to with-ii       0 ii|. inline
-to without-ii    /ii without. inline
-to with-ii-do:   with-ii call without-ii
-to ii!           |ii!. inline
-to ii            |ii.  inline
+to with-ii       0 >ii. inline
+to without-ii    /ii without-control. inline
+to with-ii-do    with-ii call without-ii
+to ii!           >ii!. inline
+to ii            ii>.  inline
 to decrement-ii  ii decrement ii!
 to increment-ii  ii increment ii!
-to --ii          ii decrement dup ii!. ~~ |ii 1 - dup |ii!
+to --ii          ii decrement dup ii!. ~~ ii> 1 - dup >ii!
 to ++ii          ii increment dup ii!
 to ii--          ii decrement-ii
 to ii++          ii increment-ii
@@ -312,31 +320,34 @@ to kk            /ii 2 upper
 to kk!           /ii 2 upper!
 
 to from:to:do:
-  /ii-do with ii-block| ii-to| ii|
-    if: |ii-from <=? |ii-to then: {
-      do: |ii-block call while: { ++ii <=? |ii-to };
+  #ii-do with
+    >ii-block >ii-to >ii-from
+    if: ii-from> <=? ii-to> then: {
+      do: ii-block> call while: { ii-to> >? ++ii };
     };
-  /ii-do without
+  #ii-do without
 
 to from:down-to:do:
-  /ii-do with ii-block| ii-down-to| ii|
-    if: |ii-from >=? |ii-down-to then: {
-      do: |ii-block call while: { --ii <=? |ii-to };
+  #ii-do with
+    >ii-block >ii-down-to >ii
+    if: ii-from> >=? ii-down-to> then: {
+      do: ii-block> call while: { ii-to> >? --ii };
     };
-  /ii-do without
+  #ii-do without
 
 to from:to:by:do:
-  /ii-do with ii-block| ii-by| ii-to| ii|
-    if: |ii-by >0? then: {
-      if: |ii-from <=? |ii-to then: {
-        do: |ii-block call while: { ii + |ii-by, ii!, ii <=? |ii-to };
+  #ii-do with
+    >ii-block >ii-by >#ii-to >ii
+    if: ii-by> >0? then: {
+      if: ii-from> <=? ii-to> then: {
+        do: ii-block> call while: { ii + ii-by>, ii!, ii <=? ii-to> };
       };
     } else: {
-      if: |ii-from >=? |ii-to then: {
-        do: |ii-block call while: { ii + |ii-by, ii!, ii >=? |ii-to };
+      if: ii-from> >=? ii-to> then: {
+        do: ii-block> call while: { ii + ii-by>, ii!, ii >=? ii-to> };
       };
     };
-  /ii-do without
+  #ii-do without
 
 
 ~~ ToDo: closures, partial, complete, shared
@@ -348,21 +359,24 @@ to from:to:by:do:
 ~~ to #[     with.
 ~~ to    ]#  inox-make-with-array
 
+to try-call  ToDo( "Implement inox-try-call" )
 
 to try:
   inox-try/sentinel
-    call
+    try-call
   inox-try/jump
 
 to try:catch:
-  inox-try:catch|
-  call
+  >inox-try:catch
+  try-call
+  inox-try:catch/without
 
 to try:catch:finally:
-  inox-try:catch:finally|
-  inox-try:catch|
-  call
-  |inox-try:catch:finally call
+  >inox-try:catch:finally
+  >inox-try:catch
+  try-call
+  inox-try:catch:finally> call
+  inox-try:catch/without
 
   ~~ to FATAL inox-FATAL
 
@@ -387,4 +401,4 @@ to InoxStyle
 InoxStyle
 
 ~~ Other ideas to consider
-~~ defined?( /word )  ~~ return true if word is defined
+~~ defined?( /verb )  ~~ return true if verb is defined

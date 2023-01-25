@@ -94,8 +94,8 @@ to test-times-do
   times: 3 do: { out( "Time´goes on" ) } ;
 times-do/test
 
-
-to swap/  with /a /b fn{ |a A|, |b B|, |B |A }.
+debug
+to swap/  with /a /b  fn{ a> >A, b> >B, B> A> }.
 
 to test-swap/
   2 3 swap/()
@@ -183,5 +183,22 @@ To test-Loop2
 
 Loop2/test
 
+inox-set-literate: true;
+
+To Test-literate programming
+
+i just need to make sure that this verb does no more than
+
+  Out( "test-literate ok" ).
+
+let's try with Literate/Test that should invoke the test verb with the tag literate as parameter
+
+please note that literate code is ok with lowercase verbs only, it does not work with uppercase verbs nor with punctation, except for the , that is non significant in all cases and there for cosmetic reasons only
+
+and then i need to restore the non literate mode using
+
+ToDo: "ignore dot when in literate style";
+
+  Inox-set-literate( false )
 
 out( "End of Iɴᴏx smoke test" )
