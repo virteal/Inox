@@ -185,16 +185,22 @@ Loop2/test
 
 inox-set-literate: true;
 
-To test-literate programming experimental mode, I just need to make sure that this test-literal verb does no more than Out( "test-literate ok" ).
+In order
+  To test-literate
+programming experimental mode, I just need to make sure that this test-literal verb does no more than
+  Out( "test-literate ok" ).
 
-So let's try with Literate/Test that should invoke the test verb with the tag literate as parameter
+So let's try with literate/test that should invoke the test verb with the tag literate as parameter
+  Literate/Test
 
 Please note that literate code is ok with lowercase verbs only, it does not work with camelcase verbs nor with punctation, except for the , that is non significant in all cases and there for cosmetic reasons only
 
-It does work with forth uppercase verbs because the rule about uppercase does not apply when the second character is also an uppercase character.
+It does work with forth uppercase verbs because the rule about uppercase does not apply when the second character is also an uppercase character
 
   ToDo: "Ignore dots and maybe other punctuations when in literate style?";
 
-and then I need to restore the non literate mode using Inox-set-literate( false ) ~~ which I just did
+and then I need to restore the non literate mode using
+  Inox-set-literate( False )
+
 
 out( "End of Iɴᴏx smoke test" )

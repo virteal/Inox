@@ -52,7 +52,8 @@ let run_de   : boolean = true;  // Trace execution by verb runner
 let stack_de : boolean = true;  // Trace stacks
 let step_de  : boolean = true;  // Invoke debugger before each step
 
-no_debug();
+debug();
+//de = false;
 
 
 function debug(){
@@ -128,8 +129,8 @@ function mand_neq( a : any, b : any ) : boolean {
 }
 
 
-assert(   de );  // Not ready for production, please wait :)
-de&&mand( de );  // Like assert but that can be disabled for speed
+//assert(   de );  // Not ready for production, please wait :)
+//de&&mand( de );  // Like assert but that can be disabled for speed
 
 de&&bug( "Inox is starting." );
 
@@ -299,7 +300,7 @@ function set_type( c : Cell, t : Type ) : void{
 
 function set_name( c : Cell, n : Tag ) : void{
   // The name of the tag cell that defines the tag must never change.
-  if( de && type( c ) == 1 && c == value( c ) ){
+  if( de && type( c ) == type_tag && c == value( c ) ){
     de&&mand_eq( n, c );
   }
   set_info( c, pack( unpack_type( info( c ) ), n ) );
@@ -567,7 +568,7 @@ function copy_cell( source : Cell, destination : Cell ) : void {
     de&&mand_eq( value( destination ), value( source ) );
   }
   // If the source was a reference, increment the reference counter
-  if( is_reference_cell( source ) ){
+  if( needs_clear( source ) ){
     // This would not be necessary if there were a classical GC.
     // However, I may implement some destructor logic when an object
     // goes out of scope and it sometimes make sense to have that logic
@@ -599,7 +600,7 @@ function raw_move_cell( source : Cell, destination : Cell ) : void {
 
 
 function clear_cell_value( cell : Cell ) : void {
-  de&&mand( ! is_reference_cell( cell ) );
+  de&&mand( ! needs_clear( cell ) );
   reset_value( cell );
 }
 
@@ -609,7 +610,7 @@ function clear( cell : Cell ) : void {
 
   if( cell == 531 )debugger;
 
-  if( ! is_reference_cell( cell ) ){
+  if( ! needs_clear( cell ) ){
     if( de ){
       if( type(  cell ) == type_tag
       &&  value( cell ) == cell
@@ -624,7 +625,7 @@ function clear( cell : Cell ) : void {
   }
 
   // Cell is either a reference or a proxy
-  de&&mand( is_reference_cell( cell ) );
+  de&&mand( needs_clear( cell ) );
 
   const is_reference = is_a_reference_cell( cell );
   const reference  = value( cell );
@@ -1088,7 +1089,7 @@ function area_garbage_collector() : boolean {
     count_visited++;
 
     // We're not supposed to visit cells after the last cell
-    if( de && count_visited > the_next_free_cell ){
+    if( count_visited > the_next_free_cell ){
       return false;
     }
 
@@ -1936,7 +1937,7 @@ function is_reference_type( type : Type ){
 }
 
 
-function is_reference_cell( c : Cell ){ return is_reference_type( type( c ) ); }
+function needs_clear( c : Cell ){ return is_reference_type( type( c ) ); }
 
 
 // There is a tag for each type
@@ -2410,6 +2411,7 @@ primitive( "inox-return", primitive_return );
 function                  primitive_return(){
 // primitive "return" is jump to return address. Eqv R> IP!
   // ToDo: this should be primitive 0
+  debugger;
   run_de&&bug( "primitive, return to IP " + value( CSP ) + " from " + name( CSP ) );
   IP = eat_raw_value( CSP );
   CSP += words_per_cell;
@@ -2915,6 +2917,8 @@ function                         primitive_control_depth(){
  *  inox-clear-control primitive
  */
 
+const tag_inox_clear_control = tag( "inox-clear-control" );
+
 primitive( "inox-clear-control", primitive_clear_control );
 function                         primitive_clear_control(){
 // Clear the control stack
@@ -2924,6 +2928,9 @@ function                         primitive_clear_control(){
     clear( CSP + ii * words_per_cell );
   }
   CSP = ACTOR.control_stack;
+  // Add a return to IP 0 so that return from verb exits RUN() properly
+  CSP -= words_per_cell;
+  set( CSP, type_integer, tag_inox_clear_control, 0 );
 }
 
 
@@ -3341,12 +3348,11 @@ function stacks_dump() : text {
   let base = ACTOR.stack;
 
   if( ptr > base ){
-    bug(
-      "Data stack underflow, top " + tos + ", base " + base
-      + ", delta " + ( base - tos )
-      + ", excess pop " + ( ( base - tos ) / words_per_cell )
-    )
-    base = ptr + 5 * words_per_cell;
+    buf += "\nData stack underflow, top " + tos + ", base " + base
+    + ", delta " + ( base - tos )
+    + ", excess pop " + ( ( base - tos ) / words_per_cell );
+    // base = ptr + 5 * words_per_cell;
+    some_dirty = true;
   }
 
   let nn = 0;
@@ -3377,12 +3383,12 @@ function stacks_dump() : text {
   let return_base = ACTOR.control_stack;
 
   if( ptr > return_base ){
-    bug(
-      "Control stack underflow, top " + csp + ", base " + return_base
-      + ", delta " + ( return_base - csp )
-      + ", excess pop " + ( ( return_base - csp ) / words_per_cell )
-    )
-    return_base = ptr + 5 * words_per_cell;
+    buf += "\nControl stack underflow, top " + csp + ", base " + return_base
+    + ", delta " + ( return_base - csp )
+    + ", excess pop " + ( ( return_base - csp ) / words_per_cell );
+    // ToDo: fatal error?
+    some_dirty = true;
+    // return_base = ptr + 5 * words_per_cell;
   }
 
   nn = 0;
@@ -3466,19 +3472,19 @@ function               primitive_log(){
       const domain_cell = POP();
       const domain_id = value( domain_cell );
       if( domain_id == tag( "eval" ) ){
-        if( de ){ eval_de = true; }
+        eval_de = true;
       }
       if( domain_id == tag( "step" ) ){
-        if( de ){ step_de = true; }
+        step_de = true;
       }
       if( domain_id == tag( "run" ) ){
-        if( de ){ run_de = true; }
+        run_de = true;
       }
       if( domain_id == tag( "stack" ) ){
-        if( de ){ stack_de = true; }
+        stack_de = true;
       }
       if( domain_id == tag( "token" ) ){
-        if( de ){ token_de = true; }
+        token_de = true;
       }
       clear( domain_cell );
     }else if( verb == tag( "disable" ) ){
@@ -3486,19 +3492,19 @@ function               primitive_log(){
       const domain_cell = POP();
       const domain_id = value( domain_cell );
       if( domain_id == tag( "eval" ) ){
-        if( de ){ eval_de = false; }
+        eval_de = false;
       }
       if( domain_id == tag( "step" ) ){
-        if( de ){ step_de = false; }
+        step_de = false;
       }
       if( domain_id == tag( "run" ) ){
-        if( de ){ run_de = false; }
+        run_de = false;
       }
       if( domain_id == tag( "stack" ) ){
-        if( de ){ stack_de = false; }
+        stack_de = false;
       }
       if( domain_id == tag( "token" ) ){
-        if( de ){ token_de = false; }
+        token_de = false;
       }
       clear( domain_cell )
     }
@@ -3515,14 +3521,12 @@ primitive( "inox-faster", primitive_faster );
 function                  primitive_faster(){
 // Turbo mode, no checks, no debug, no trace. Return previous state.
   // ToDo: per actor?
+  check_de&&mand_cell_type( TOS, type_boolean );
   const was_turbo = de;
   if( value( TOS ) ){
     de = false;
   }else{
     de = true;
-  }
-  if( de ){
-    mand_cell_type( TOS, type_boolean );
   }
   set_value( TOS, was_turbo ? 1 : 0 );
 }
@@ -4054,12 +4058,12 @@ primitive( "inox-while-1", function primitive_while_1(){
   // Move condition and body to control stack
   new_csp -= words_per_cell;
   move_cell( body_block, new_csp );
-  if( de ){
+  if( true || de ){
     set_info( new_csp, tag_inox_while_body );
   }
   new_csp -= words_per_cell;
   move_cell( condition_block, new_csp );
-  if( de ){
+  if( true || de ){
     set_info( new_csp, tag_inox_while_condition );
   }
   CSP = new_csp;
@@ -4128,7 +4132,7 @@ function primitive_while_3(){
       tag_inox_break_sentinel
     );
     CSP = new_csp;
-    if( de ){
+    if( true || de ){
       reset( csp + 0 * words_per_cell );
       reset( csp + 1 * words_per_cell );
       reset( csp + 2 * words_per_cell );
@@ -4463,7 +4467,7 @@ function primitive_is_equal(){
       return;
     }
     // If not references, then they're necesseraly different
-    if( !is_reference_cell( p1 ) ){
+    if( !needs_clear( p1 ) ){
       clear( p2 );
       clear( p1 );
       set( p1, type_boolean, tag_is_equal, 0 );
@@ -5421,9 +5425,7 @@ function                               primitive_run_with_parameters(){
     set_name( actual_argument_cell, n );
 
     // Check that names match
-    if( de  ){
-      mand_cell_name( actual_argument_cell, n );
-    }
+    de&&mand_cell_name( actual_argument_cell, n );
 
     copy_count++;
     if( copy_count == count ){
@@ -6371,13 +6373,27 @@ function RUN(){
       if( !IP )break loop;
       i = info( IP );
 
+      if( stack_de ){
+        bug( "\nRUN IP: " + inox_machine_code_cell_to_text( IP ) + "\n"
+        + stacks_dump() );
+      }else if( run_de ){
+        bug( "\nRUN IP: " + inox_machine_code_cell_to_text( IP ) );
+      }
+
+if( step_de )debugger;
+
       // The non debug loop is realy short
       if( !de ){
+        if( i == 0x0000 ){
+          IP = eat_raw_value( CSP );
+          CSP += words_per_cell;
+          continue;
+        }
         t = unpack_type( i );
         // If primitive
         if( t == type_primitive /* 0 */ ){
           IP += words_per_cell;
-          primitive_function_by_tag( i )();
+          all_primitive_functions_by_tag.get( i )();
         // If Inox defined word
         }else if( t == type_verb ){
           CSP -= words_per_cell;
@@ -6401,15 +6417,6 @@ function RUN(){
 
       // The debug mode version has plenty of checks and traces
 
-      if( stack_de ){
-        bug( "\nRUN IP: " + inox_machine_code_cell_to_text( IP ) + "\n"
-        + stacks_dump() );
-      }else if( run_de ){
-        bug( "\nRUN IP: " + inox_machine_code_cell_to_text( IP ) );
-      }
-
-if( step_de )debugger;
-
       // Special "next" code, 0x0000, is a jump to the return address.
       if( i == 0x0000 ){
         if( run_de ){
@@ -6417,8 +6424,8 @@ if( step_de )debugger;
           + name( CSP ) );
         }
         IP = eat_raw_value( CSP );
-        if( IP == 0x0000 )break loop;  // That's the only way to exit the loop
         CSP += words_per_cell;
+        // if( IP == 0x0000 )break loop;  // That's the only way to exit the loop
         continue;
       }
 
@@ -7064,7 +7071,7 @@ class Tokenizer {
   // Indentation based definitions and keywords auto close
   indentation          = 0;
   previous_indentation = 0;
-  non_space_reached    = false;
+  indentation_reached  = false;
 
   // The last seen token or beeing processed one
   token : Token = {
@@ -7211,7 +7218,7 @@ function tokenizer_restart( source : text ){
   // Idem regarding indentation, restart fresh
   toker.indentation = 0;
   toker.previous_indentation = 0;
-  toker.non_space_reached = false;
+  toker.indentation_reached = false;
 
   // ToDo: make it reentrant
   // some enter/leave logic could stack the tokenizer state
@@ -7497,23 +7504,22 @@ function next_token() : Token {
     // ToDo: this assert fails, why? de&&mand( buf.length > 0 );
 
     if( !toker.is_literate )return;
-
-    // If the word is one letter long or starts on first column: it's a comment
-    if( buf.length < 2
-    ||  token.column_no == 0
-    ){
-      token.type = "/comment";
-      return;
-    }
+    if( buf == "." )debugger;
 
     // If word does not depend on case, leave it alone, not a comment
     if( buf.toLowerCase() == buf.toUpperCase() )return;
+
+    // If the word is one letter long then it's a comment
+    if( buf.length < 2 ){
+      token.type = "/comment";
+      return;
+    }
 
     // In literate style, lower/upper case is significant on first 2 letters
     const first_ch  = buf[ 0 ];
     const second_ch = buf[ 1 ];
 
-    // If word starts with 2 lower case letters, then it is a comment
+    // If word starts with two lower case letters, then it is a comment
     if( first_ch.toLowerCase()  == first_ch
     &&  second_ch.toLowerCase() == second_ch
     ){
@@ -7521,7 +7527,7 @@ function next_token() : Token {
       return;
     }
 
-    // If word starts with 2 upper case letters, then it is code
+    // If word starts with 2 upper case letters, then it is code, as is
     if( first_ch.toUpperCase()  == first_ch
     &&  second_ch.toUpperCase() == second_ch
     ){
@@ -7635,18 +7641,18 @@ function next_token() : Token {
       }
       // Restart indentation detection
       front_spaces = 0;
-      toker.non_space_reached = false;
+      toker.indentation_reached = false;
       // Process eol as if it were a space
       ch = " ";
       is_space = true;
 
     // Count front spaces on new line to detect changed indentation
-    }else if( ! toker.non_space_reached ){
+    }else if( ! toker.indentation_reached ){
       if( is_space ){
         front_spaces++;
       // If first non space on new line, emit some indentation token
       }else{
-        toker.non_space_reached = true;
+        toker.indentation_reached = true;
         // Emit either "++", "--" or "==" indentation token
         if( state == "/base" ){
           token.type = "/indent";
@@ -7691,6 +7697,17 @@ function next_token() : Token {
     // Comments start differently depending on style
     buf += ch;
     de&&mand( buf.length > 0 );
+
+    // If literate style, a line starting without indentation is a comment
+    if( toker.is_literate && toker.indentation_reached && toker.indentation == 0 ){
+      state = "/comment";
+      // The new ch will be added when processing the comment state
+      buf = buf.slice( 0, -1 );
+      start_ii = ii;
+      state = "/comment";
+      process_comment_state();
+      return;
+    }
 
     // If actual start of comment, change state
     if( buf == toker.comment_monoline
@@ -7769,20 +7786,31 @@ function next_token() : Token {
     }
 
     // If this is a monoline comment ending, emit it
-    if( ( is_eol || is_eof )
-    && toker.comment_monoline != ""
-    && ( buf.slice( 0, toker.comment_monoline.length )
-      == toker.comment_monoline )
-    ){
-      // Emit token, without start of comment sequence and without lf
-      token.type = "/comment";
-      buf = buf.slice(
-        toker.comment_monoline.length,
-        buf.length - 1 // remove lf
-      );
-      token.text = buf;
-      token_is_ready = true;
-      return;
+    if( is_eol || is_eof ){
+      // ~~ style of comments
+      if( toker.comment_monoline != ""
+        && ( buf.slice( 0, toker.comment_monoline.length )
+        == toker.comment_monoline )
+      ){
+        // Emit token, without start of comment sequence and without lf
+        token.type = "/comment";
+        buf = buf.slice(
+          toker.comment_monoline.length,
+          buf.length - 1 // remove lf
+        );
+        token.text = buf;
+        token_is_ready = true;
+        return;
+      }
+      // Literate style of comments
+      if( toker.is_literate ){
+        // Emit token, whole line without lf
+        token.type = "/comment";
+        buf = buf.slice( 0, buf.length - 1 );
+        token.text = buf;
+        token_is_ready = true;
+        return;
+      }
     }
 
     // If this terminates the multiline comment, emit the comment
@@ -7867,6 +7895,11 @@ function next_token() : Token {
 
       // ToDo: refactor
       handle_literate_style();
+      if( token.type == "/comment" ){
+        token.text = buf;
+        token_is_ready = true;
+        return;
+      }
 
       let aliased = alias( buf );
 
@@ -8108,7 +8141,7 @@ function test_token( typ : text, val : text ){
   // Save tokenizer context
   const save_cursor  = toker.text_cursor;
   const save_seen    = toker.first_comment_seen;
-  const save_reached = toker.non_space_reached;
+  const save_reached = toker.indentation_reached;
 
   let token = next_token();
 
@@ -8130,7 +8163,7 @@ function test_token( typ : text, val : text ){
     // Restore tokenizer context to retry under debugger
     toker.text_cursor        = save_cursor;
     toker.first_comment_seen = save_seen;
-    toker.non_space_reached  = save_reached;
+    toker.indentation_reached  = save_reached;
     debugger;
     // This is convenient for interactive debugging
     test_token( typ, val );
@@ -8312,8 +8345,8 @@ test_token( "/eof",  ""   );
 
 primitive( "inox-set-literate", primitive_set_literate );
 function                        primitive_set_literate(){
-  const val = value( TOS );
-  clear( TOS );
+  de&&mand_cell_type( TOS, type_boolean );
+  const val = eat_raw_value( POP() );
   tokenizer_set_literate_style( val ? true : false );
 }
 
@@ -8808,6 +8841,7 @@ function                primitive_eval() : void {
 
       // Remember in control stack what verb is beeing entered
       // ToDo: shoul use type_word?
+      CSP -= words_per_cell;
       set_info( CSP, pack( type_void, tag ) );
       IP = definition( tag );
 
@@ -8822,16 +8856,16 @@ function                primitive_eval() : void {
       RUN();
 
       de&&mand( TOS <= ACTOR.stack );
+      stack_de&&bug( "\nEval. After immediate RUN of "
+        + tag_to_text( tag )
+        + "\n" + stacks_dump()
+      );
       if( de ){
-        stack_de&&bug( "\nEval. After immediate RUN of "
-          + tag_to_text( tag )
-          + "\n" + stacks_dump()
-        );
         if( CSP != old_csp ){
           bug( "??? Eval. do_machine_code, CSP changed by "
           + tag_to_text( tag ) );
           debugger;
-          SET_CSP( old_csp );
+          // SET_CSP( old_csp );
         }
         let ip = IP;
         if( ip && ip != old_ip ){

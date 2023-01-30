@@ -323,8 +323,8 @@ to times:do:
     };
   }
 
-to times:loop:  times:do:;
-to times        swap times:do:;
+to times:loop:  times:do:.
+to times        swap times:do:.
 
 
 to it-self       it >self
@@ -418,9 +418,14 @@ to InoxStyle
   alias(  "Then"         " then: { "        )
   alias(  "Else"         " } else: { "      )
   alias(  "EndIf"        " } ; "            )
-  alias(  "Times"        "times:"           )
+  alias(  "Times"        "times: "          )
   alias(  "Begin"        "{"                )
-  alias(  "End"          " } ; "            )
+  alias(  "End"          "}"                )
   alias(  "Scope"        "0 {"              )
   alias(  "EndScope"     " } do-with-it "   )
 InoxStyle
+
+To False  false.
+To True   true.
+
+~~ forth.nox comes next
