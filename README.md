@@ -42,7 +42,7 @@ Because values are named, using a tag, it becomes possible to access them using 
 
 This is similar to the notion of property, attribute, field, instance variables, etc. But it has deep additional consequences and usages.
 
-Among other usages, Iɴᴏx uses names to access variables in stacks. Most other languages use index instead, ie a position in the stack. A position that is most often relative to the level of the stack when some function is entered/activated. These are the classical notions of activation records and local variables associated to function calls.
+Among other usages, Iɴᴏx uses names to access variables in stacks. Most other languages use index instead, ie a numercial position in the stack. A position that is most often relative to the level of the stack when some function is entered/activated. These are the classical notions of activation records and local variables associated to function calls.
 
 Because Iɴᴏx access variables by names there is no need to provide a user friendly syntax to figure out the numerical position of a variable in a stack. Hence local variables in Iɴᴏx are dynamically scoped; no lexical scope, not yet.
 
@@ -62,7 +62,7 @@ For example the idiomatic solution to build an array is to push some sentinel va
 
 This is incredibly usefull and when more stacks are required it is equaly simple: switch to a new stack, build the data, store the result somewhere (or leave it on the alternative stack) and get back to the previous stack, eventually the original data stack.
 
-Sophisticated _stackfull state machines_ can be expressed easly using that solution in addition to _finite state machines_. It's like having an instruction pointer for data instead of the usual one for code, complete, with push, pop, and return. Think 'active data'.
+Sophisticated _statefull machines_ can be expressed easly using that solution in addition to _finite state machines_. It's like having an instruction pointer for data instead of the usual one for code, complete, with push, pop, and return. Think 'active data'.
 
 All objects have at least one data stack attached to them. _Actors_ are special active objects that can have multiple data stacks so that it is possible to send them messages to different addresses, as if they had multiple mailboxes.
 
@@ -126,13 +126,13 @@ hello
 
 This defines a **verb** named `hello`. Then the verb is invoked and as a result `hello` is displayed on some output device.
 
-Words take their arguments from the _data stack_. They can also push results onto that stack.
+Verbs take their arguments from the _data stack_. They can also push results onto that stack.
 
-Word `to` starts a verb _definition_ that an often optional `.` (dot) terminates. Inside that defintion there are other verbs and litteral values like numbers or pieces of text.
+Verb `to` starts a verb _definition_ that an often optional `.` (dot) terminates. Inside that defintion there are other verbs and litteral values like numbers or pieces of text.
 
-Note: a _verb_ can be made of anything, not just letters. As a result `even?` is a valid name for a verb, it could be the name of a verb that tests if a number is even. By convention verbs with a `?` suffix are _predicates_, their result is a _boolean value_ that is either true or false.
+Note: the name of a _verb_ can be made of anything, not just letters. As a result `even?` is a valid name for a verb, it could be the name of a verb that tests if a number is even. By convention verbs with a `?` suffix are _predicates_, their result is a _boolean value_ that is either true or false.
 
-As a convenience the verb to invoke can be specified before the pushed data, using `( )` paranthesis. This is the _infix_ notation.
+As a convenience the verb to invoke can be specified before the pushed data, using the `( )` paranthesis. This is the _infix_ notation.
 
 ``` sh
 say( "hello" )  ~~ "infix" style
@@ -193,7 +193,7 @@ to tell-to/  with /m /d, s{ out( "T " & m> & "t " && d> }
 
 This is an abbreviated syntax that is defined in the _standard library_. `s{ ... }` is like `s( ... )` but the former invokes the `s{` verb with the block as sole argument whereas the later invokes the verb `f` when `)` is reached.
 
-`s{` is like `{`, it marks the begining of a _block_, a sequence of verbs. There is however an important difference, only `s{' creates a new _scope_. This is convenient to use _local variables_ that will be automaticcaly discarded when the block execution ends.
+`s{` is like `{`, it marks the begining of a _block_, a sequence of verbs and literals. There is however an important difference, only `s{' creates a new _scope_. This is convenient to use _local variables_ that will be automaticcaly discarded when the block execution ends.
 
 Some high level _control structures_ automaticcaly create a scope. This is the case for all types of _loops_ and anything related to _exceptions_.
 
@@ -212,7 +212,7 @@ Note: the verb `assert{` does not evaluate it's block argument when running in _
 The default definition of `assert{` uses the `inox-FATAL` primitive. However it uses it via an indirection by the `FATAL` verb so that the behaviour can be redefined freely by redefining that verb.
 
 
-Word redefinition
+Verb redefinition
 =================
 
 ``` sh
@@ -227,7 +227,7 @@ That's because redefined verb definitions impact verbs defined after the redefin
 to FATAL-hook handle-it-my-way.
 ```
 
-The default implementation in the _standard library_ uses `inox-FATAL`. That primitive displays a stack trace and then forces the exit of the Iɴᴏx process. This is brutal but safe when Iɴᴏx processes are managed by some orchestration layer. A layer that will automatically restart the dead process for example.
+The default implementation in the _standard library_ uses `inox-FATAL`. That primitive displays a stack trace and then forces the exit of the Iɴᴏx process. This is brutal but safe when Iɴᴏx processes are managed by some _orchestration_ layer. A layer that will automatically restart the dead process for example.
 
 
 Blocks
@@ -298,7 +298,7 @@ to if:then:else  ~| cond block block -- |~
   if-else
 ```
 
-`if-else` is a verb that expects to find three arguments on the data stack: a boolean value and two blocks. Depending on the boolean, it runs either the first or the second block.
+`if-else` is a verb that expects to find three arguments on the data stack: a _boolean_ value and two _blocks_. Depending on the boolean, it runs either the first or the second block.
 
 ``` sh
 to tell-sign  <0? { "negative" out } { "positive" out } if-else.
@@ -363,7 +363,7 @@ Note: the OOP (Object Oriented Programming) literature uses many names for that 
 x:3 y:2 point:2 make-object  ~~ create a point object with two attributes.
 ```
 
-Access to an object's variables requires two informations: the name of the variable and the identity of the object.
+Access to an object's variables requires two informations: the name of the variable and the identity of the object. The identity is _reference_ to the object, not the object itself.
 
 The `make-object` verb creates an object and pushes it's identity onto the data stack. It gets as parameters the **class** of the object and the number of object variables to initialize with values poped from the data stack.
 
@@ -424,9 +424,11 @@ There are a few special values, _falsy_ values such as `0`, `void` or `""` (the 
 ```
 if: "" then out( "true" )      ~~ => true
 if: "" ? then out( "true" )    ~~ nothing, "" is falsy
-if: void then out( "true" )    ~~ => true! only false is false actually
+if: void then out( "true" )    ~~ => true! only false is falsy actually
 if: void ? then out( "true" )  ~~ nothing, void is falsy
 ```
+
+Verbs that expect a _boolean_ value will usually _coerce_ the value of an unexpected type into a _boolean_ value, using a very simple rule : everything is true. This is rarely something usefull and using `?`and the _falsy_ logic generaly makes more sense. But it is fast.
 
 Constants are verbs that push a specific value onto the data stack, like `true`, `false` and `void` that push `1`, `0` and `void` respectively.
 
@@ -485,7 +487,7 @@ class( xxx> )  ~~ get the class of the thing in the xxx local variable.
 
 Sometimes some things have a class that is the combination of multiple base classes. For example a text and an array are both iterable things even thougth one is a value whereas the other one is an object made of multiple values. To avoid extra complexity Iɴᴏx provide a single inheritance default solution.
 
-As a consequence `class( something)` produces a single tag, the name of the class of the thing considered. Word `ìmplements?( thing, method )` tells about the existence of said method for the class of said thing. By default things implements their own methods and inherit the method of their _super class_, ie the class they _extend_.
+As a consequence `class( something)` produces a single tag, the name of the class of the thing considered. Verb `ìmplements?( thing, method )` tells about the existence of said method for the class of said thing. By default things implements their own methods and inherit the method of their _super class_, ie the class they _extend_.
 
 That basic solution is extensible by defining a `my_class.method` that is free to lookup for the desired method the way it wants. See also `.missing-method` about _virtual methods_ whose definition is determined _on the fly_ at _run time_, a sometimes slow but otherwise radically flexible solution.
 
@@ -515,7 +517,7 @@ Operators are verbs that typically use TOS (unary operators) and sometimes TOS a
 out( 3 + 2 )  ~~ Idem, with an "infix" notation instead of "postfix"
 ```
 
-It is very common and advised to break long verbs into smaller verbs with good names. This makes the source code easy to understand. Words must be defined before they are used. As a result it is common to first define verbs for some special vocabulary and then use these simple verbs to solve a bigger problem.
+It is very common and advised to break long verbs into smaller verbs with good names. This makes the source code easy to understand. Verbs must be defined before they are used. As a result it is common to first define verbs for some special vocabulary and then use these simple verbs to solve a bigger problem.
 
 
 Handling the data stack
@@ -577,7 +579,7 @@ Note: this usage of the control stack is so frequent that most languages call it
 Stack protocol
 --------------
 
-Words agree on protocols to manipulate values on the data stack. The most basic, fast and fairly accrobatic protocol is the _stack protocol_. With that protocol it is the order of the arguments on the stack that matters.
+Verbs agree on protocols to manipulate values on the data stack. The most basic, fast and fairly accrobatic protocol is the _stack protocol_. With that protocol it is the order of the arguments on the stack that matters.
 
 ```
 to fib
@@ -642,7 +644,7 @@ out( fib( nth:10 ) ) drop  ~~ Now the parameter needs to be named and manualy re
 
 In this example `:nth` _renames_ the TOS (Top Of the Stack). It is necessary to do so because verb `fib` uses `_nth` to get it's parameter. That's a different verb _protocol_ than the ones of the previous definitions of `fib`, it's the `named parameters` protocol.
 
-Words often name their result. That way, it becomes easy to get theses results later on from the data stack. Syntax `( ... )something` makes it easy to rename a single result.
+Verbs often name their result. That way, it becomes easy to get theses results later on from the data stack. Syntax `( ... )something` makes it easy to rename a single result.
 
 When a verb returns multiple results, it should name each of them to respect the _named protocol_, this is just a convention however.
 

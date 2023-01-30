@@ -36,6 +36,8 @@ forth-dialect
 : OVER       over                     ;
 : PICK       pick                     ;
 : DUP        dup                      ;
+: ?DUP       ?dup                     ;
+: 2DUP       2dup                     ;
 : ROT        rotate                   ;
 : CR         13 EMIT                  ;
 : SPACE      32 EMIT                  ;

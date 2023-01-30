@@ -8,7 +8,7 @@
 inox-dialect
 
 
-to make-point  x:0 y:0 point:2 inox-make-object
+to make-point  x:0 y:0 point:3 inox-make-object
 
 to test-point
   make-point
@@ -30,27 +30,45 @@ to test-method-call
 method-call/test
 
 
-to test-ii-operations
-  with-ii
-    out( "Initial ii should be 0, is " & ii )
-    increment-ii
-    out( "Incremented ii should be 1, is " & ii )
-    decrement-ii
-    out( "Decremented ii should be 0, is " & ii )
-    10 ii!
-    out( "New value of ii should be 10, is " & ii )
-    out( "++ii should be 11, is " & ++ii )
-    out( "ii++ should be 11, is " & ii++ )
-    out( "ii-- should be 12, is " & ii-- )
-    out( "--ii should be 10, is " & --ii )
-    out( "ii should be 10, is "   & ii   )
-  without-ii
-ii-operations/test
+to test-it-operations
+  0 it{
+    out( "Initial it should be 0, is " & it )
+    increment-it!
+    out( "Incremented it should be 1, is " & ii )
+    decrement-it!
+    out( "Decremented it should be 0, is " & ii )
+    10 it!
+    out( "New value of it should be 10, is " & it )
+    out( "++it! should be 11, is " & ++it! )
+    out( "it++! should be 11, is " & it++! )
+    out( "it--! should be 12, is " & it--! )
+    out( "--it! should be 10, is " & --it! )
+    out( "it should be 10, is "    & it    )
+  }
+it-operations/test
 
 
 to test-false-while
   while: { 0 } do: { out( "!!! never reached" ) };
 false-while/test
+
+
+to test-times-do
+  times: 3 do: { out( "Time´goes on" ) } ;
+times-do/test
+
+
+to swap/  with /a /b  fn{ a> >A, b> >B, B> A> }.
+
+to test-swap/
+  2 3 swap/()
+  "2 3 swap/(), top should be 2, is "  prefix out
+  if: <>? 2 then: { out( "Expected 2 but got " prefix ) debugger };
+  "2 3 swap/(), next should be 3, is " prefix out drop
+  swap/( 4, 5 )
+  "swap/( 4, 5 ), top should be 4, is "  prefix out drop
+  "swap/( 4, 5 ), next should be 5, is " prefix out drop
+"swap/" test
 
 
 to test-break
@@ -79,33 +97,15 @@ forever-while/test
 
 
 to test-loop-break
-  with-ii
-  2 ii!
-  loop: {
-    out( "loop-while body" )
-    out( "Hello loop " & ii )
-    decrement-ii
-    if: ii <0? then: { break };
-  };
-  without-ii
+  1 it{
+    loop: {
+      out( "loop-while body" )
+      out( "Hello loop " & it )
+      decrement-it!
+      if: it <0? then: { break };
+    };
+  }
 loop-break/test
-
-to test-times-do
-  times: 3 do: { out( "Time´goes on" ) } ;
-times-do/test
-
-debug
-to swap/  with /a /b  fn{ a> >A, b> >B, B> A> }.
-
-to test-swap/
-  2 3 swap/()
-  "2 3 swap/(), top should be 2, is "  prefix out
-  if: <>? 2 then: { out( "Expected 2 but got " prefix ) debugger };
-  "2 3 swap/(), next should be 3, is " prefix out drop
-  swap/( 4, 5 )
-  "swap/( 4, 5 ), top should be 4, is "  prefix out drop
-  "swap/( 4, 5 ), next should be 5, is " prefix out drop
-"swap/" test
 
 
 to say:to:  swap out out( " " ) out.
@@ -124,11 +124,11 @@ HELLO
 inox-dialect  ~~ back to inox
 
 to test-HELLO
-  "HELLO" call-by-name
-  "HELLO" definition call
-  { HELLO } call
-  1 { hello } ?call
-  if: 1 then: {
+  "HELLO" run-by-name
+  "HELLO" definition run
+  { HELLO } run
+  true { hello } if
+  if: true then: {
     HELLO
   } else: {
     hello
@@ -137,13 +137,13 @@ HELLO/test
 
 
 to test-loop1
-  with-ii
-    3 ii!
-    while: { decrement-ii, ii >0? } do: {
-      if:    ii % 2 =0?
-      then:  { out( ii & " is even" ) }
-      else:  { out( ii & " is odd"  ) } ;
-    } ;
+  0 it{
+    3 it!
+    while: { decrement-it!, it >0? } do: {
+      if:    it % 2 =0?
+      then:  { out( it & " is even" ) }
+      else:  { out( it & " is odd"  ) } ;
+    };
     out( "test loop1 ok 1" )
     times: 3 do: {
       out( "bravo" )
@@ -154,18 +154,18 @@ to test-loop1
       break
     } ;
     out( "test loop1 ok 3, all ok" )
-  without-ii
+  }
 loop1/test
 
 
 To test-Loop2
-  with-ii-do: Begin
-    3 ii!
-    While --ii >0? Do
-      If ii % 2 =0? Then
-        out( ii & " is even" )
+  Scope
+    3 it!
+    While --it! >0? Do
+      If it % 2 =0? Then
+        out( it & " is even" )
       Else
-        out( ii & " is odd" )
+        out( it & " is odd" )
       EndIf
     EndWhile
     Times 3 Loop
@@ -179,26 +179,22 @@ To test-Loop2
       out( "wonder" )
       Break
     EndLoop
-  End
+  EndScope
 
 Loop2/test
 
 inox-set-literate: true;
 
-To Test-literate programming
+To test-literate programming experimental mode, I just need to make sure that this test-literal verb does no more than Out( "test-literate ok" ).
 
-i just need to make sure that this verb does no more than
+So let's try with Literate/Test that should invoke the test verb with the tag literate as parameter
 
-  Out( "test-literate ok" ).
+Please note that literate code is ok with lowercase verbs only, it does not work with camelcase verbs nor with punctation, except for the , that is non significant in all cases and there for cosmetic reasons only
 
-let's try with Literate/Test that should invoke the test verb with the tag literate as parameter
+It does work with forth uppercase verbs because the rule about uppercase does not apply when the second character is also an uppercase character.
 
-please note that literate code is ok with lowercase verbs only, it does not work with uppercase verbs nor with punctation, except for the , that is non significant in all cases and there for cosmetic reasons only
+  ToDo: "Ignore dots and maybe other punctuations when in literate style?";
 
-and then i need to restore the non literate mode using
-
-ToDo: "ignore dot when in literate style";
-
-  Inox-set-literate( false )
+and then I need to restore the non literate mode using Inox-set-literate( false ) ~~ which I just did
 
 out( "End of Iɴᴏx smoke test" )
