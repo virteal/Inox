@@ -49,7 +49,7 @@ it-operations/test
 
 
 to test-false-while
-  while: { 0 } do: { out( "!!! never reached" ) };
+  while: { false } do: { out( "!!! never reached" ) };
 false-while/test
 
 
@@ -110,20 +110,16 @@ loop-break/test
 
 to say:to:  swap out out( " " ) out.
 
-say: "Hello" to: "Smalltalk world!";
-
 to hello out( "hello world!" ).
 
-hello()
 
 forth-dialect ( forth )
-
 : HELLO CR ." HELLO forth world!" ;
-HELLO
-
 inox-dialect  ~~ back to inox
 
+
 to test-HELLO
+  say: "Hello" to: "Smalltalk world!";
   "HELLO" run-by-name
   "HELLO" definition run
   { HELLO } run

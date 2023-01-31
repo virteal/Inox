@@ -8,6 +8,7 @@
 
 ~~ Some basic vocabulary, primitive
 to the-void             inox-the-void
+to noop                 inox-noop
 to debugger             inox-debugger
 to debug                inox-debug
 to no-debug             inox-no-debug
@@ -18,7 +19,7 @@ to run-by-tag           inox-run-by-tag
 to with                 inox-with  ~~ ToDo: use possibly faster /inox-with
 to run-with-parameters  inox-run-with-parameters
 to run-with-it          inox-run-with-it
-to without-control      inox-without-control
+to without-local        inox-without-local
 to without-data         inox-without-data
 to with-it              inox-with-it
 to it                   inox-it
@@ -52,10 +53,10 @@ to name                 inox-name
 to value                inox-value
 to definition           inox-definition
 to make-global          inox-make-global
-to make-control         inox-make-control
-to control              inox-control
-to upper                inox-upper-control
-to upper!               inox-set-upper-control
+to make-local           inox-make-local
+to local                inox-local
+to upper                inox-upper-local
+to upper!               inox-set-upper-local
 to data                 inox-data
 to upper-data           inox-upper-data
 to upper-data!          inox-set-upper-data
@@ -89,6 +90,8 @@ to TOS                  inox-TOS
 to TOS!                 inox-set-TOS
 to to-control           inox-to-control
 to from-control         inox-from-control
+to fetch-control        inox-fetch-control
+to now                  inox-now
 
 to ToDo                "ToDo: " swap join-text inox-out
 to toDo                ToDo  ~~ Literate mode friendly, it becomes ToDo
@@ -122,6 +125,7 @@ to else{          if-not.        inline
 to otherwise{     if-not.        inline
 to unless{        if-not.        inline
 
+to {}             noop
 to {drop}         /drop definition inox-literal. immediate!
 to range?         dup <=? and{ >=? }
 to range<?        dup <?  and{ >=? }
@@ -138,7 +142,7 @@ to FATAL         /FATAL-hook run-by-tag
 
 to ASSERT-hook   "ASSERT" out debugger clear-stacks
 to ASSERT        /ASSERT-hook run-by-tag
-to assert{       run not? { ASSERT } if
+to assert{       inox-assert. inline
 
 to constant:is:  make-constant
 to global:is:    make-global
@@ -158,9 +162,12 @@ to init-globals
   global:   /safe              is: "safe";
 init-globals
 
+
 to check-globals
   ~~ the safe global variable is ok to store one value outside any stack
-  ~~ HERE is used this way in Forth.
+  ~~ HERE is used this way in Forth
+  ~~ ToDo: a safe{ } method for access to the safe global variable with
+  ~~ the protection of a global mutex guard
   assert{ ( safe =? "safe" ) }
 check-globals
 
@@ -402,6 +409,11 @@ to try:catch:finally:
   inox-try:catch:finally> run
   inox-try:catch/without
 
+to try:finally:
+  >inox-try:finally
+  try-run
+  inox-try:finally> run
+
 
 to InoxStyle
   ~~ ToDo: some literate-inox dialect
@@ -427,5 +439,29 @@ InoxStyle
 
 To False  false.
 To True   true.
+
+
+constant: /speed-index-loops is: 10000000;
+
+to speed-index
+  assert{ speed-index-loops =? 10000000 }
+  ~~ How long for integer addition
+  now
+    times: speed-index-loops do: { 1 1 + drop };
+  now swap -
+  ~~ How long for no operation
+  now
+    times: speed-index-loops do: {  };
+  now swap -
+  ~~ Delta is how long for addition alone
+  -
+  dup
+  out(
+    "" & speed-index-loops
+    & " times 1 1 + drop in "
+    &  & " ms"
+  )
+
+~~ speed-index
 
 ~~ forth.nox comes next
