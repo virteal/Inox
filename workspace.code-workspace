@@ -38,7 +38,7 @@
 		"editor.padding.bottom": 5,
 		"editor.semanticHighlighting.enabled": true,
 		"editor.smoothScrolling": true,
-		"editor.wordWrap": "bounded",
+		"editor.wordWrap": "wordWrapColumn",
 		"workbench.list.smoothScrolling": true,
 		"files.eol": "\n",
 		"files.insertFinalNewline": true,

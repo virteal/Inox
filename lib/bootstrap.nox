@@ -31,7 +31,7 @@ to inline               inox-inline
 to while                inox-while-1 inox-while-2 inox-while-3. inline
 to until                inox-while-1 inox-while-2 inox-until-3. inline
 to sentinel             inox-sentinel
-to jump                 inox-jump
+to long-jump            inox-long-jump
 to loop                 inox-loop
 to make-object          inox-make-object
 to run                  inox-run
@@ -301,6 +301,7 @@ to debug-test  ~~ Helper for tests that needs to be debugged
 ~~ verbs with formal parameters are functions called with arguments
 to with      /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with
 to fn{       run-with-parameters. inline
+to s{        run-with-parameters. inline
 to function  run-with-parameters. inline
 
 
@@ -322,7 +323,7 @@ to do-with-it     inox-run-with-it
 
 to times:do:
   it{
-    it >block it!
+    it >block, it!
     if: it >0? then: {
       while: { it--! >=0? } do: {
         block> run
@@ -352,7 +353,7 @@ to ll!           /it 3 upper!
 
 to from:to:do:
   it{
-    it >block >ii-to ii!
+    it >block, >ii-to, ii!
     if: ii <=? ii-to> then: {
       do: { block> run } while: { ii-to> >? ++it! };
     };
@@ -360,7 +361,7 @@ to from:to:do:
 
 to from:down-to:do:
   it{
-    it >block >ii-down-to ii!
+    it >block, >ii-down-to, ii!
     if: ii >=? ii-down-to> then: {
       do: { block> run } while: { ii-to> >? --it! };
     };
@@ -368,7 +369,7 @@ to from:down-to:do:
 
 to from:to:by:do:
   it{
-    it >block >ii-by >ii-to ii!
+    it >block, >ii-by, >ii-to, ii!
     if: ii-by> >0? then: {
       if: ii <=? ii-to> then: {
         do: { block> run } while: { ii + ii-by>, ii!, ii <=? ii-to> };
@@ -392,27 +393,28 @@ to from:to:by:do:
 
 to try-run  ToDo( "Implement inox-try-run" )
 
-to try:
+to try
   inox-try/sentinel
     try-run
-  inox-try/jump
+  inox-try/long-jump
 
 to try:catch:
   >inox-try:catch
-  try-run
+  try
   inox-try:catch/without
 
 to try:catch:finally:
   >inox-try:catch:finally
   >inox-try:catch
-  try-run
+  try
   inox-try:catch:finally> run
-  inox-try:catch/without
+  inox-try:catch:finaly/without
 
 to try:finally:
   >inox-try:finally
   try-run
   inox-try:finally> run
+  inox-try:finaly/without
 
 
 to InoxStyle

@@ -156,14 +156,14 @@ to play
     dup, if: <?          then: { out( "Too small" ), continue }
     out( "Yes!" ), break
   }
-  clear-data
+  clear
 ```
 
-This code is a small game where the player must guess a number between 0 and 100. It illustrates two important _control structures_: loops and _conditionnals_.
+This code is a small game where the player must guess a number between 0 and 100. It illustrates two important _control structures_: _loops_ and _conditionnals_.
 
 `dup` duplicates the value on the top of the data stack whereas `drop` removes it, while `clear` empties the entire stack.
 
-`while: { ... } do: { ... }` and `do: { ... } until: { ... }` are special versions of the more general `loop: { ... }` structure where the loop breaks or continue depending on some condition.
+`while: { ... } do: { ... }` and `do: { ... } until: { ... }` are special versions of the more general `loop: { ... }` structure where the loop breaks or continues depending on some condition.
 
 
 Functions
@@ -325,6 +325,7 @@ loop: {
   if: xxx then: { "next" global-state! };
   ...
 }
+```
 
 
 There are automatically two verbs that are created for each global variable. First verb is the _getter_ verb, which is simply the name of the variable as specified when the variable was created using a tag. The second verb is the _setter_ verb, the same name with the `!` _suffix_.
@@ -338,7 +339,7 @@ Local variables
 ---------------
 
 ``` sh
-to say-to/  fn{ >dest >msg
+to say-to/  s{ >dest >msg
   out( "Say" & msg> & " to " & dest> )
 }
 ```
@@ -422,19 +423,19 @@ There are a few special values, _falsy_ values such as `0`, `void` or `""` (the 
 
 
 ```
-if: "" then out( "true" )      ~~ => true
+if: "" then out( "true" )      ~~ => type error, "" is not a boolean value
 if: "" ? then out( "true" )    ~~ nothing, "" is falsy
-if: void then out( "true" )    ~~ => true! only false is falsy actually
+if: void then out( "true" )    ~~ => type error, void is not a boolean
 if: void ? then out( "true" )  ~~ nothing, void is falsy
 ```
 
-Verbs that expect a _boolean_ value will usually _coerce_ the value of an unexpected type into a _boolean_ value, using a very simple rule : everything is true. This is rarely something usefull and using `?`and the _falsy_ logic generaly makes more sense. But it is fast.
+Verbs that expect a _boolean_ value will sometimes _coerce_ the value of an unexpected type into a _boolean_ value, using a very simple rule : everything is true. This is rarely something usefull and using `?`and the _falsy_ logic generaly makes more sense. But it is fast.
 
 Constants are verbs that push a specific value onto the data stack, like `true`, `false` and `void` that push `1`, `0` and `void` respectively.
 
 `void` is a very special value that often means that there is no valid value available. It could be the result of the failed attempt to find something for example.
 
-To test against `void` use the `something?` predicates. It's result is `false` only when the value on the top of the stack is the special ``void`` value. The opposite predicate is `void?`.
+To test against `void` use the `something?` predicates. It's result is `false` only when the value on the top of the stack is the special ``void`` value. The opposite predicate is `void?` ('nothing?' is a synonym).
 
 
 Tags
@@ -487,7 +488,7 @@ class( xxx> )  ~~ get the class of the thing in the xxx local variable.
 
 Sometimes some things have a class that is the combination of multiple base classes. For example a text and an array are both iterable things even thougth one is a value whereas the other one is an object made of multiple values. To avoid extra complexity Iɴᴏx provide a single inheritance default solution.
 
-As a consequence `class( something)` produces a single tag, the name of the class of the thing considered. Verb `ìmplements?( thing, method )` tells about the existence of said method for the class of said thing. By default things implements their own methods and inherit the method of their _super class_, ie the class they _extend_.
+As a consequence `class( something )` produces a single tag, the name of the class of the thing considered. Verb `ìmplements?( thing, /method )` tells about the existence of said method for the class of said thing. By default things implements their own methods and inherit the method of their _super class_, ie the class they _extend_.
 
 That basic solution is extensible by defining a `my_class.method` that is free to lookup for the desired method the way it wants. See also `.missing-method` about _virtual methods_ whose definition is determined _on the fly_ at _run time_, a sometimes slow but otherwise radically flexible solution.
 
@@ -659,7 +660,7 @@ Other stacks
 A stack is a fairly usefull data structure and it is easy to create one using an array of values whose size grows and shrinks when values are pushed onto the stack and popped from it.
 
 ``` sh
-make-stack
+make-stack( 100 ) ~~ at most 100 values
 "hello " _stack.push
 "world!" _stack.push
 out( _stack.pop & _stack.pop )
@@ -730,7 +731,7 @@ Modules
 
 There is no concept of _module_ per see at this point but this will come later. For now the solution is to encapsulate verbs into some _pseudo class_ and use `some-module.some-verb()` to avoid collisions with verbs named identically in other modules. Alternatively one may use `some-module_some-verb` or any other separator like ``some-module::some-verb`. Until better.
 
-Note that using `class.some-verb()`and `class.some-verb` do not produce the same result because the second form only returns the verb, it does not call it. To call it, use syntax `class.some-verb definition call` or shorter `class.some-verb call-verb`.
+Note that using `class.some-verb()`and `class.some-verb` do not produce the same result because the second form only returns the verb, it does not exeute it. To execute the verb, use syntax `class.some-verb definition run` or shorter `class.some-verb run-verb`.
 
 
 File formats
@@ -778,15 +779,15 @@ To improve speed, use syntax `[ /class.some-verb definition ] literal call` as t
 
 Or, shorter, use `quote class.some-verb verb-literal`.
 
-``' class.some-verb verb-literal` is even shorter but less readable, at least until you get used to it.
+`' class.some-verb verb-literal` is even shorter but the quote character is less readable, at least until you get used to it.
 
-When defining a verb, typically after ``to some-thing`` the Iɴᴏx interpretor switches to a special _compile mode_. In that mode the following verbs are added to the _definition_ of verb being compiled instead of beeing immediately executed.
+When defining a verb, typically after `to some-thing` the Iɴᴏx interpretor switches to a special _compile mode_. In that mode the following verbs are added to the _definition_ of verb being compiled instead of beeing immediately executed.
 
 However, some verbs, _immediate verbs_, also called __defining verbs_, are still immediately executed. These special verbs are typically usefull to compute stuff immediately instead of later on when the verb is invoked.
 
 Together with `verb-literal` and other similar _defining verbs_, this concept of _compile mode_ versus _run time_ makes it easy to define verbs using the result of some computation instead of just adding plain verb names to the definition.
 
-``literal`` is one such verb, it adds a literal to the definition. A _literal_ is something like a number, a piece of text, a tag, etc. Ie, it's a simple value. As usual, the literal to add is found on the top of the stack.
+`literal` is one such verb, it adds a literal to the definition. A _literal_ is something like a number, a piece of text, a tag, etc. Ie, it's a simple value. As usual, the literal to add is found on the top of the stack.
 
 To define an _immediate_ verb, simply invoke the `immediate` verb right after the normal verb definition.
 
@@ -896,7 +897,7 @@ Fun HeLlO  "WorLD" out
 HeLlo
 ```
 
-Note: adding aliases to an existing dialect is not safe, better use your own style, your own dialect. If it is nice enought other may copy it, that the best compliment they can make to you.
+Note: adding aliases to an existing dialect is not safe, better use your own style, your own dialect. If it is nice enought other may copy it, copying is the best compliment they can make to you.
 
 The same is true for reusable verbs, it's better to encapsultate them in some _module_. If they are good names, they may eventually end up in the _standard library_.
 
