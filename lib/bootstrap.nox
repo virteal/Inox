@@ -5,6 +5,7 @@
  |
  |~
 
+ to a "a".
 
 ~~ Some basic vocabulary, primitive
 to the-void             inox-the-void
@@ -14,8 +15,8 @@ to debug                inox-debug
 to no-debug             inox-no-debug
 to breakpoint           inox-breakpoint
 to run                  inox-run
-to run-by-name          inox-run-by-name
-to run-by-tag           inox-run-by-tag
+to run-name             inox-run-name
+to run-tag              inox-run-tag
 to with                 inox-with  ~~ ToDo: use possibly faster /inox-with
 to run-with-parameters  inox-run-with-parameters
 to run-with-it          inox-run-with-it
@@ -41,7 +42,7 @@ to log                  inox-log
 to cast                 inox-cast
 to loop-while           inox-loop-while. inline
 to loop-until           inox-loop-until. inline
-to join-text            inox-join-text  ~| A B -- AB |~
+to text-join            inox-text-join
 to alias                inox-alias
 to clear-data           inox-clear-data
 to clear-control        inox-clear-control
@@ -92,16 +93,28 @@ to to-control           inox-to-control
 to from-control         inox-from-control
 to fetch-control        inox-fetch-control
 to now                  inox-now
-
-to ToDo                "ToDo: " swap join-text inox-out
-to toDo                ToDo  ~~ Literate mode friendly, it becomes ToDo
+to named?               inox-named?
+to as-text              inox-as-text
+to dump                 inox-dump
+to text-length          inox-text-length
+to text-cut             inox-text-cut
+to text-but             inox-text-but
+to text-mid             inox-text-mid
+to text-eq?             inox-text-eq?
+to text-neq?            inox-text-neq?
+to text-find            inox-text-find
+to text-find-last       inox-text-find-last
+to text-line            inox-text-line
 
 ~~ Some synonyms, shorter than the original name
 to without             without-data
 to clear               clear-data
 
 to basic-out           inox-out
-to out                 /basic-out run-by-tag  ~~ late binding
+to out                 /basic-out run-tag  ~~ late binding
+
+to ToDo                "ToDo: " swap text-join out
+to toDo                ToDo  ~~ Literate mode friendly, it becomes ToDo
 
 ~~ Some more, using keyword syntax for ease
 to do             run.           inline
@@ -133,15 +146,15 @@ to range<?        dup <?  and{ >=? }
 
 to clear-stacks  clear-data clear-control
 
-to missing-verb     "missing-verb "     over join-text out clear-stacks
-to missing-method   "missing-method "   over join-text out clear-stacks
-to missing-operator "missing-operator " over join-text out clear-stacks
+to missing-verb     "missing-verb "     over text-join out clear-stacks
+to missing-method   "missing-method "   over text-join out clear-stacks
+to missing-operator "missing-operator " over text-join out clear-stacks
 
 to FATAL-hook    "FATAL" out debugger clear-stacks
-to FATAL         /FATAL-hook run-by-tag
+to FATAL         /FATAL-hook run-tag
 
 to ASSERT-hook   "ASSERT" out debugger clear-stacks
-to ASSERT        /ASSERT-hook run-by-tag
+to ASSERT        /ASSERT-hook run-tag
 to assert{       inox-assert. inline
 
 to constant:is:  make-constant
@@ -179,37 +192,6 @@ to :off?     name /off     =?
 to :yes?     name /yes     =?
 to :no?      name /no      =?
 
-~~ Some basic text manipulations
-to prefix  over join-text       ~| A B -- A BA |~
-to suffix  over swap join-text  ~| A B -- A AB |~
-~~ text-length
-~~ text-splice
-~~ text-but
-~~ text-first
-~~ text-last
-~~ text-but-last
-~~ text-starts-with?
-~~ text-ends-with?
-~~ text-contains?
-~~ text-replace
-~~ text-replace-all
-~~ text-replace-first
-~~ text-replace-last
-~~ text-trim
-~~ text-trim-left
-~~ text-trim-right
-~~ text-split-by
-~~ text-join-by
-~~ text-join join-text
-~~ text-split-lines
-~~ text-join-lines
-~~ text-join-pieces
-~~ text-split-pieces
-~~ text-split-words
-~~ text-join-words
-~~ text-split-characters
-~~ text-join-characters
-
 
 ~~ Class hierarchy
 
@@ -236,6 +218,9 @@ to integer.class                /integer
 
 to float.super-class             /value
 to float.class                  /float
+
+to text.super-class              /value
+to text.class                   /text
 
 to object.super-class        /thing
 to object.class             /object
@@ -283,7 +268,7 @@ to test ~| name |~
 ~~ Helper to test verbs. It runs the test-xxx testing verb.
   "Testing " prefix out
   /test-sentinel, over
-  "test-" swap join-text, run-by-name
+  "test-" swap text-join, run-name
   ~~ checks that stack is unchanged, ie sentinel is still at the top
   /test-sentinel <>? { out( "Stack mismatch!" ) debugger } if
   "End of test " prefix out
@@ -292,7 +277,7 @@ to test ~| name |~
 to debug-test  ~~ Helper for tests that needs to be debugged
   "Testing " prefix out
   dup
-  "test-" swap join-text, debug, run-by-name, no-debug
+  "test-" swap text-join, debug, run-name, no-debug
   ~~ ToDo: developer must also check that data stack is unchanged
   "End of debug-test for " prefix out
   drop
@@ -417,6 +402,49 @@ to try:finally:
   inox-try:finaly/without
 
 
+~~ text class
+to text.join          text-join
+to text.&             text-join
+to text.cut           text-cut
+to text.but           text-but
+to text.mid           text-mid
+to text.==?           text-eq?
+to text.<>?           text-neq?
+to prefix             over text-join       ~| A B -- A BA |~
+to suffix             over swap text-join  ~| A B -- A AB |~
+~~ text-length
+to text.length        text-length
+~~ text-slice
+~~ text-first         text-cut
+to text.first         text-cut
+to text-last          text-but
+to text.last          text-but
+~~ text-but-last      text-cut
+to text.find          text-find
+to text.find-last     text-find-last
+to text.line          text-line
+~~ text-starts-with?
+~~ text-ends-with?
+~~ text-contains?
+~~ text-replace
+~~ text-replace-all
+~~ text-replace-first
+~~ text-replace-last
+~~ text-trim
+~~ text-trim-left
+~~ text-trim-right
+~~ text-split-by
+~~ text-join-by
+~~ text-split-lines
+~~ text-join-lines
+~~ text-join-pieces
+~~ text-split-pieces
+~~ text-split-words
+~~ text-join-words
+~~ text-split-characters
+~~ text-join-characters
+
+
 to InoxStyle
   ~~ ToDo: some literate-inox dialect
   inox-dialect
@@ -458,8 +486,8 @@ to speed-index
   ~~ Delta is how long for addition alone
   -
   dup
-  out(
-    "" & speed-index-loops
+  out( ""
+    & speed-index-loops
     & " times 1 1 + drop in "
     &  & " ms"
   )

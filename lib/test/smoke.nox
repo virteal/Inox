@@ -120,7 +120,7 @@ inox-dialect  ~~ back to inox
 
 to test-HELLO
   say: "Hello" to: "Smalltalk world!";
-  "HELLO" run-by-name
+  "HELLO" run-name
   "HELLO" definition run
   { HELLO } run
   true { hello } if

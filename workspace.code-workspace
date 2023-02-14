@@ -82,6 +82,13 @@
 		"terminal.integrated.copyOnSelection": true,
 		"terminal.integrated.minimumContrastRatio": 7,
 		"terminal.integrated.tabs.focusMode": "singleClick",
-		"terminal.integrated.defaultLocation": "editor"
+		"terminal.integrated.defaultLocation": "editor",
+		"files.associations": {
+			"atomic": "cpp",
+			"ios": "cpp",
+			"system_error": "cpp",
+			"xiosbase": "cpp",
+			"xstring": "cpp"
+		}
 	}
 }
