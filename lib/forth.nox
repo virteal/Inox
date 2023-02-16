@@ -26,6 +26,7 @@ inox-dialect
 forth-dialect
   alias
 
+( Standard Forth is supposed to be case insensitive, not true here )
 
 : forth-dot  out                      ;
 : EMIT       inox-ascii-character out ;

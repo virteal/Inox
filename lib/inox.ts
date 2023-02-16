@@ -39,6 +39,7 @@
 
 
 /*c{
+  #include <fstream>
   #include <iostream>
   #include <string>
   #include <stdbool.h>
@@ -224,6 +225,7 @@
  */
 
 /**/  import    assert from "assert";
+
 /*c   #include <assert.h>   c*/
 
 /*
@@ -359,8 +361,15 @@ let step_de = true;  // Invoke debugger before each step
  *  The default should normally be no_debug().
  */
 
-/**/  debug();
-// /**/  no_debug();
+/*
+ *  Global flag to filter out all console.log until one needs them.
+ *  See inox-log primitive to enable/disable traces.
+ */
+
+let can_log = false;
+
+// /**/  debug();
+ /**/  no_debug();
 // /**/  no_debug_at_all();
 
 
@@ -368,6 +377,7 @@ let step_de = true;  // Invoke debugger before each step
  *  Let's define the three main modes of operation depending on the debug
  *  level, ie Inox machine debugging, application debugging or production.
  */
+
 
 /*
  *  Kernel mode, with lots of traces and step by step debugging.
@@ -380,6 +390,7 @@ let step_de = true;  // Invoke debugger before each step
   /**/  mem_de = alloc_de = true;
   check_de = true;
   token_de = parse_de = eval_de = run_de = stack_de = step_de = true;
+  can_log = true;
 }
 
 
@@ -412,14 +423,6 @@ let step_de = true;  // Invoke debugger before each step
   /**/  alloc_de = false;
   check_de = false;
 }
-
-
-/*
- *  Global flag to filter out all console.log until one needs them.
- *  See inox-log primitive to enable/disable traces.
- */
-
-let can_log = false;
 
 
 /* -----------------------------------------------------------------------------
@@ -485,7 +488,7 @@ let can_log = false;
 
 /*c
 
-std::string tbut( std::string& s, int n ){
+std::string tbut( const std::string& s, int n ){
   if( n > 0 ){
     return s.substr( n, s.length() - n );
   }else{
@@ -504,7 +507,7 @@ c*/
 
 /**/ function tcut( s : string, n : number ){ return s.slice( 0, n ); }
 /*c
-std::string tcut( std::string& s, int n ){
+std::string tcut( const std::string& s, int n ){
   if( n > 0 ){
     return s.substr( 0, n );
   }else{
@@ -530,12 +533,49 @@ c*/
 
 /*c
 
-std::string tmid( std::string& t, int start, int end ){
+std::string tmid( const std::string& t, int start, int end ){
   int s = start >= 0 ? start : t.length() + start;
   int e = end >= 0 ? end : t.length() + end;
-  return text.substr( start, end - start);
+  return t.substr( start, end - start);
 }
 
+c*/
+
+
+/*
+ *  tlow( text )
+ *    Return text in lower case.
+ */
+
+/**/ function tlow( s : string ){ return s.toLowerCase(); }
+
+/*c
+std::string tlow( const std::string& s ){
+  std::string r;
+  for( int i = 0; i < s.length(); i++ ){
+    r += tolower( s[ i ] );
+  }
+  return r;
+}
+c*/
+
+
+/*
+ *  tup( text )
+ *    Return text in upper case.
+ *
+ */
+
+/**/ function tup( s : string ){ return s.toUpperCase(); }
+
+/*c
+std::string tup( const std::string& s ){
+  std::string r;
+  for( int i = 0; i < s.length(); i++ ){
+    r += toupper( s[ i ] );
+  }
+  return r;
+}
 c*/
 
 
@@ -545,7 +585,7 @@ c*/
  */
 
 /**/ function teq( s1 : string, s2 : string ) : boolean {
-/*c  bool     teq( std::string& s1, std::string& s2 ) {   c*/
+/*c  bool     teq( const std::string& s1, const std::string& s2 ) {   c*/
   return s1 == s2;
 }
 
@@ -553,21 +593,25 @@ c*/
 
 /*c
 
-bool teq( std::string& s1, char* s2 ) {
+bool teq( const std::string& s1, const char* s2 ) {
   return s1 == s2;
 }
 
-bool teq( char* s1, std::string& s2 ) {
+bool teq( const char* s1, const std::string& s2 ) {
   return s2 == s1;
 }
 
-bool teq( std::string& s1, char s2 ) {
+bool teq( const std::string& s1, char s2 ) {
   if( s1.empty() )return s2 == 0;
-  return s.length() == 1 && s1[ 0 ] == s2;
+  return s1.length() == 1 && s1[ 0 ] == s2;
 }
 
 bool teq( char s1, char s2 ) {
   return s1 == s2;
+}
+
+bool teq( char s1, const char* s2 ) {
+  return s2[ 0 ] == s1 && s2[ 1 ] == 0;
 }
 
 c*/
@@ -580,28 +624,32 @@ c*/
  */
 
 /**/ function tneq( s1 : string, s2 : string ) : boolean {
-/*c  bool     tneq( std::string& s1, std::string& s2 ) {   c*/
+/*c  bool     tneq( const std::string& s1, const std::string& s2 ) {   c*/
   return s1 != s2;
 }
 
 // C++ overloaded functions, depending on string representation
 /*c
 
-bool tneq( std::string& s1, char* s2 ) {
+bool tneq( const std::string& s1, const char* s2 ) {
   return s1 != s2;
 }
 
-bool tneq( char* s1, std::string& s2 ) {
+bool tneq( const char* s1, const std::string& s2 ) {
   return s2 != s1;
 }
 
-bool tneq( std::string& s1, char s2 ) {
+bool tneq( const std::string& s1, char s2 ) {
   if( s1.empty() )return s2 != 0;
   return s1.length() != 0 || s1[ 0 ] != s2;
 }
 
 bool tneq( char s1, char s2 ) {
   return s1 != s2;
+}
+
+bool tneq( char s1, const char* s2 ) {
+  return s2[ 0 ] != s1 || s2[ 1 ] != 0;
 }
 
 c*/
@@ -612,7 +660,7 @@ c*/
  */
 
 /**/ function tidx( s : string,     sub : string     ) : Index {
-/*c  int      tidx( std::string& s, std::string& sub )         {  c*/
+/*c  int      tidx( const std::string& s, const std::string& sub )         {  c*/
   /**/ return s.indexOf( sub );
   /*c  return s.find( sub );  c*/
 }
@@ -623,7 +671,7 @@ c*/
  */
 
 /**/ function tidxr( s : string,     sub : string     ) : Index {
-/*c  int      tidxr( std::string& s, std::string& sub )         { c*/
+/*c  int      tidxr( const std::string& s, const std::string& sub )         { c*/
   /**/ return s.lastIndexOf( sub );
   /*c  return s.rfind( sub );  c*/
 }
@@ -648,24 +696,26 @@ c*/
  *  It's a wrapper around console.log() if can_log is true.
  */
 
-/**/ function trace( msg ){
+/**/ function trace( msg ) : boolean {
 /**/    // de&&bug( a_message ) to log a message using console.log()
 /**/    if( !can_log ){
 /**/      // See primitive inox-log
 /**/      bug = console_log;
-/**/      return;
+/**/      return true;
 /**/    }
 /**/    // AssemblyScript supports a simpler version of console.log()
 /**/    assert( typeof msg == "string" );
 /**/    console_log( msg );
+/**/    return true;
 /**/  }
 
 
 /*c
 
-void trace( std::string& msg ){
-  if( !can_log )return;
+bool trace( const std::string& msg ){
+  if( !can_log )return true;
   cout << msg;
+  return true;
 }
 
 void debugger_function( void ){
@@ -714,7 +764,7 @@ c*/
 
 
 /**/ function mand2( condition : boolean, msg : string ) : boolean {
-/*c  bool     mand2( int condition,       std::string& msg ){  c*/
+/*c  bool     mand2( int condition,       const std::string& msg ){  c*/
 // Like mand() but with a message
   if( condition )return true;
   bug( msg );
@@ -728,8 +778,18 @@ c*/
 /*c  bool     mand_eq( int a, int b ){   c*/
   // Check that two values are equal
   if( a == b )return true;
-  /**/  mand2( false, "bad eq " + a + " / " + b );
-  /*c   mand2( false, "bad eq" );   c*/
+  if( is_valid_tag( a ) || is_valid_tag( b ) ){
+    if( is_valid_tag( a ) && is_valid_tag( b ) ){
+      trace(
+        S()+ "bad eq " + tag_to_text( a ) + " / " + tag_to_text( b )
+      );
+    }else if( is_valid_tag( a ) ){
+      trace( S()+ "bad eq " + tag_to_text( a ) + " / " + N( b ) );
+    }else{
+      trace( S()+ "bad eq " + N( a ) + " / " + tag_to_text( b ) );
+    }
+  }
+  mand2( false, S()+ "bad eq " + N( a ) + " / " + N( b ) );
   return false;
 }
 
@@ -738,8 +798,7 @@ c*/
 /*c  bool     mand_neq( int a, int b ){   c*/
   if( a != b )return true;
   breakpoint();
-  /**/  mand2( false, "bad neq " + a + " / " + b );
-  /*c   mand2( false, "bad neq" );   c*/
+  mand2( false, S()+ "bad neq " + N( a ) + " / " + N( b ) );
   return false;
 }
 
@@ -1590,7 +1649,8 @@ let all_symbol_cells_capacity = 0;
   all_symbol_cells_length = 21;
 
   // This 512 should be configurable?
-  all_symbol_cells_capacity    = 512;
+  // ToDo: test with a smaller value
+  all_symbol_cells_capacity    = 1024;
   /*c all_primitives_capacity  = 512; c*/
   /*c all_definitions_capacity = 512; c*/
 
@@ -1613,6 +1673,7 @@ let all_symbol_cells_capacity = 0;
   }
 
   /*!c{*/
+    // ToDo: I should use a stack for that
     all_symbol_texts = [
       "void",       // 0 - the 16 first symbols must match the type ids
       "boolean",    // 1
@@ -1636,6 +1697,7 @@ let all_symbol_cells_capacity = 0;
       "true",       // 19 - misc
       "stack",      // 20
     ];
+    // ToDo: I should use a stack for that
     all_primitives  = [];
     all_definitions = [];
   /*}{
@@ -1717,7 +1779,7 @@ const tag_stack     = tag( "stack" );
 
 
 /**/ function symbol_lookup( name : string ) : Index {
-/*c Index     symbol_lookup( std::string& name ) {   c*/
+/*c Index     symbol_lookup( const std::string& name ) {   c*/
 // Return the entry number of a symbol, or 0 if not found
   // Starting from the end
   let ii = all_symbol_cells_length;
@@ -1732,7 +1794,7 @@ const tag_stack     = tag( "stack" );
 
 
 /**/ function register_symbol( name : string ) : Index {
-/*c  Index    register_symbol( std::string& name  ) {   c*/
+/*c  Index    register_symbol( const std::string& name  ) {   c*/
 // Register a symbol and return its entry number
   const index = symbol_lookup( name );
   // Unless it is already registered
@@ -1854,7 +1916,23 @@ const tag_stack     = tag( "stack" );
     return (Cell) 0;
   }
   }*/
-  return all_definitions[ t ];
+  const d = all_definitions[ t ];
+  de&&mand( d ? true : false );
+  return d;
+}
+
+
+/**/ function definition_exists( t : Tag ) : boolean {
+/*c  bool     definition_exists( Tag t   )        {  c*/
+// Return true if there is a verb definition for the specified tag
+  de&&mand( t < all_symbol_cells_length );
+  /*c{
+  if( t >= all_definitions_capacity ){
+    return false;
+  }
+  }*/
+  const d = all_definitions[ t ];
+  return d ? true : false;
 }
 
 
@@ -1886,6 +1964,7 @@ const tag_stack     = tag( "stack" );
   // If stack isn't extensible, then first cell is the length of the stack
   }else{
     set( a, type_integer, tag_stack, 0 );
+    de&&mand_eq( stack_length( a ), 0 );
   }
   // ToDo: should return a + ONE maybe, ie skip the header first cell?
   return a;
@@ -1958,11 +2037,16 @@ const tag_stack     = tag( "stack" );
 /*c  Length   stack_length( Cell s )            { c*/
 // Return the length of a stack, ie the number of attributes
   // This does not include the first cell that holds the length itself
+  let l;
   if( stack_is_extended( s ) ){
-    return value( value( s ) );
+    de&&mand_cell_type( value( s ), type_integer );
+    l = value( value( s ) );
   }else{
-    return value( s );
+    de&&mand_cell_type( s, type_integer );
+    l = value( s );
   }
+  de&&mand( l >= 0 );
+  return l;
 }
 
 
@@ -2013,24 +2097,26 @@ const tag_stack     = tag( "stack" );
 /**/ function stack_pop( s : Cell ) : Cell {
 /*c  Cell     stack_pop( Cell s )          { c*/
 // Pop a cell from a stack, just returning it's address
-  const l = stack_length( s );
-  if( check_de && l < 1 ){
+  const i = stack_length( s ) - 1;
+  if( check_de && i < 0 ){
     FATAL( "stack_pop: stack is empty" );
   }
-  stack_set_length( s, l - 1 );
-  return stack_at( s, l - 1 );
+  const c = stack_at( s, i );
+  stack_set_length( s, i );
+  return c;
 }
 
 
 /**/ function stack_pop_nice( s : Cell ) : Cell {
 /*c  Cell     stack_pop( Cell s )          { c*/
 // Pop a cell from a stack, just returning it's address, 0 if empty
-const l = stack_length( s );
-if( check_de && l < 1 ){
-  return 0;
-}
-stack_set_length( s, l - 1 );
-return stack_at( s, l - 1 );
+  const i = stack_length( s ) - 1;
+  if( check_de && i < 0 ){
+    return 0;
+  }
+  const c = stack_at( s, i );
+  stack_set_length( s, i );
+  return c;
 }
 
 
@@ -2057,14 +2143,14 @@ return stack_at( s, l - 1 );
 
 
 /**/ function stack_at( s : Cell, i : Index ) : Cell {
-/*c  Cell     stack_get( Cell s, Index i )            { c*/
+/*c  Cell     stack_at( Cell s, Index i )            { c*/
 // Get the i-th cell from a stack
   let addr;
   // ToDo: handle negative indices?
   // Must be length 1 to hold item 0, hence the + 1
   stack_extend( s, i + 1 );
   if( stack_is_extended( s ) ){
-    addr = value( s ) + ( i + 1 ) * ONE
+    addr = value( s ) + ( i + 1 ) * ONE;
   }else{
     addr = s + ( i + 1 ) * ONE;
   }
@@ -2092,7 +2178,7 @@ return stack_at( s, l - 1 );
   // "[ ]" is the empty stack
   const l = stack_length( s );
   /**/ let r = "";
-  /*c std::string r( "" ); */
+  /*c std::string r( "" ); c*/
   // ToDo: a JSON style format, TLV probably
   r += "[ ";
   let ii;
@@ -2104,8 +2190,29 @@ return stack_at( s, l - 1 );
 }
 
 
+/**/ function    stack_split_dump( s : Cell, nth : Index ) : string {
+/*c  std::string stack_split_dump( Cell s,   Index nth   )          { c*/
+// Dump a stack, with a newline every nth item
+  // "[ ]" is the empty stack
+  const l = stack_length( s );
+  /**/ let r = "";
+  /*c std::string r( "" ); c*/
+  // ToDo: a JSON style format, TLV probably
+  r += "[ ";
+  let ii;
+  for( ii = 0 ; ii < l ; ii++ ){
+    if( ii % nth == 0 ){
+      r += "\n";
+    }
+    r += short_dump( stack_at( s, ii ) ) + " ";
+  }
+  r += "]";
+  return r;
+}
+
+
 /**/ function stack_lookup( s : Cell, name : string ) : Cell {
-/*c Cell      stack_lookup( Cell s,   std::string& name )           { c*/
+/*c Cell      stack_lookup( Cell s,   const std::string& name )           { c*/
 // Lookup a cell in a stack by name
   const l = stack_length( s );
   // Starting from the end of the stack, look for the name
@@ -2139,7 +2246,7 @@ return stack_at( s, l - 1 );
 
 
 /**/ function stack_update_by_text_name( s : Cell, n : string ) : void {
-/*c void      stack_update_by_text_name( Cell s,   std::string& n )           { c*/
+/*c void      stack_update_by_text_name( Cell s,   const std::string& n )           { c*/
 // Update a cell using the tos cell, by name.
   const l = stack_length( s );
   // Starting from the end of the stack, look for the name
@@ -2264,15 +2371,15 @@ return stack_at( s, l - 1 );
 }
 
 
-/**/ function stack_rebase( s : Cell ){
-/*c  void     stack_rebase( Cell s )  { c*/
+/**/ function stack_rebase( s : Cell ) : Cell {
+/*c  Cell     stack_rebase( Cell s )  { c*/
 // Return a fixed size copy of a stack, clear the old stack
   return stack_resize( s, stack_length( s ) );
 }
 
 
 /**/ function stack_is_extended( s : Cell ) : boolean {
-/*c  boolean  stack_is_extended() { c*/
+/*c  boolean  stack_is_extended( Cell s ) { c*/
 // Check if a stack is extended, ie extensible
   return type( s ) == type_reference;
 }
@@ -2346,14 +2453,14 @@ return stack_at( s, l - 1 );
 // ToDo: should be a regular object
 
 /**/ function tag( tag : text ) : Tag {
-/*c  Tag      tag( std::string tag ) {  c*/
+/*c  Tag      tag( const std::string& tag ) {  c*/
 // Get the singleton cell for a tag, make it on fly if needed
   return register_symbol( tag );
 }
 
 
 /**/ function tag_exists( n : text ) : boolean {
-/*c  bool     tag_exists( std::string n ) {  c*/
+/*c  bool     tag_exists( const std::string& n ) {  c*/
 // Return true if the tag singleton cell with the given name exists
   return is_valid_tag( symbol_lookup( n ) );
 }
@@ -2842,6 +2949,7 @@ let   something_was_collected = false;
   return new_mem;
 }
 
+let the_empty_text_cell = 0;
 
 /**/ function free_area( area : Cell ){
 /*c  void     free_area( Cell area ){  c*/
@@ -2856,6 +2964,14 @@ let   something_was_collected = false;
     debugger;
     return;
   }
+  /*de*/ if( de
+  /*de*/ && the_empty_text_cell != 0
+  /*de*/ && area == value( the_empty_text_cell )
+  /*de*/ ){
+  /*de*/   // What! free of the empty text, ""?
+  /*de*/ return; // ToDo: handle this properly
+  /*de*/   FATAL( "Internal error, free of the empty text" );
+  /*de*/ }
   alloc_de&&mand( is_safe_area( area ) );
   const old_count = area_ref_count( area );
   // Free now if not locked
@@ -3164,7 +3280,7 @@ let all_proxied_objects_by_id = new Map< Cell, any >();
 // In C++ std::string is the only proxied object at this time
 /*}{
 
-Cell make_proxy( std::string& s ){
+Cell make_proxy( const std::string& s ){
   if( s.empty()  )return (Cell) no_text.data();
   // This does not work if 64 bits addresses are used
   return (Cell) strdup( s.data() );
@@ -3215,7 +3331,7 @@ function free_text( oid : Index ){
 
 /*}{
 
-void set_text_cell( Cell c, std::string& txt ){
+void set_text_cell( Cell c, const std::string& txt ){
   if( txt.empty() ){
     copy_cell( the_empty_text_cell, c );
     return;
@@ -3347,9 +3463,8 @@ const the_default_verb_definition = init_default_verb_definition();
     return false;
   }
   const verb_tag = tag( n );
-  // Then check if the verb is defined
-  const d = get_definition( verb_tag );
-  return d != 0;
+  // Then check if the verb was defined
+  return definition_exists( verb_tag );
 }
 
 
@@ -3389,6 +3504,7 @@ const the_default_verb_definition = init_default_verb_definition();
 /*c  Index     definition_length( Cell def   )         {  c*/
   // The header with length & flags is right before the code
   const header = def - ONE;
+  de&&mand_cell_type( header, type_integer );
   const length = value( header ) & verb_length_mask;
   /*de*/ if( de ){
   /*de*/   if( length > 100 ){
@@ -3396,6 +3512,7 @@ const the_default_verb_definition = init_default_verb_definition();
   /*de*/     debugger;
   /*de*/   }
   /*de*/ }
+  de&&mand( length > 0 );
   return length;
 }
 
@@ -3405,6 +3522,8 @@ const the_default_verb_definition = init_default_verb_definition();
 // Hack used only by the inox-global primitive to turn a constant into variable
   // The header with length & flags is right before the code
   const header = def - ONE;
+  de&&mand_cell_type( header, type_integer );
+  // Do not change the flags, only the length
   const flags  = value( header ) & verb_flags_mask;
   set_value( header, flags | length );
 }
@@ -3605,7 +3724,7 @@ const max_block_length    =   0xfffff; // Max length of a block, 20 bits
 
 /**/ function is_block_ip( ip : Cell ) : boolean {
 /*c  boolean  is_block_ip( Cell ip   )           {  c*/
-  de&&mand_cell_name( ip, tag_inox_block );
+  de&&mand_cell_name( ip, tag_inox_block_header );
   return ( value( ip ) & block_verb_flag ) != 0;
 }
 
@@ -3781,7 +3900,7 @@ de&&mand_eq( type_invalid,   0xA );
 
 
 /**/ function is_a_reference_type( t : Index ) : boolean {
-/*c  bool     is_a_reference_type( Type type   ){  c*/
+/*c  bool     is_a_reference_type( Type t    )           {  c*/
   return is_reference_type_array[ t ];
 }
 
@@ -4182,12 +4301,13 @@ set_proxy_cell( PUSH(), proxy );
  *  Some global cells
  */
 
-const the_empty_text_proxy = make_proxy( no_text );
+let the_empty_text_proxy = 0;
 const tag_the_empty_text = tag( "the-empty-text" );
-const the_empty_text_cell = allocate_cell();
 
 /**/ function init_the_empty_text_cell(){
 /*c  int init_the_empty_text_cell( void ){ c*/
+  the_empty_text_cell = allocate_cell();
+  the_empty_text_proxy = make_proxy( no_text );
   set(
     the_empty_text_cell,
     type_text,
@@ -4381,11 +4501,13 @@ const tag_csp            = tag( "csp" );
 
   // Allocate a data stack for the actor
   let dstk = stack_allocate( 100 );
+
   // Set the class name to "data-stack" instead of default "stack"
   set_name( dstk, tag_data_stack );
 
   // Allocate a control stack for the actor
   let cstk = stack_allocate( 100 );
+
   // Set the class name to "control-stack" instead of default "stack"
   set_name( cstk, tag_control_stack );
 
@@ -4575,7 +4697,7 @@ function build_targets(){
   let ii = 0;
   let line = "";
   let len = ts.length;
-  len = 9845;
+  // len = 20000;
   /**/ let begin = "/" + "*";
   /*c  std::string begin( "/" "*" ); c*/
   /**/ let end   = "*" + "/";
@@ -4627,7 +4749,7 @@ function build_targets(){
     .replace( /^\s*(de&&.*$)/, " //de&& $1" )
 
     // Collect all primitives
-    .replace( /^\s*primitive\(\s+"([\w\-?]+)",\s+(\w+)\s*\);$/,
+    .replace( /^\s*primitive\(\s+"([\w\-!?{}]+)",\s+(\w+)\s*\);$/,
       function( match, p1, p2, p3 ){
         all_primitive_declarations += "\n" + match;
         return "// postponed: " + match;
@@ -4639,7 +4761,7 @@ function build_targets(){
         return "// postponed: " + match;
       }
     )
-    .replace( /^\s*immediate_primitive\(\s+"([\w\-?]+)",\s+(\w+)\s*\);$/,
+    .replace( /^\s*immediate_primitive\(\s+"([\w\-!?{}]+)",\s+(\w+)\s*\);$/,
     function( match, p1, p2, p3 ){
       all_primitive_declarations += "\n" + match;
       return "// postponed: " + match;
@@ -4650,9 +4772,9 @@ function build_targets(){
       return "// postponed: " + match;
     } )
 
-    .replace( /^[^\/]*let /,   " i32 " )
-    .replace( /const /,   " i32 " )
-    .replace( /function /, " void " )
+    .replace( /^(\s*)let /,      "$1 i32 "  )
+    .replace( /^(\s*)const /,    "$1 i32 "  )
+    .replace( /^(\s*)function /, "$1 void " )
     ;
 
     c_source += line + "\n";
@@ -5396,21 +5518,31 @@ primitive( "inox-data-dump", primitive_data_dump );
 /*c  void                    primitive_data_dump( void ){  c*/
   /**/ let buf = "DATA STACK";
   /*c  std::string buf( "DATA STACK" );  c*/
+  let c;
+  let i;
+  let t;
+  let n;
+  /**/ let n_text;
+  /*c  std::string n_text;  c*/
+  /**/ let t_text;
+  /*c  std::string t_text;  c*/
+  /**/ let v_text;
+  /*c  std::string v_text;  c*/
   const depth = ( ACTOR_data_stack - TOS ) / ONE;
   de&&mand( depth >= 0 );
   let ii;
   for( ii = 0 ; ii < depth ; ++ii ){
-    const c      = TOS + ii * ONE;
-    const i      = info(         c );
-    const t      = unpack_type(  i );
-    const n      = unpack_name(  i );
-    const n_text = tag_to_text(  n );
-    const t_text = type_to_text( t );
-    const v_text = cell_to_text( c );
+    c      = TOS + ii * ONE;
+    i      = info(         c );
+    t      = unpack_type(  i );
+    n      = unpack_name(  i );
+    n_text = tag_to_text(  n );
+    t_text = type_to_text( t );
+    v_text = cell_to_text( c );
     buf += "\n" + N( ii ) + " "
     + t_text + " " + n_text + " " + v_text;
   }
-  console.log( buf );
+  trace( buf );
 }
 
 
@@ -5453,29 +5585,29 @@ primitive( "inox-clear-control", primitive_clear_control );
  *  inox-control-dump primitive
  */
 
-/*!c{*/
-
 primitive( "inox-control-dump", primitive_control_dump );
 /**/ function                   primitive_control_dump(){
 /*c  void                       primitive_control_dump( void ){  c*/
 // Dump the control stack.
   const depth = ( CSP - ACTOR_control_stack ) / ONE;
-  let buf = "Control stack:";
+  /**/ let buf = "Control stack:";
+  /*c  std::string buf( "Control stack:" );  c*/
   let ii;
   for( ii = 0 ; ii < depth ; ii++ ){
     const c      = CSP - ii * ONE;
     const i      = info(         c );
     const t      = unpack_type(  i );
     const n      = unpack_name(  i );
-    const n_text = tag_to_text(  n );
-    const t_text = type_to_text( t );
-    const v_text = cell_to_text( c );
-    buf += "\n" + ii + " " + t_text + " " + n_text + " " + v_text;;
+    /**/ const n_text = tag_to_text(  n );
+    /*c  std::string n_text = tag_to_text(  n );  c*/
+    /**/ const t_text = type_to_text( t );
+    /*c  std::string t_text = type_to_text( t );  c*/
+    /**/ const v_text = cell_to_text( c );
+    /*c  std::string v_text = cell_to_text( c );  c*/
+    buf += "\n" + N( ii ) + " " + t_text + " " + n_text + " " + v_text;;
   }
-  console.log( buf );
+  trace( buf );
 }
-
-/*}*/
 
 
 /**/ function integer_to_text( v : Value ) : text { return "" + v; }
@@ -5498,9 +5630,9 @@ c*/
 }
 
 
-/**/ function is_safe_reference( pointer : Cell ) : boolean {
-/*c  boolean is_safe_pointer( Cell pointer    )           {  c*/
-  if( !is_safe_area( pointer ) )return false;
+/**/ function is_safe_reference( a : Cell ) : boolean {
+/*c  boolean  is_safe_reference( Cell a   )           {  c*/
+  if( !is_safe_area( a ) )return false;
   return true;
 }
 
@@ -5627,11 +5759,12 @@ c*/
 // The header of each block of machine codes.
 // ToDo: create a "definition" type?
 const tag_inox_block = tag( "inox-block" );
+const tag_inox_block_header = tag( "inox-block-header" );
 
 
 /**/ function is_a_block_cell( c : Cell ) : boolean {
 /*c  boolean  is_a_block_cell( Cell c   )           {  c*/
-  return name( c ) == tag_inox_block;
+  return name( c ) == tag_inox_block_header;
 }
 
 
@@ -5690,6 +5823,8 @@ let cell_dump_entered = false;
 
   /**/ let buf : text = "";
   /*c  std::string  buf( "" ); c*/
+  /**/ let txt = "";
+  /*c  std::string txt( "" ); c*/
 
   switch( t ){
 
@@ -5741,7 +5876,7 @@ let cell_dump_entered = false;
                   }
                 }
                 if( tlen( txt ) > 31 ){
-                  txt = tcut( txt, 31 ) + "..." + tlen( txt );
+                  txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
                 }
                 buf += " " + txt;
               }
@@ -5757,6 +5892,7 @@ let cell_dump_entered = false;
 
       }else if( n == tag_inox_block ){
         // Block description often comes next
+        // ToDo: check presence of block header
         if( is_a_block_cell( c + ONE ) ){
           cell_dump_entered = false;
           return S()+ "inox-block definition";
@@ -5769,7 +5905,7 @@ let cell_dump_entered = false;
       if( v == 0 ){
         // buf += ":<void>";
       }else{
-        buf += ":<void:" + v + ">";
+        buf += ":<void:" + N( v ) + ">";
       }
     break;
 
@@ -5793,7 +5929,8 @@ let cell_dump_entered = false;
 
     case type_integer :
       if( n == tag_inox_block ){
-        const block_dump_text = block_dump( c );
+        /**/ const block_dump_text = block_dump( c );
+        /*c  std::string block_dump_text = block_dump( c ); c*/
         cell_dump_entered = false;
         return block_dump_text;
       }
@@ -5807,37 +5944,37 @@ let cell_dump_entered = false;
       // ToDo: add class
       const class_name_tag = name( v );
       buf += tag_to_text( n )
-      + "<" + tag_to_text( class_name_tag ) + "@" + v + ">";
+      + "<" + tag_to_text( class_name_tag ) + "@" + N( v ) + ">";
     break;
 
     case type_proxy :
-      const obj = proxied_object_by_id( v );
+      /**/ const obj = proxied_object_by_id( v );
       /**/ const proxy_class_name = obj.constructor.name;
-      /*c const std::string proxy_class_name( "c_string" ); c*/
-      buf += tag_to_text( n )
-      + "<proxied-" + proxy_class_name + "@" + N( v ) + ">";
+      /**/ /*c const std::string proxy_class_name( "c_string" ); c*/
+      /**/ buf += tag_to_text( n )
+      /**/ + "<proxied-" + proxy_class_name + "@" + N( v ) + ">";
     break;
 
     case type_text :
-      let text = cell_to_text( c );
+      txt = cell_to_text( c );
       // ToDo: truncate somewhere else
-      if( tlen( text ) > 31 ){
-        text = tcut( text, 31 ) + "..." + tlen( text );
+      if( tlen( txt ) > 31 ){
+        txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
       }
       if( n != tag_text ){
         buf += tag_to_text( n )  + ":";
       }
       // ToDo: better escape
-      /**/ text = text
+      /**/ txt = txt
       /**/ .replace( "\n",  () => "\\n"  )
       /**/ .replace( "\"",  () => "\\\"" )
       /**/ .replace( "\t",  () => "\\t"  )
       /**/ .replace( "\r",  () => "\\r"  )
       /**/ .replace( "\\",  () => "\\\\" )
-      buf += "\"" + text + "\"";
+      buf += "\"" + txt + "\"";
       if( c == the_empty_text_cell ){
         buf += " - <SINGLETON>";
-      }else if( tlen( text ) == 0 && v != 0 ){
+      }else if( tlen( txt ) == 0 && v != 0 ){
         buf += " - <INVALID_EMPTY_TEXT>";
       }
     break;
@@ -5857,17 +5994,141 @@ let cell_dump_entered = false;
 
     default :
       de&&mand( false );
-      buf += tag_to_text( n ) + ":<invalid type " + N( t ) + ":" + v + ">";
-      breakpoint()
+      buf += tag_to_text( n ) + ":<invalid type " + N( t ) + ":" + N( v ) + ">";
+      breakpoint();
     break;
 
   }
 
   cell_dump_entered = false;
 
-  buf += " - " + N( t ) + "/" + N( n ) + "/" + N( v )
+  buf += " ( " + N( t ) + "/" + N( n ) + "/" + N( v )
   + " " + type_to_text( t ) + " @" + N( c )
-  + ( is_valid ? "" : " - INVALID" );
+  + ( is_valid ? " )" : " - INVALID )" );
+  return buf;
+
+}
+
+
+
+/**/ function    short_dump( c : Cell ) : text {
+/*c  std::string short_dump( Cell c   )        {  c*/
+
+  // Detect recursive calls
+  if( cell_dump_entered ){
+    /**/ return "Error, reentered cell_short_dump( " + c + " )";
+    /*c return "Error, reentered cell_short_dump()"; c*/
+  }
+  cell_dump_entered = true;
+
+  const is_valid = cell_looks_safe( c );
+  if( !is_valid ){
+    debugger;
+    cell_looks_safe(  c  );
+  }
+
+  let v = value( c );
+  let i = info(  c );
+  let t = unpack_type( i );
+  let n = unpack_name( i );
+
+  /**/ let buf : text = "";
+  /*c  std::string  buf( "" ); c*/
+  /**/ let txt = "";
+  /*c  std::string txt( "" ); c*/
+
+  switch( t ){
+
+    case type_void :
+      if( n != tag_void || v != 0 ){
+        buf += tag_to_text( n );
+      }
+      if( v == 0 ){
+        // buf += ":<void>";
+      }else{
+        buf += ":<void:" + N( v ) + ">";
+      }
+    break;
+
+    case type_boolean :
+      if( n != tag_boolean ){
+        buf += tag_to_text( n ) + ":";
+      }
+      buf += v ? "true" : "false";
+    break;
+
+    case type_tag :
+      if( n == v ){
+        buf += "/" + tag_to_text( n );
+      }else{
+        buf += tag_to_text( n ) + ":/" + tag_to_text( v );
+      }
+    break;
+
+    case type_integer :
+      if( n != tag_integer ){
+        buf += tag_to_text( n ) + ":";
+      }
+      buf += integer_to_text( v );
+    break;
+
+    case type_reference :
+      // ToDo: add class
+      const class_name_tag = name( v );
+      buf += tag_to_text( n )
+      + "<" + tag_to_text( class_name_tag ) + ">";
+    break;
+
+    case type_proxy :
+      /**/ const obj = proxied_object_by_id( v );
+      /**/ const proxy_class_name = obj.constructor.name;
+      /**/ /*c const std::string proxy_class_name( "c_string" ); c*/
+      /**/ buf += tag_to_text( n )
+      /**/ + "<proxied-" + proxy_class_name + "@" + N( v ) + ">";
+    break;
+
+    case type_text :
+      txt = cell_to_text( c );
+      // ToDo: truncate somewhere else
+      if( tlen( txt ) > 31 ){
+        txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
+      }
+      if( n != tag_text ){
+        buf += tag_to_text( n )  + ":";
+      }
+      // ToDo: better escape
+      /**/ txt = txt
+      /**/ .replace( "\n",  () => "\\n"  )
+      /**/ .replace( "\"",  () => "\\\"" )
+      /**/ .replace( "\t",  () => "\\t"  )
+      /**/ .replace( "\r",  () => "\\r"  )
+      /**/ .replace( "\\",  () => "\\\\" )
+      buf += "\"" + txt + "\"";
+    break;
+
+    case type_verb :
+      // ToDo: add name
+      buf += tag_to_text( n );
+      if( v != 0 ){
+        buf += ":<verb:" + N( v ) + ">";
+      }
+    break;
+
+    case type_flow :
+      // ToDo: add name
+      buf += tag_to_text( n ) + ":<flow:" + N( v ) + ">";
+    break;
+
+    default :
+      de&&mand( false );
+      buf += tag_to_text( n ) + ":<invalid-type " + N( t ) + ":" + N( v ) + ">";
+      breakpoint();
+    break;
+
+  }
+
+  cell_dump_entered = false;
+
   return buf;
 
 }
@@ -5899,8 +6160,9 @@ let cell_dump_entered = false;
   let base = ACTOR_data_stack;
 
   if( ptr < base ){
-    buf += "\nData stack underflow, top " + N( tos ) + ", base " + N( base )
-    + ", delta " + N( tos - base )
+    buf += "\nData stack underflow, top " + N( tos )
+    + ", base "       + N( base )
+    + ", delta "      + N( tos - base )
     + ", excess pop " + N( ( tos - base ) / ONE );
     // base = ptr + 5 * ONE;
     some_dirty = true;
@@ -5935,9 +6197,9 @@ let cell_dump_entered = false;
 
   if( ptr < return_base ){
     buf += "\nControl stack underflow, top " + N( csp )
-    + ", base " + N( return_base )
-    + ", delta " + ( csp - return_base )
-    + ", excess pop " + ( ( csp - return_base ) / ONE );
+    + ", base "       + N( return_base )
+    + ", delta "      + N( csp - return_base )
+    + ", excess pop " + N( ( csp - return_base ) / ONE );
     // ToDo: fatal error?
     some_dirty = true;
     // return_base = ptr + 5 * ONE;
@@ -5945,7 +6207,6 @@ let cell_dump_entered = false;
 
   nn = 0;
   let ip = 0 ;
-  let name = "";
   while( ptr >= return_base ){
     buf += "\n"
     + N( nn ) + " -> "
@@ -6330,7 +6591,7 @@ primitive( "inox-unpack-name", primitive_unpack_name );
     /**/ if( typeof proxied_obj == "object" ){
     /**/   return tag( proxied_obj.constructor.name );
     /**/ }
-    return tag( js_type );
+    /**/ return tag( js_type );
   }
   return type_to_tag( type( c ) );
 }
@@ -7379,7 +7640,7 @@ unary_math_operator( "abs",      ( x ) => x > 0   ?  x : -x );
 
 primitive( "inox-text-join", primitive_text_join );
 /**/ function                primitive_text_join(){
-/*c  void                    primitive_text_joint( void ){  c*/
+/*c  void                    primitive_text_join( void ){  c*/
 // Text concatenation, t1 t2 -- t3
   /**/ const t2 = pop_as_text();
   /*c  std::string t2 = pop_as_text();  c*/
@@ -7397,8 +7658,8 @@ operator_primitive( "&", primitive_text_join );
  */
 
 primitive( "inox-text-cut", primitive_text_cut );
-/**/ function              primitive_text_cut(){
-/*c  void                  primitive_text_cut( void ){  c*/
+/**/ function               primitive_text_cut(){
+/*c  void                   primitive_text_cut( void ){  c*/
   const n = pop_integer();
   /**/ const t = pop_as_text();
   /*c  std::string t = pop_as_text();  c*/
@@ -7411,8 +7672,8 @@ primitive( "inox-text-cut", primitive_text_cut );
  */
 
 primitive( "inox-text-length", primitive_text_length );
-/**/ function                 primitive_text_length(){
-/*c  void                     primitive_text_length( void ){  c*/
+/**/ function                  primitive_text_length(){
+/*c  void                      primitive_text_length( void ){  c*/
   /**/ const t = pop_as_text();
   /*c  std::string t = pop_as_text();  c*/
   push_integer( tlen( t ) );
@@ -7424,8 +7685,8 @@ primitive( "inox-text-length", primitive_text_length );
  */
 
 primitive( "inox-text-but", primitive_text_but );
-/**/ function              primitive_text_but(){
-/*c  void                  primitive_text_but( void ){  c*/
+/**/ function               primitive_text_but(){
+/*c  void                   primitive_text_but( void ){  c*/
   const n = pop_integer();
   /**/ const t = pop_as_text();
   /*c  std::string t = pop_as_text();  c*/
@@ -7446,6 +7707,33 @@ primitive( "inox-text-mid", primitive_text_mid );
   /*c  std::string t = pop_as_text();  c*/
   push_text( tmid( t, m, n ) );
 }
+
+
+/*
+ *  text-low primitive - convert a text to lower case
+ */
+
+primitive( "inox-text-low", primitive_text_low );
+/**/ function               primitive_text_low(){
+/*c  void                   primitive_text_low( void ){  c*/
+  /**/ const t = pop_as_text();
+  /*c  std::string t = pop_as_text();  c*/
+  push_text( tlow( t ) );
+}
+
+
+/*
+ *  text-up primitive - convert a text to upper case
+ */
+
+primitive( "inox-text-up", primitive_text_up );
+/**/ function              primitive_text_up(){
+/*c  void                  primitive_text_up( void ){  c*/
+  /**/ const t = pop_as_text();
+  /*c  std::string t = pop_as_text();  c*/
+  push_text( tup( t ) );
+}
+
 
 
 /*
@@ -7499,7 +7787,7 @@ primitive( "inox-text-find", primitive_text_find );
 
 primitive( "inox-text-find-last", primitive_text_find_last );
 /**/ function                     primitive_text_find_last(){
-/*c  void                         primitive_text_find( void ){  c*/
+/*c  void                         primitive_text_find_last( void ){  c*/
   /**/ const t2 = pop_as_text();
   /*c  std::string t2 = pop_as_text();  c*/
   /**/ const t1 = pop_as_text();
@@ -7655,10 +7943,11 @@ primitive( "inox-named?", primitive_is_named );
 }
 
 
-/**/ function verb_flags_dump( flags : u32 ){
-/*c  string   verb_flags_dump( u32 : flags ){  c*/
+/**/ function    verb_flags_dump( flags : u32 ){
+/*c  std::string verb_flags_dump( u32 flags   ){  c*/
 // Return a text that describes the flags of an Inox verb.
-  let buf = "";
+  /**/ let buf = "";
+  /*c  std::string buf( "" );  c*/
   if( ( flags & immediate_verb_flag ) == immediate_verb_flag ){
     buf += " immediate";
   }
@@ -7681,17 +7970,18 @@ primitive( "inox-named?", primitive_is_named );
 }
 
 
-/**/ function verb_to_text_definition( id : Index ) : text {
-/*c  string   verb_to_text_definition( id : Index ) : text {  c*/
+/**/ function     verb_to_text_definition( id : Index ) : text {
+/*c  std::string  verb_to_text_definition( Index id   )        {  c*/
 
   // Return the decompiled source code that defines the Inox verb.
   // A non primitive Inox verb is defined using an array of cells that
   // are either other verbs, primitives or literal values
 
-  let text_name = tag_to_text( id );
+  /**/ let text_name = tag_to_text( id );
+  /*c  std::string text_name( tag_to_text( id ) );  c*/
 
   // The definition is an array of cells
-  let def : Cell = definition( id );
+  let def = definition( id );
 
   // The prior cell stores flags & length
   let flags_and_length = value( def - ONE );
@@ -7700,13 +7990,16 @@ primitive( "inox-named?", primitive_is_named );
 
   // ToDo: add a pointer to the previous verb definition
 
-  let buf = ": " + text_name + " ( definition of " + text_name + ", verb " + id
-  + ", cell " + def
+  /**/ let buf = "";
+  /*c  std::string buf( "" );  c*/
+  buf += ": " + text_name + " ( definition of " + text_name
+  + ", verb " + N( id )
+  + ", cell " + N( def )
   + ( flags != 0 ? ", flags" + verb_flags_dump( flags ) : "" )
-  + ", length " + length + " )\n";
+  + ", length " + N( length ) + " )\n";
 
-  let ip : Index = 0;
-  let c  : Cell;
+  let ip = 0;
+  let c  = 0;
 
   while( ip < length ){
     c = def + ip * ONE;
@@ -7715,7 +8008,7 @@ primitive( "inox-named?", primitive_is_named );
       de&&mand_eq( value( c ), 0x0 );
       de&&mand_eq( type(  c ), type_void );
     }
-    buf += "( " + ip + " ) " + inox_machine_code_cell_to_text( c ) + "\n";
+    buf += "( " + N( ip ) + " ) " + inox_machine_code_cell_to_text( c ) + "\n";
     ip++;
   }
 
@@ -7775,7 +8068,8 @@ primitive( "inox-make-constant", primitive_make_constant );
 
   // Create a verb to get the content, first get it's name
   const name_cell = POP();
-  const constant_name = cell_to_text( name_cell );
+  /**/ const constant_name = cell_to_text( name_cell );
+  /*c  std::string constant_name( cell_to_text( name_cell ) );  c*/
   de&&mand( constant_name != "" );
   const name_id = tag( constant_name );
   de&&mand_neq( name_id, 0 );
@@ -7823,7 +8117,8 @@ primitive( "inox-tag-defined?", primitive_is_tag_defined );
 /*c  void                       primitive_is_tag_defined( void )  {  c*/
   // Return true if the verb is defined in the dictionary
   const name_cell = POP();
-  const name_id = cell_to_text( name_cell );
+  /**/ const name_id = cell_to_text( name_cell );
+  /*c  std::string name_id( cell_to_text( name_cell ) );  c*/
   const exists = verb_exists( name_id );
   clear( name_cell );
   set( name_cell, type_boolean, tag_is_tag_defined, exists ? 1 : 0 );
@@ -7874,8 +8169,10 @@ primitive( "inox-make-global", primitive_make_global );
   set_definition_length( getter_def, 3 );  // ToDo: harmfull big hack?
 
   // Create a setter verb to write the global variable, xxx!
-  const name = tag_to_text( name_id );
-  const setter_name = name + "!";
+  /**/ const verb_name = tag_to_text( name_id );
+  /*c  std::string verb_name( tag_to_text( name_id ) );  c*/
+  /**/ const setter_name = verb_name + "!";
+  /*c  std::string setter_name( verb_name + "!" );  c*/
   const setter_name_id = tag( setter_name );
 
   // Allocate space for verb header, cell address, setter and return instruction
@@ -7888,7 +8185,7 @@ primitive( "inox-make-global", primitive_make_global );
   const setter_def = setter_header + 1 * ONE;
 
   // Use the address of the cell in the constant as the parameter for poke
-  set( setter_def, type_integer, setter_name_id, getter_def )
+  set( setter_def, type_integer, setter_name_id, getter_def );
 
   // Add call to primitive poke to set the value when verb runs
   init_cell( setter_def + 1 * ONE, 0, tag_inox_poke );
@@ -7927,26 +8224,6 @@ primitive( "inox-make-local", primitive_make_local );
 }
 
 
-/*
- *  Call/return with local variables
- */
-
-const tag_inox_with           = tag( "inox-with" );
-const tag_inox_without        = tag( "inox-without" );
-const inox_with_definition    = definition( tag_inox_with );
-const inox_without_definition = definition( tag_inox_without );
-
-primitive( "inox-with", primitive_with );
-/**/ function           primitive_with(){
-/*c  void               primitive_with( void ) {  c*/
-// Push inox-with sentinel on control stack for inox-without to clear it
-  CSP += ONE;
-  set( CSP, type_integer, tag_inox_with, inox_with_definition );
-  CSP += ONE;
-  set( CSP, type_integer, tag_inox_without, inox_without_definition);
-}
-
-
 /* ------------------------------------------------------------------------
  *  call/return with named parameters
  */
@@ -7982,14 +8259,14 @@ const tag_block = tag( "block" );
  *  return-without-parameters primitive
  */
 
-primitive(   "inox-return-without-parameters",
-              primitive_return_without_parameters );
-/**/ function primitive_return_without_parameters()
+const tag_inox_with = tag( "inox-with" );
+
+primitive(   "inox-return-without-parameters", primitive_return_without_parameters );
+/**/ function primitive_return_without_parameters(){
 /*c  void     primitive_return_without_parameters( void ) {  c*/
-{
 
   // ToDo: the limit should be the base of the control stack
-  let limit : Cell;
+  let limit;
   if( check_de ){
     limit = ACTOR_control_stack;
   }
@@ -8022,15 +8299,15 @@ const tag_inox_run_with_parameters
 = tag( "inox-run-with-parameters" );
 const inox_return_without_parameters_definition
 = definition( tag_inox_return_without_parameters );
-de&&mand_neq(
-  inox_return_without_parameters_definition,
-  the_default_verb_definition
-);
+/**/ de&&mand_neq(
+/**/   inox_return_without_parameters_definition,
+/**/   the_default_verb_definition
+/**/ );
 
 
 primitive( "inox-run-with-parameters", primitive_run_with_parameters );
-/**/ function                          primitive_run_with_parameters(){
-/*c  void                              primitive_run_with_parameters( void ) {  c*/
+/**/ function             primitive_run_with_parameters(){
+/*c  void                 primitive_run_with_parameters( void ) {  c*/
 // Create variables in the control stack for verbs with formal parameters.
 // Up to inox-with sentinel. Usage : with /a /b { xxx } inox-run-with-parameters
 
@@ -8057,12 +8334,12 @@ primitive( "inox-run-with-parameters", primitive_run_with_parameters );
     new_tos -= ONE;
   }
 
-  save_ip( tag_inox_run_with_parameters )
+  save_ip( tag_inox_run_with_parameters );
 
   // Set value of parameters using values from the data stack
   const csp = CSP;
   let copy_count = 0;
-  let n : Name;
+  let n;
 
   // Go from sentinel argument back to tos, push each actual parameter
   const sentinel_tos = new_tos;
@@ -8333,7 +8610,7 @@ primitive( "inox-upper-local", primitive_upper_local );
   if( found ){
     copy_cell( found, TOS );
   }else{
-    reset( TOS )
+    reset( TOS );
   }
 }
 
@@ -8352,7 +8629,7 @@ primitive( "inox-upper-data", primitive_upper_data );
   if( found ){
     copy_cell( found, TOS );
   }else{
-    reset( TOS )
+    reset( TOS );
   }
 }
 
@@ -8371,7 +8648,7 @@ primitive( "inox-set-upper-local", primitive_set_upper_local );
   if( found ){
     move_cell( POP(), found );
   }else{
-    FATAL( "Control nth" + nth
+    FATAL( S()+ "Control nth" + N( nth )
     + " variable not found, named " + tag_to_text( n ) );
   }
 }
@@ -8391,7 +8668,7 @@ primitive( "inox-set-upper-data", primitive_set_upper_data );
   if( found ){
     move_cell( TOS, found );
   }else{
-    FATAL( "Data nth" + nth
+    FATAL( "Data nth" + N( nth )
     + " variable not found, named " + tag_to_text( n ) );
   }
 }
@@ -8447,7 +8724,7 @@ function make_circular_object_from_js( obj : any, met : Map< string, any> ) : Ce
   // Them come the properties, numeric indexes first, then named
   let ii : Index = 0;
 
-  // Inox does handle sparse arrays
+  // Inox does not handle sparse arrays
   // ToDo: implement sparse arrays, the Lua way.
   let sparse_idx = 0;
 
@@ -8668,7 +8945,7 @@ primitive( "inox-object-get", primitive_object_get );
     de&&mand( info( obj ) == 0 );
     clear( tos );
     clear( obj );
-    return
+    return;
   }
   if( check_de ){
     mand_tag( tos );
@@ -8717,7 +8994,7 @@ primitive( "inox-object-set", primitive_object_set );
   if( type( ptr ) == type_reference ){
     ptr = get_reference( ptr );
   }
-  let limit : Cell;
+  let limit;
   if( check_de ){
     limit = ptr + object_length( ptr ) * ONE;
   }
@@ -9397,7 +9674,7 @@ primitive( "inox-without-local", primitive_without_local );
     clear( CSP );
     CSP -= ONE;
     if( CSP < ACTOR_control_stack ){
-      FATAL( "inox-without, missing " + tag_to_text( n ) );
+      FATAL( "inox-without-local, missing " + tag_to_text( n ) );
       return;
     }
   }
@@ -9559,12 +9836,15 @@ primitive( "inox-run-method-by-name", primitive_run_method_by_name );
 // Call method by name
   // ToDo: should check against a type_text
   const name_id = pop_tag();
-  const name = tag_to_text( name_id );
+  /**/ const verb_name = tag_to_text( name_id );
+  /*c  std::string verb_name = tag_to_text( name_id );  c*/
   let target = TOS;
   const target_type = type( target );
   // ToDo: lookup using name of value ?
-  let target_class_name = tag_to_text( cell_class_tag( target ) );
-  const full_name = target_class_name + "." + name;
+  /**/ let target_class_name = tag_to_text( cell_class_tag( target ) );
+  /*c std::string target_class_name = tag_to_text( cell_class_tag( target ) );  c*/
+  /**/ const full_name = target_class_name + "." + verb_name;
+  /*c  std::string full_name = target_class_name + "." + verb_name;  c*/
   let verb_id = tag( full_name );
   if( verb_id == 0 ){
     // ToDo: lookup in class hierarchy
@@ -9695,7 +9975,7 @@ primitive( "inox-TOS", primitive_TOS );
 primitive( "inox-set-TOS", primitive_set_TOS );
 /**/ function              primitive_set_TOS(){
 /*c void                   primitive_set_TOS( void ) {  c*/
-  TOS = pop_integer()
+  TOS = pop_integer();
 };
 
 
@@ -9774,7 +10054,6 @@ const TheInoxExecutionContext = new InoxExecutionContext();
 
 
 /**/ function init_the_execution_context(){
-/*c void init_the_execution_context( void ) {  c*/
   const inox = TheInoxExecutionContext;
   inox.ip      = get_IP;
   inox.csp     = get_CSP;
@@ -9789,7 +10068,7 @@ const TheInoxExecutionContext = new InoxExecutionContext();
 
 init_the_execution_context();
 
-/*}*/
+/*c*/
 
 
 /**/ function SET_IP(  v ){ IP  = v; }
@@ -9801,7 +10080,7 @@ init_the_execution_context();
 
 
 /**/ function PUSH(){
-/*c  void     PUSH( void ) {  c*/
+/*c  Cell     PUSH( void ) {  c*/
   de&&mand( TOS < ACTOR_data_stack_limit );
   return TOS += ONE;
 }
@@ -9809,7 +10088,7 @@ init_the_execution_context();
 
 de&&mand( ONE == 1 );
 /**/ function POP(){
-/*c  ui32      POP( void ) {  c*/
+/*c  Cell      POP( void ) {  c*/
   de&&mand( TOS > ACTOR_data_stack );
   return TOS--;
   // If ONE is two, ie words_per_cell is 2, then it should be:
@@ -9833,21 +10112,21 @@ de&&mand_eq( type_primitive, 0 );
 function init_inox_execution_context(){
   // primitives have a limited access to the environment, but fast
   const inox = TheInoxExecutionContext;
-  inox.ip  = /**/ function ip(){  return IP;  };
-  inox.csp = /**/ function csp(){ return CSP; };
-  inox.tos = /**/ function tos(){ return TOS; };
+  inox.ip  = function ip(){  return IP;  };
+  inox.csp = function csp(){ return CSP; };
+  inox.tos = function tos(){ return TOS; };
   // ToDo: gmp & tmp, global memory pointer and actor memory pointer
   // ToDo: act, current Act pointer
-  inox.set_ip  = /**/ function set_ip(  v : Cell ){ IP  = v; };
-  inox.set_csp = /**/ function set_csp( v : Cell ){ CSP = v; };
-  inox.set_tos = /**/ function set_tos( v : Cell ){ TOS = v; };
+  inox.set_ip  = function set_ip(  v : Cell ){ IP  = v; };
+  inox.set_csp = function set_csp( v : Cell ){ CSP = v; };
+  inox.set_tos = function set_tos( v : Cell ){ TOS = v; };
 
-  inox.push = /**/ function push(){
+  inox.push = function push(){
     // ToDo: check stack overflow?
     return TOS += ONE;
   };
 
-  inox.pop = /**/ function pop(){
+  inox.pop = function pop(){
     // ToDo: check stack underflow?
     const x = TOS;
     TOS -= ONE;
@@ -9856,15 +10135,19 @@ function init_inox_execution_context(){
 
   inox.run = RUN;
 }
-/*}*/
+
 
 
 init_inox_execution_context();
 
 
+/*}{
+c*/
+
+
 /**/ function RUN(){
 /*c void RUN( void ) {  c*/
-// This is the one /**/ function that needs to run fast.
+// This is the one function that needs to run fast.
 // It should be optimized by hand depending on the target CPU.
   // See https://muforth.nimblemachines.com/threaded-code/
   // Also http://www.ultratechnology.com/1xforth.htm
@@ -9873,10 +10156,13 @@ init_inox_execution_context();
   de&&mand_tos_is_in_bounds();
   de&&mand( !! IP );
 
-  let fun = no_operation;
-  let i : Info;
-  let t : Type;
+  /**/ let fun = no_operation;
+  /*c Primitive fun; c*/
+  let i;
+  let t;
 
+  /*c goto loop; c*/
+  /*c break_loop: if( 0 ) c*/
   loop: while( true ){
 
     // ToDo: there should be a method to break this loop
@@ -9889,7 +10175,8 @@ init_inox_execution_context();
 
       // ToDo: use an exception to exit the loop,
       // together with some primitive_exit_run()
-      if( !IP )break loop;
+      /**/ if( !IP )break loop;
+      /*c  if( !IP )goto break_loop;  c*/
 
       i = info( IP );
 
@@ -9934,12 +10221,12 @@ if( step_de )debugger;
           IP = definition( unpack_name( i ) );
         // If literal
         }else{
-          check_de&&mand_tos_is_in_bounds()
+          check_de&&mand_tos_is_in_bounds();
           TOS += ONE;
           copy_cell( IP, TOS );
           IP += ONE;
         }
-        continue inner_loop;
+        continue;
       }
 
       // The debug mode version has plenty of checks and traces
@@ -9948,7 +10235,7 @@ if( step_de )debugger;
       if( i == 0x0000 ){
         if( run_de ){
           bug( S()
-            + "run, return to " + IP
+            + "run, return to " + N( IP )
             + " of " + tag_to_text( name( CSP ) )
           );
         }
@@ -9978,14 +10265,14 @@ if( step_de )debugger;
         continue;
       }
 
-      // Call to a primitive, the name of the cell names it.
+      // Call to a primitive, the name of the cell names it
       // ToDo: use a type instead of tricking the void type?
       if( t == type_void /* 0 */ ){
 
         IP += ONE;
 
         // Some debug tool to detect bad control stack or IP manipulations
-        let verb_id = info;
+        let verb_id = i;
         if( run_de && i != 61 ){  // inox-quote is special
 
           let old_csp = CSP;
@@ -10068,7 +10355,7 @@ if( step_de )debugger;
       }
 
       // Else, push literal
-      check_de&&mand( TOS < ACTOR_data_stack_limit )
+      check_de&&mand( TOS < ACTOR_data_stack_limit );
       TOS += ONE;
       copy_cell( IP, TOS );
       // ToDo: optimize by inlining copy_cell()
@@ -10094,9 +10381,11 @@ if( step_de )debugger;
 
 } // RUN()
 
+
 const tag_eval = tag( "inox-eval" );
 
 /**/ function run_eval(){
+/*c void run_eval( void ){ c*/
 
   IP = definition_by_text_name( "inox-eval" );
   de&&mand( !! IP );
@@ -10128,6 +10417,11 @@ const tag_eval = tag( "inox-eval" );
  *  terminator, etc.
  */
 
+// Name of current style, "inox" or "forth" typically
+/**/ let style = "";
+/*c  std::string style( "" );  c*/
+
+
 // Typescript version uses a Map of Map objects
 /*!c{*/
 
@@ -10137,7 +10431,6 @@ const all_aliases_by_style = new Map< text, Map< text, text > >();
 
 
 /**/ function define_alias( style : text, alias : text, new_text : text ){
-/*c  void     define_alias( string style, string alias, string new_text ){  c*/
 // Set the definition of an alias inside a dialect/style.
   let aliases = aliases_by_style( style );
   aliases.set( alias, new_text );
@@ -10145,21 +10438,18 @@ const all_aliases_by_style = new Map< text, Map< text, text > >();
 
 
 /**/ function alias( a : text ){
-/*c  string   alias( string a ){  c*/
 // Get the potential aliased text for an alias in the durrent dialect/style.
-  if( !  the_current_style_aliases.has( a ) )return null;
+  if( !  the_current_style_aliases.has( a ) )return "";
   return the_current_style_aliases.get( a );
 }
 
 
 /**/ function set_alias_style( style : text ) : void {
-/*c  void     set_alias_style( string style ){  c*/
   the_current_style_aliases = aliases_by_style( style );
 }
 
 
 /**/ function aliases_by_style( style : text ) : Map< text, text > {
-/*c  Map< string, string > aliases_by_style( string style ){  c*/
   if( ! all_aliases_by_style.has( style ) ){
     // On the fly style creation
     return make_style( style );
@@ -10169,7 +10459,6 @@ const all_aliases_by_style = new Map< text, Map< text, text > >();
 
 
 /**/ function make_style( style : text ) : Map< text, text > {
-/*c  Map< string, string > make_style_aliases( string style ){  c*/
 // Add a new dialect/style, named.
   let new_map = new Map< text, text >();
   all_aliases_by_style.set( style, new_map );
@@ -10177,22 +10466,20 @@ const all_aliases_by_style = new Map< text, Map< text, text > >();
 }
 
 
-// C++ version uses fixed size stack from stack_allocate()
+// C++ version uses stack from stack_preallocate()
 /*}{
 
 Cell the_current_style_aliases;
 
 // Each dialect has a map of alias to text
-// ToDo: 10 is arbitrary, should be dynamic
-Cell all_aliases_by_style = stack_allocate( 10 );
+Cell all_aliases_by_style = stack_preallocate( 10 );
 
 
-Cell make_style( std::string style ){
-  Cell new_map = stack_allocate( 100 );
+Cell make_style( const std::string& style ){
+  Cell new_map = stack_preallocate( 100 );
   Tag  new_tag = tag( style );
   Cell tmp = allocate_cell();
   set( tmp, type_integer, new_tag, new_map );
-  // ToDo: should reallocate stack if full
   stack_push( all_aliases_by_style, tmp );
   free_cell( tmp );
   return new_map;
@@ -10213,26 +10500,29 @@ void set_alias_style( std::string style ){
 }
 
 
-void define_alias( std::string style, std::string alias, std::string new_text ){
+void define_alias( const std::string& style, const std::string& alias, const std::string& new_text
+){
   Cell aliases = aliases_by_style( style );
   Tag  alias_tag = tag( alias );
+  char* new_text_str = strdup( new_text.data() );
   if( !stack_contains_tag( aliases, alias_tag ) ){
     // ToDo: should reallocate stack if full
     Cell tmp = allocate_cell();
-    set( tmp, type_text, alias_tag, (Cell) new_text ) );
+    set( tmp, type_text, alias_tag, (Cell) new_text_str );
     stack_push( aliases, tmp );
     free_cell( tmp );
     return;
   }
   Cell alias_cell = stack_lookup_by_tag( aliases, alias_tag );
-  free( value( alias_cell ) );
-  set_value( alias_cell, (Cell) new_text );
+  free( (void*) value( alias_cell ) );
+  set_value( alias_cell, (Cell) new_text_str );
 }
 
 
-std::string alias( std::string a ){
-  if( !stack_contains_tag( the_current_style_aliases, tag( a ) ) )return NULL;
-  return value( stack_lookup_by_tag( the_current_style_aliases, tag( a ) ) );
+std::string alias( const std::string& a ){
+  if( !stack_contains_tag( the_current_style_aliases, tag( a ) ) )return "";
+  char* str = (char*) value( stack_lookup_by_tag( the_current_style_aliases, tag( a ) ) );
+  return std::string( str );
 }
 
 }*/
@@ -10285,6 +10575,9 @@ primitive( "inox-forth-dialect", primitive_forth_dialect );
  *  dialect primitive
  */
 
+// Forward declaration to please C++
+/*c void set_style( const std::string& new_style );  c*/
+
 primitive( "inox-dialect", primitive_dialect );
 /**/ function              primitive_dialect(){
 /*c  void                  primitive_dialect( void ){  c*/
@@ -10300,8 +10593,10 @@ primitive( "inox-alias", primitive_alias );
 /**/ function            primitive_alias(){
 /*c  void                primitive_alias( void ){  c*/
 // Add an alias to the current style/dialect
-  const new_text = pop_as_text();
-  const old_text = pop_as_text();
+  /**/ const new_text = pop_as_text();
+  /*c  std::string new_text = pop_as_text();  c*/
+  /**/ const old_text = pop_as_text();
+  /*c  std::string old_text = pop_as_text();  c*/
   define_alias( style, old_text, new_text );
 }
 
@@ -10314,10 +10609,13 @@ primitive( "inox-dialect-alias", primitive_dialect_alias );
 /**/ function                    primitive_dialect_alias(){
 /*c  void                        primitive_dialect_alias( void ){  c*/
 // Add an alias to a style/dialect, eg "to" "To" "inox" --
-  const style    = pop_as_text();
-  const new_text = pop_as_text();
-  const old_text = pop_as_text();
-  define_alias( style, old_text, new_text)
+  /**/ const style          = pop_as_text();
+  /*c  std::string style    = pop_as_text();  c*/
+  /**/ const new_text       = pop_as_text();
+  /*c  std::string new_text = pop_as_text();  c*/
+  /**/ const old_text       = pop_as_text();
+  /*c  std::string old_text = pop_as_text();  c*/
+  define_alias( style, old_text, new_text );
 }
 
 
@@ -10326,17 +10624,18 @@ primitive( "inox-dialect-alias", primitive_dialect_alias );
  */
 
 // In that mode, Inox source code evaluator treats all verbs as if immediate.
-let immediate_mode_level : Index = 0;
+let immediate_mode_level = 0;
 
 // This is the id of the verb beeing defined or last defined
-let the_last_defined_verb : Index = 0;
+let the_last_defined_verb = 0;
 
-let the_last_quoted_verb_id    : Index = 0;
+let the_last_quoted_verb_id = 0;
 
 // Last tokenized verb from the tokenizer. ToDo: usedit
 const the_last_token_cell = allocate_cell();
-set_integer_cell( the_last_token_cell, 0 );
-set_name(         the_last_token_cell, tag( "last-token" ) );
+// ToDo: initialize the_last_token_cell in C++ somewhere
+/**/ set_integer_cell( the_last_token_cell, 0 );
+/**/ set_name(         the_last_token_cell, tag( "last-token" ) );
 
 
 immediate_primitive( "inox{", primitive_enter_immediate_mode );
@@ -10353,6 +10652,9 @@ immediate_primitive( "}inox", primitive_leave_immediate_mode );
   immediate_mode_level--;
 }
 
+
+// Forward declaration to please C++
+/*c void eval_do_literal( void );  c*/
 
 primitive( "inox-literal", primitive_literal );
 /**/ function              primitive_literal(){
@@ -10476,11 +10778,12 @@ primitive( "inox-run-name", primitive_run_name );
 // Call verb by text name
   const tos = TOS;
   de&&mand_cell_type( tos, type_text );
-  const name = cell_to_text( tos );
+  /**/ const verb_name = cell_to_text( tos );
+  /*c  std::string verb_name = cell_to_text( tos );  c*/
   clear( POP() );
   // ToDo: should check tag existence first
-  de&&mand( tag_exists( name ) );
-  let verb_id = tag( name );
+  de&&mand( tag_exists( verb_name ) );
+  let verb_id = tag( verb_name );
   run_verb( verb_id );
 }
 
@@ -10499,16 +10802,17 @@ primitive( "inox-definition", primitive_definition );
 /**/ function                 primitive_definition(){
 /*c  void                     primitive_definition( void ){  c*/
 // Get the address of the first element of the definition of a verb
-  const name = cell_to_text( TOS );
+  /**/ const verb_name = cell_to_text( TOS );
+  /*c  std::string verb_name = cell_to_text( TOS );  c*/
   clear( TOS );
   let verb_id;
-  if( tag_exists( name ) ){
-    verb_id = tag( name );
+  if( tag_exists( verb_name ) ){
+    verb_id = tag( verb_name );
   }else{
     verb_id = 0;
   }
   const ip = definition( verb_id );
-  set( TOS, type_integer, tag_inox_block, ip );
+  set( TOS, type_integer, tag_inox_block_header, ip );
   de&&mand_block( TOS );
 }
 
@@ -10528,7 +10832,7 @@ primitive( "inox-run", primitive_run );
   /*de*/   return;
   /*de*/ }
   // Push return address onto control stack
-  check_de&&mand( CSP < ACTOR_control_stack_limit )
+  check_de&&mand( CSP < ACTOR_control_stack_limit );
   CSP += ONE;
   set( CSP, type_integer, tag_inox_run, IP );
   // Jump into definition
@@ -10547,7 +10851,7 @@ primitive( "inox-run-definition", primitive_run_definition );
 /**/ function block_length( ip : Cell ){
 /*c  Cell     block_length( Cell ip   ){  c*/
 // Get the length of the block at ip.
-  check_de&&mand_eq( name( ip ), tag_inox_block );
+  check_de&&mand_eq( name( ip ), tag_inox_block_header );
   const block_length = value( ip ) & 0xffff;
   return block_length;
 }
@@ -10556,7 +10860,7 @@ primitive( "inox-run-definition", primitive_run_definition );
 /**/ function block_flags( ip : Index ){
 /*c  Index    block_flags( Index ip   ){  c*/
 // Get the flags of the block at ip.
-  check_de&&mand_eq( name( ip ), tag_inox_block );
+  check_de&&mand_eq( name( ip ), tag_inox_block_header );
   const block_flags = value( ip ) >> 16;
   return block_flags;
 }
@@ -10569,7 +10873,7 @@ primitive( "inox-block", primitive_block );
 
   const ip = IP;
   check_de&&mand_integer(  ip );
-  check_de&&mand_cell_name(  ip, tag_inox_block );
+  check_de&&mand_cell_name(  ip, tag_inox_block_header );
   let length = block_length( ip );
   // If block is actually the block of a verb then it is stored elsewhere
   /*de*/ if( de && is_block_ip( ip ) ){
@@ -10635,8 +10939,8 @@ primitive( "inox-block", primitive_block );
 /*c  #define token_type_error         8  c*/
 
 
-/**/ function token_type_to_text( type : number ) : text {
-/*c  text     token_type_to_text( number type   ){  c*/
+/**/ function token_type_to_text( type : Index ) : text {
+/*c  text     token_type_to_text( Index type   ){  c*/
   switch( type ){
     case token_base:               return "token_base";
     case token_type_word:          return "token_word";
@@ -10663,8 +10967,8 @@ let tag_token_indent             = tag( "token_indent" );
 let tag_token_error              = tag( "token_error" );
 
 
-/**/ function token_type_to_tag( type : number ) : Tag {
-/*c  Tag      token_type_to_tag( number type   )       {  c*/
+/**/ function token_type_to_tag( type : Index ) : Tag {
+/*c  Tag      token_type_to_tag( Index type   )       {  c*/
   switch( type ){
     case token_base:               return tag_token_base;
     case token_type_word:          return tag_token_word;
@@ -10702,11 +11006,12 @@ abstract class TextStreamIterator {
   abstract next() : string;
 }
 
-/*}*/
+/*c*/
 
 
 // When REPL, source code comes from some readline() function
 /**/ let toker_stream  : TextStreamIterator;
+/*c  std::istream* toker_stream = 0;  c*/
 
 // Source that is beeing tokenized
 /**/ let toker_text = "";
@@ -10729,14 +11034,14 @@ let toker_alias_cursor = 0;
 
 // When set, whitespaces are the only separators, as in Forth
 // This is activated after a "to" to get the verb name.
-let toker_eager_mode : boolean = false;
+let toker_eager_mode = false;
 
 // One token ahead sometime, see unget_token()
 let back_token_type = 0;
 
 // The text value of that back token
 /**/ let back_token_text = "";
-/*c  std::string toker_back_token_value( "" );  c*/
+/*c  std::string back_token_text( "" );  c*/
 
 // ToDo: about xxxx:name stuff, weird, explain
 /**/ let toker_post_literal_name = "";
@@ -10756,7 +11061,7 @@ let token_type = 0;
 
 // The text value of that token
 /**/ let token_text = "";
-/*c  std::string token_value( "" );  c*/
+/*c  std::string token_text( "" );  c*/
 
 // The position of that token in the source
 let token_position = 0;
@@ -10766,10 +11071,6 @@ let token_line_no = 0;
 
 // The column number of that token in the source
 let token_column_no = 0;
-
-// Name of current style, "inox" or "forth" typically
-/**/ let style = "";
-/*c  std::string style( "" );  c*/
 
 // "to" when Inox style, "," when Forth style
 /**/ let define = "";
@@ -10811,29 +11112,31 @@ let is_literate = false;
 // Last ch of comment_multiline_end
 /**/ let comment_multine_last_ch  = "";
 /*c  char comment_multine_last_ch = 0;  c*/
+/**/ let no_ch = "";
+/*c  char no_ch = 0;  c*/
 
 // For style/dialect auto detection
 let first_comment_seen = false;
 
 
 /**/ function set_comment_mono_line( begin : text ) : void {
-/*c void      set_comment_mono_line( std::string begin ) {  c*/
+/*c void      set_comment_mono_line( const std::string& begin ) {  c*/
   comment_monoline = begin;
-  comment_monoline_ch0 = begin ? begin[ 0 ] : no_text;
+  comment_monoline_ch0 = tlen( begin ) > 0 ? begin[ 0 ] : no_ch;
   set_comment_multi_line( no_text, no_text );
 }
 
 /**/ function set_comment_multi_line( begin : text, end : text ) : void {
-/*c void      set_comment_multi_line( std::string begin, std::string end ) {  c*/
+/*c void      set_comment_multi_line( const std::string& begin, const std::string& end ) {  c*/
   comment_multiline_begin = begin;
-  comment_multiline_ch0 = begin ? begin[ 0 ] : no_text;
+  comment_multiline_ch0 = tlen( begin ) > 0 ? begin[ 0 ] : no_ch;
   comment_multiline_end = end;
-  comment_multine_last_ch = end ? end[ tlen( end ) - 1 ] : no_text;
+  comment_multine_last_ch = tlen( end ) > 0 ? end[ tlen( end ) - 1 ] : no_ch;
 }
 
 
-/**/ function set_style( new_style : text ) : void {
-/*c  void     set_style( std::string new_style  )        {  c*/
+/**/ function set_style( new_style : text              ) : void {
+/*c  void     set_style( const std::string& new_style  )        {  c*/
 // Set the new style for future tokens detections
 
   set_alias_style( new_style );
@@ -10890,19 +11193,19 @@ let first_comment_seen = false;
 
 
 /**/ function tokenizer_set_literate_style( is_it : boolean ) : void {
-/*c  void     tokenizer_set_literate_style( bool is_literate ) {  c*/
+/*c  void     tokenizer_set_literate_style( bool is_it ) {  c*/
   is_literate = is_it;
 }
 
 
 /**/ function tokenizer_set_stream( s : TextStreamIterator ){
-/*c  void     tokenizer_set_stream( TextStreamIterator stream ) {  c*/
+/*c  void     tokenizer_set_stream( std::istream* stream ) {  c*/
   /**/ toker_stream = s;
 }
 
 
 /**/ function tokenizer_restart( source : text ){
-/*c  void     tokenizer_restart( string source ) {  c*/
+/*c  void     tokenizer_restart( const std::string& source ) {  c*/
 
   // The source code to process.
   /**/ toker_stream = null;
@@ -10960,10 +11263,13 @@ primitive( "inox-input-until", primitive_input_until );
 /**/ function                  primitive_input_until(){
 /*c  void                      primitive_input_until( void ){ c*/
   const tos = TOS;
-  let limit = cell_to_text( tos );
+  /**/ let         limit = cell_to_text( tos );
+  /*c  std::string limit = cell_to_text( tos ); c*/
   clear( tos );
-  let buf = "";
-  let ch : text ;
+  /**/ let buf = "";
+  /*c  std::string buf = ""; c*/
+  /**/ let ch : text ;
+  /*c  std::string ch; c*/
   while( true ){
     ch = tokenizer_next_character();
     if( teq( ch, "" ) && tneq( limit, "" ) ){
@@ -11021,9 +11327,10 @@ primitive( "inox-whitespace?", primitive_inox_is_whitespace );
 /*c  void                      primitive_inox_is_whitespace( void ){ c*/
 // True if the top of stack is a whitespace character
   de&&mand_cell_type( TOS, type_text );
-  const text = cell_to_text( TOS );
+  /**/ const txt = cell_to_text( TOS );
+  /*c  std::string txt = cell_to_text( TOS ); c*/
   clear( POP() );
-  push_boolean( ch_is_space( text ) );
+  push_boolean( ch_is_space( txt ) );
   set_tos_name( tag_is_whitespace );
 }
 
@@ -11039,18 +11346,20 @@ primitive( "inox-next-token-character", primitive_next_token_character );
 /**/ function                           primitive_next_token_character(){
 /*c  void                               primitive_next_token_character( void ){ c*/
 // Get next character in source code, or void
-  const ch = tokenizer_next_character();
+  /**/ const ch = tokenizer_next_character();
+  /*c  std::string ch = tokenizer_next_character(); c*/
   push_text( ch );
   set_tos_name( tag_inox_next_token_character );
 }
 
 
-/**/ function tokenizer_next_character() : text {
-/*c  text     tokenizer_next_character( void )  { c*/
+/**/ function    tokenizer_next_character() : text {
+/*c  std::string tokenizer_next_character( void )  { c*/
 // Get/consume next character and advance cursor, or ""
   // ToDo: handle stream?
   if( toker_text_cursor >= toker_text_length )return "";
-  const ch = toker_text[ toker_text_cursor++ ];
+  /**/ const ch = toker_text[ toker_text_cursor++ ];
+  /*c  std::string ch = toker_text.substr( toker_text_cursor++, 1 ); c*/
   return ch;
 }
 
@@ -11065,17 +11374,19 @@ primitive( "inox-digit?", primitive_is_digit );
 /**/ function             primitive_is_digit(){
 /*c  void                 primitive_is_digit( void ){ c*/
   de&&mand_cell_type( TOS, type_text );
-  const text = cell_to_text( TOS );
+  /**/ const txt = cell_to_text( TOS );
+  /*c  std::string txt = cell_to_text( TOS ); c*/
   clear( POP() );
-  push_boolean( ch_is_digit( text ) );
+  push_boolean( ch_is_digit( txt ) );
   set_tos_name( tag_inox_is_digit );
 }
 
 
 /**/ function ch_is_digit( ch : text ){
-/*c  boolean  ch_is_digit( text ch   ){ c*/
+/*c  boolean  ch_is_digit( const std::string& ch   ){ c*/
   // ToDo: avoid regexp
-  return /\d/.test( ch.charAt( 0 ) );
+  /**/ return /\d/.test( ch.charAt( 0 ) );
+  /*c  return isdigit( ch[ 0 ] ); c*/
 }
 
 
@@ -11170,19 +11481,19 @@ primitive( "inox-next-token", primitive_next_token );
 }
 
 
-/**/ function extract_line( text : string, ii : Index ){
-/*c  std::string extract_line( std::string& text, int ii ){ c*/
+/**/ function extract_line( txt : string, ii : Index ){
+/*c  std::string extract_line( const std::string& txt, int ii ){ c*/
 // Extract the line surrounding the position ii in text
   // Handle negative indices
   if( ii < 0 ){
-    ii = tlen( text ) + ii;
+    ii = tlen( txt ) + ii;
   }
   // Extract the line containing the token.
   /**/ let line_extract = "";
   /*c  std::string line_extract( "" ); c*/
   // Cut whatever is after next eol
-  /**/ let part = tbut( text, ii );
-  /*c  std::string part = tbut( text, ii ); c*/
+  /**/ let part = tbut( txt, ii );
+  /*c  std::string part = tbut( txt, ii ); c*/
   let index = tidx( part, "\n" );
   if( index != -1 ){
     line_extract = tcut( part, index );
@@ -11190,7 +11501,7 @@ primitive( "inox-next-token", primitive_next_token );
     line_extract = part;
   }
   // Add whatever is before, up to previous eol
-  part = tcut( text, ii );
+  part = tcut( txt, ii );
   index = tidxr( part, "\n" );
   if( index != -1 ){
     line_extract = tbut( part, index + 1 )
@@ -11206,8 +11517,654 @@ primitive( "inox-next-token", primitive_next_token );
 }
 
 
+/**/ function ch_is_limit( ch : text, next_ch : text ){
+/*c  boolean  ch_is_limit( const std::string& ch, const std::string& next_ch ){ c*/
+  if( teq( ch, " " ) )return true;
+  if( toker_eager_mode )return false;
+  if( tneq( style, "inox" ) )return false;
+  if( teq( ch, ":" )
+  ||  ( teq( ch, ";" ) ) // ToDo: ?
+  ||  ( teq( ch, "/" ) && tneq( next_ch, "(" ) ) // /a/b/c is /a /b /c, a/b/c is a/ b/ c
+//||  ch == "^"  // ToDo: ?
+//||  ch == "."  // ToDo: notation where x .b( c ) eqv c x .:b eqv c x /b .:
+//||  ch == "'"  // ToDo: xxx'yyy eqv xxx.yyy ?  _point'x _point'out()
+//||  ch == "`"  // ToDo: back tick for Lisp like quote ?
+  || ( teq( ch, "(" ) && teq( next_ch, ")" ) ) // x() is x( and then )
+  ){
+    return true;
+  }else{
+    return false;
+  }
+}
+
+
+// Some small lookahead to detect some constructs
+/**/ let next_ch  = "    ";
+/*c  std::string next_ch( "    " ); c*/
+let next_ch_ii = 0;
+
+
+
+/**/ function refill_next_ch( ii : Index ){
+/*c  void     refill_next_ch( int ii ){ c*/
+  // Don't do it twice if same location
+  if( next_ch_ii == ii )return;
+  let jj;
+  next_ch = "";
+  for( jj = 0 ; jj < 4 ; jj++ ){
+    if( ( ii + jj ) >= toker_text_length ){
+      next_ch += " ";
+    }else{
+      next_ch += toker_text[ ii + jj ];
+      // Treat lf like a space
+      if( ch_is_eol( tmid( next_ch, jj, 1 ) ) ){
+        next_ch = tcut( next_ch, jj ) + " ";
+      }
+    }
+  }
+  next_ch_ii = ii;
+}
+
+
+/**/ function    handle_literate_style( buf : string ) : string {
+/*c  std::string handle_literate_style( const std::string& buf ){ c*/
+
+  // See https://github.com/cognate-lang/cognate
+
+  // ToDo: this assert fails, why? de&&mand( buf.length > 0 );
+
+  if( !is_literate )return buf;
+  if( teq( buf, "." ) )debugger;
+
+  // If word does not depend on case, leave it alone, not a comment
+  if( teq( tlow( buf ), tup( buf ) ) )return buf;
+
+  // If the word is one letter long then it's a comment
+  if( tlen( buf ) < 2 ){
+    token_type = token_type_comment;
+    return buf;
+  }
+
+  // In literate style, lower/upper case is significant on first 2 letters
+  /**/ const first_ch  = buf[ 0 ];
+  /*c  std::string first_ch( "" ); first_ch +=  buf[ 0 ]; c*/
+  /**/ const second_ch = buf[ 1 ];
+  /*c  std::string second_ch( "" ); second_ch +=  buf[ 1 ]; c*/
+
+  // If word starts with two lower case letters, then it is a comment
+  if( teq( tlow( first_ch ),  first_ch )
+  &&  teq( tlow( second_ch ), second_ch )
+  ){
+    token_type = token_type_comment;
+    return buf;
+  }
+
+  // If word starts with 2 upper case letters, then it is code, as is
+  if( teq( tup( first_ch ),  first_ch )
+  &&  teq( tup( second_ch ), second_ch )
+  ){
+    return buf;
+  }
+
+  // It's code, but change uppercase first letter to lower case
+  if( teq( tup( first_ch ), first_ch ) ){
+    return tlow( first_ch ) + tbut( buf, 1 );
+  }
+
+  // It's code, leave it alone
+  return buf;
+
+}
+
+
+// Globals for the tokenizer
+let toker_ii = 0;
+/**/ let toker_ch = "";
+/*c  std::string toker_ch( "" ); c*/
+let toker_is_eol = false;
+let toker_is_eof = false;
+let toker_previous_ii = 0;
+let token_is_ready = false;
+let toker_is_space = false;
+let toker_front_spaces = 0;
+let toker_state = 0;
+/**/ let toker_buf = "";
+/*c  std::string toker_buf( "" ); c*/
+let style_is_forth = false;
+let toker_start_ii = 0;
+let toker_is_limit = false;
+let toker_previous_state = 0;
+
+
+/**/ function process_whitespaces(){
+/*c void process_whitespaces( void ){ c*/
+  // EOF, end of file
+  if( toker_ii == toker_text_length ){
+    // If there is a stream, try to get more text from it
+    if( toker_stream ){
+      /**/ const more_text = toker_stream.next();
+      /*c{
+        std::string more_text;
+        std::getline( *toker_stream, more_text );
+      /*c*/
+      if( more_text != "" ){
+        toker_text = more_text;
+        toker_text_length = tlen( more_text );
+        toker_ch = more_text[ 0 ];
+        toker_ii = 1;
+        toker_previous_ii = 0;
+      }else{
+        toker_is_eof = true;
+      }
+    }else{
+      toker_is_eof = true;
+    }
+    if( toker_is_eof && toker_state != token_type_word && toker_state != token_type_comment ){
+      token_type = token_type_eof;
+      token_is_ready = true;
+      return;
+    }
+    // Simulate a space to end the current word
+    toker_ch = " ";
+
+  // Get next character in source
+  }else{
+    toker_ch = toker_text[ toker_ii++ ];
+  }
+
+  // Is it some space or something equivalent?
+  toker_is_space = ch_is_space( toker_ch );
+  toker_is_eol   = ch_is_eol(   toker_ch );
+
+  // Normalize all whitespaces into a single space character
+  if( toker_is_space && toker_state != token_type_comment && toker_state != token_type_text ){
+    toker_ch = " ";
+  }
+
+  // If end of line, detect it
+  if( toker_is_eol ){
+    // Line numbering, don't double when \r\n
+    if( toker_ch != "\r" ){
+      toker_line_no++;
+    }
+    // Restart indentation detection
+    toker_front_spaces = 0;
+    toker_indentation_reached = false;
+    // Process eol as if it were a space
+    toker_ch = " ";
+    toker_is_space = true;
+
+  // Count front spaces on new line to detect changed indentation
+  }else if( ! toker_indentation_reached ){
+    if( toker_is_space ){
+      toker_front_spaces++;
+    // If first non space on new line, emit some indentation token
+    }else{
+      toker_indentation_reached = true;
+      // Emit either "++", "--" or "==" indentation token
+      if( toker_state == token_base ){
+        token_type = token_type_indent;
+        if( toker_front_spaces > toker_indentation ){
+          token_text = "++";
+        }else if( toker_front_spaces < toker_indentation ){
+          token_text = "--";
+        }else{
+          token_text = "==";
+        }
+        token_column_no = toker_front_spaces;
+        toker_previous_indentation = toker_indentation;
+        toker_indentation = toker_front_spaces;
+        toker_column_no = toker_front_spaces; // ToDo: needs updates
+        // Make sure first non space is processed normally next time
+        toker_ii--;
+        token_is_ready = true;
+      }
+    }
+  }
+} // process_whitespaces()
+
+
+/**/ function process_base_state(){
+/*c void process_base_state( void ){ c*/
+
+  // skip whitespaces, including separators
+  // ToDo: handle separator sign ("," if Inox) with more semantic
+  if( toker_is_space ){
+    return;
+  }
+
+  // Texts start with ", unless Forth
+  // ToDo: make it configurable?
+  if( teq( toker_ch, "\"" ) && !style_is_forth ){
+    // ToDo: handle single quote 'xx' and backquote `xxxx`
+    // ToDo: handle template text literals, ie fmt"..."
+    toker_start_ii = toker_ii;
+    toker_state = token_type_text;
+    return;
+  }
+
+  // Comments start differently depending on style
+  toker_buf += toker_ch;
+  de&&mand( tlen( toker_buf ) > 0 );
+
+  // If literate style, a line starting without indentation is a comment
+  if( is_literate
+  &&  toker_indentation_reached
+  &&  toker_indentation == 0
+  ){
+    toker_state = token_type_comment;
+    // The new ch will be added when processing the comment state
+    toker_buf = tcut( toker_buf, -1 );
+    toker_start_ii = toker_ii;
+    toker_state = token_type_comment;
+    process_comment_state();
+    return;
+  }
+
+  // If actual start of comment, change state
+  if( teq( toker_buf, comment_monoline )
+  ||  teq( toker_buf, comment_multiline_begin )
+  ){
+    // The new ch will be added when processing the comment state
+    toker_buf = tcut( toker_buf, -1 );
+    toker_start_ii = toker_ii;
+    toker_state = token_type_comment;
+    process_comment_state();
+    return;
+  }
+
+  // If potential start of comment, keep eating
+  if( teq( toker_buf, comment_monoline_ch0 )
+  ||  teq( toker_buf, comment_multiline_ch0 )
+  ){
+    return;
+  }
+
+  // Clear buf but keep the false start of comment if any
+  if( teq( toker_buf[0], comment_monoline_ch0 )
+  ||  teq( toker_buf[0], comment_multiline_ch0 )
+  ){
+    toker_buf = tcut( toker_buf, -1 );
+  }else{
+    toker_buf = "";
+  }
+
+  // If not a comment nor a text then it has to be a word
+  toker_start_ii = toker_ii;
+  toker_state = token_type_word;
+  process_word_state();
+
+} // process_base_state()
+
+
+/**/ function process_comment_state() {
+/*c void process_comment_state( void ){ c*/
+
+  toker_buf += toker_ch;
+
+  // When inside the first comment at the very beginning of the file
+  // Different programming language have different styles
+  // Icon uses literate programming with code lines started using >
+  // See https://en.wikipedia.org/wiki/Comment_(computer_programming)
+
+  if( ! first_comment_seen && !toker_is_space ){
+
+    // ToDo: skip #! shebang
+    // see https://en.wikipedia.org/wiki/Shebang_(Unix)
+
+    // Inox style of comments, ~~ and ~| xxx |~
+    if( teq( toker_ch, "~" ) ){
+      set_style( "inox" );
+
+    // sh shell type of comments, #
+    }else if( teq( toker_ch, "#" ) ){
+      set_style( "sh" );
+
+    // C style of comments, either // or /* xxx */
+    }else if( teq( toker_ch, "/" ) ){
+      set_style( "c" );
+
+    // Forth style, either \ or ( xxx )
+    }else if( teq( toker_ch, "(" ) ){
+      set_style( "forth" );
+
+    // Lisp style, ;
+    }else if( teq( toker_ch, ";" ) ){
+      set_style( "lisp" );
+
+    // Prolog style, %
+    }else if( teq( toker_ch, "%" ) ){
+      set_style( "prolog" );
+    }
+  }
+
+  // If this is a monoline comment ending, emit it
+  if( toker_is_eol || toker_is_eof ){
+    // ~~ style of comments
+    if( tneq( comment_monoline, "" )
+      && ( teq(
+        tcut( toker_buf, tlen( comment_monoline ) ),
+        comment_monoline
+      ) )
+    ){
+      // Emit token, without start of comment sequence and without lf
+      token_type = token_type_comment;
+      toker_buf = tmid( toker_buf, tlen( comment_monoline ), -1 );
+      token_text = toker_buf;
+      token_is_ready = true;
+      return;
+    }
+    // Literate style of comments
+    if( is_literate ){
+      // Emit token, whole line without lf
+      token_type = token_type_comment;
+      toker_buf = tcut( toker_buf, - 1 );
+      token_text = toker_buf;
+      token_is_ready = true;
+      return;
+    }
+  }
+
+  // If this terminates the multiline comment, emit the comment
+  if( teq( toker_ch, comment_multine_last_ch )
+  && teq( tcut( toker_buf, tlen(  comment_multiline_begin ) ),
+                            comment_multiline_begin )
+  && teq( tbut( toker_buf, -tlen( comment_multiline_end ) ),
+                            comment_multiline_end )
+  ){
+    // Emit token, without start & end of comment sequence
+    token_type = token_comment_multiline;
+    toker_buf = tmid( toker_buf,
+      tlen(   comment_multiline_begin ),
+      - tlen( comment_multiline_end )
+    );
+    token_text = toker_buf;
+    token_is_ready = true;
+    return;
+  }
+
+  // Premature end of file, something else was expected
+  if( toker_is_eof ){
+    token_type = first_comment_seen
+    ? token_type_error
+    : token_type_eof;
+    toker_buf = first_comment_seen
+    ? S() + "eof in token state " + N( toker_state )
+      + " (" + token_type_to_text( toker_state ) + ")"
+    : no_text;
+    token_text = toker_buf;
+    token_is_ready = true;
+    return;
+  }
+
+} // process_comment_state()
+
+
+/**/ function process_text_state() {
+/*c void process_text_state( void ){ c*/
+  // " marks the end of the text token
+  if( teq( toker_ch, "\"" ) ){
+    token_type  = token_type_text;
+    token_text = toker_buf;
+    token_is_ready = true;
+  }
+
+  // New lines are ok inside a "xxxx" text token
+  if( teq( toker_ch, "\n" ) ){
+    toker_line_no++;
+    toker_column_no = 0;
+  }
+
+  // ToDo: handle escape sequences
+  toker_buf += toker_ch;
+
+} // process_text_state()
+
+
+/**/ function process_word_state() : boolean {
+/*c bool process_word_state( void ){ c*/
+  // ToDo: this assert fails, why? de&&mand( buf.length > 0 );
+
+  // If a xxx: naming prefix was there, it will come next
+  if( toker_post_literal_name != "" ){
+    back_token_type  = token_type_word;
+    back_token_text = toker_post_literal_name;
+    // ToDo: position, line_no, column_no of back token
+    toker_post_literal_name = "";
+  }
+
+  // space is always a word delimiter
+  if( toker_is_space ){
+
+    // Eager mode is blind to alias, space only matters
+    if( toker_eager_mode ){
+      token_text = toker_buf;
+      token_is_ready = true;
+      return;
+    }
+
+    // ToDo: this fails, why? de&&mand( buf.length > 0 );
+
+    // ToDo: refactor
+    toker_buf = handle_literate_style( toker_buf );
+    if( token_type == token_type_comment ){
+      token_text = toker_buf;
+      token_is_ready = true;
+      return;
+    }
+
+    /**/ let aliased = alias( toker_buf );
+    /*c  string aliased = alias( toker_buf ); c*/
+
+    // If simple word substitution with an alias
+    if( tlen( aliased ) > 0 ){
+      if( tidx( aliased, " " ) == -1 ){
+        toker_buf = aliased;
+        token_text = toker_buf;
+        token_is_ready = true;
+      }else{
+        token_de&&bug( S()+ "alias for " + toker_buf + " is " + aliased );
+        // When this happens, restart as if from new source, base state.
+        // Change source code to insert the extra stuff and scan again
+        // ToDo: this breaks the index/line/column scheme
+        // ToDo: this is very inefficient
+        // ToDo: this code is duplicated somewhere below
+        toker_text = aliased + tbut( toker_text, toker_ii );
+        toker_text_length  = tlen( toker_text );
+        toker_alias_cursor = tlen( aliased );
+        toker_ii = 0;
+        toker_buf = "";
+        toker_state = token_base;
+      }
+      return;
+    // Unless no alias or alias expands into more than a simple word
+    }else if( tlen( aliased ) == 0 ){
+      token_text = toker_buf;
+      token_is_ready = true;
+      return;
+    }
+
+    // Forth uses only spaces as delimiters
+    if( style_is_forth ){
+      token_text = toker_buf;
+      token_is_ready = true;
+      return;
+    }
+  }
+
+  de&&mand( !toker_is_space );
+
+  // Comma is ignored, it is there for readability only, unless Forth
+  if( teq( toker_ch, "," )
+  &&  !style_is_forth
+  &&  !toker_eager_mode
+  ){
+    return;
+  }
+
+  // If eager mode then only space is a terminator
+  if( style_is_forth
+  ||  toker_eager_mode
+  ){
+    toker_buf += toker_ch;
+    return;
+  }
+
+  // ToDo: what comes next needs some serious refactoring
+
+  // Get some next characters, some lookahead helps sometimes
+  refill_next_ch( toker_ii );
+
+  // Handle line continuation when \ is last character on line, unless Forth
+  // ToDo: should be defined by style
+  if( teq( toker_ch, "\\" )
+  && ch_is_eol( tcut( next_ch, 1 ) )
+  ){
+    toker_ii++;
+    // Handle crlf
+    if( teq( tcut( toker_ch, 1 ), "\r" )
+    &&  teq( tmid( next_ch, 1, 1 ), "\n" ) ){
+      toker_ii++;
+    }
+    return;
+  }
+
+  // . is a token if alone
+  if( teq( toker_ch, end_define ) ){
+    toker_is_limit
+    = tlen( toker_buf ) != 0
+    || ch_is_space( tcut( next_ch, 1 ) );
+
+  // ; is a token
+  }else if( teq( toker_ch, terminator_sign ) ){
+    toker_is_limit = true;
+
+  // Some other special characters are a limit too
+  }else{
+    toker_is_limit = ch_is_limit( toker_ch, tcut( next_ch, 1 ) );
+  }
+
+  // If no limit is reached, keep going
+  if( !toker_is_limit ){
+    toker_buf += toker_ch;
+    return;
+  }
+
+  // If there was nothing before the limit, emit a single char token
+  if( tlen( toker_buf ) == 0 && ! toker_is_space ){
+    if( teq( toker_ch, "/" ) ){
+      toker_buf = "/";
+      return;
+    }else{
+      toker_start_ii = toker_ii - 1;
+      toker_buf = toker_ch;
+      token_text = toker_buf;
+      token_is_ready = true;
+    }
+
+  // If there was something before the limit, deal with that
+  }else if( tlen( toker_buf ) >= 0 ){
+
+    // xx(, xx[ and xx{ are words of a special type.
+    // so is xxx: when before a space or /xxx/yyy which is /xxx
+    if( teq( toker_ch, "(" )
+    ||  teq( toker_ch, '[' )
+    ||  teq( toker_ch, '{' )
+    ||  ( teq( toker_ch, ':' ) && teq( tcut( next_ch, 1 ), " " ) )
+    || teq( toker_ch, '/' ) && tneq( tcut( toker_buf, 1 ), "/" )
+    ){
+      toker_buf = toker_buf + toker_ch;
+      toker_ii++;
+
+    // ) and } are also words of a special type
+    } else if(
+      ( teq( toker_ch, ")" ) || teq( toker_ch, "}" ) )
+    && ch_is_limit( tcut( next_ch, 1 ), "" )
+    ){
+      toker_buf = toker_buf + toker_ch;
+      toker_ii++;
+
+    // xxx:", xxx:123, xxx:-123, to name literals
+    } else if( teq( toker_ch, ":" ) ){
+
+      // End of word if : is before a literal or another delimiter
+      // ToDo: enable :: in words?
+      if( teq( tcut( next_ch, 1 ), "\"" )
+      ||  teq( tcut( next_ch, 1 ), "-" )
+      ||  ch_is_digit( tcut( next_ch, 1 ) )
+      ||  ch_is_limit( tcut( next_ch, 1 ), "" )
+      ){
+        // ToDo: get rid of post_literal_name
+        toker_post_literal_name = ":" + toker_buf;
+        back_token_type = token_type_word;
+        back_token_text = toker_post_literal_name;
+        // ToDo: handle position, line_no, column_no of back token
+        toker_post_literal_name = "";
+        toker_buf = "";
+      }else{
+        toker_buf += ":";
+      }
+      return;
+    }
+
+    // A well separated word was collected, before or with the limit
+    toker_ii--;
+
+    // Change word if some alias was defined for it
+    if( is_literate ){
+      toker_buf = handle_literate_style( toker_buf );
+    }
+
+    /**/ let word_alias = alias( toker_buf );
+    /*c std::string word_alias = alias( toker_buf ); c*/
+
+    // In Inox style the aliases can expand into multiple words
+    if( tlen( word_alias ) > 0  && teq( style, "inox" ) ){
+      // Complex case, potentially expand into multiple tokens
+      let index_space = tidx( word_alias, " " );
+      if( index_space != -1 ){
+        token_de&&bug( S()+ "alias for " + toker_buf + " is " + word_alias );
+        // When this happens, restart as if from new source, base state.
+        // Change source code to insert the extra stuff and scan again
+        // ToDo: this breaks the index/line/column scheme
+        // ToDo: this is very inefficient
+        toker_text = word_alias + tbut( toker_text, toker_ii );
+        toker_text_length  = tlen( toker_text );
+        toker_alias_cursor = tlen( word_alias );
+        toker_ii = 0;
+        toker_buf = "";
+        toker_state = token_base;
+        return;
+      }
+    }
+
+    if( tlen( word_alias ) > 0 ){
+      toker_buf = word_alias;
+    }
+    token_text = toker_buf;
+    token_is_ready = true;
+
+  }
+} // process_word_state()
+
+
+/**/ function detect_infinite_loop(){
+/*c  void     detect_infinite_loop( void )   {  c*/
+  if( !de )return;
+  if( toker_ii == toker_previous_ii && toker_state == toker_previous_state ){
+    bug( "Infinite loop detected in next_token" );
+    debugger;
+    // Skip to end of file
+    toker_ii = toker_text_length;
+  }
+  toker_previous_ii    = toker_ii;
+  toker_previous_state = toker_state;
+}
+
+
+
 /**/ function next_token() : void {
-/*c  Token*   next_token( void )   {  c*/
+/*c  void     next_token( void )   {  c*/
 // Split source code into syntax tokens
 
   // ToDo: horn clauses, prolog syle
@@ -11229,640 +12186,40 @@ primitive( "inox-next-token", primitive_next_token );
   }
 
   // Get to where things were before
-  let ii = toker_text_cursor;
+  toker_ii = toker_text_cursor;
 
   // Where the new token starts
-  let start_ii = ii;
+  toker_start_ii = toker_ii;
 
   // Current token, defaults to a token_word type of token
   token_type      = token_type_word;
   token_text     = "";
-  token_position  = start_ii;
+  token_position  = toker_start_ii;
   token_line_no   = toker_line_no;
   token_column_no = toker_column_no;
 
-  let state = first_comment_seen ? token_base : token_type_comment;
+  toker_state = first_comment_seen ? token_base : token_type_comment;
 
   // Buffer to collect token text
-  let buf = "";
+  toker_buf = "";
 
   // One character at a time
-  let ch       = "";
-  let is_space = false;
-  let is_eol   = false;
-  let is_eof   = false;
+  toker_ch       = "";
+  toker_is_space = false;
+  toker_is_eol   = false;
+  toker_is_eof   = false;
 
   // Space is the normal deliminator between words, there are special cases
-  let is_limit = false;
+  toker_is_limit = false;
 
-  // Some small lookahead to detect some constructs
-  // ToDo: use a "    " fixed size text?
-  let next_ch  = [ " ", " ", " ", " " ];
-  let next_ch_ii = 0;
+  toker_front_spaces = 0;
 
-  /**/ function ch_is_limit( ch : text, next_ch : text ){
-    if( teq( ch, " " ) )return true;
-    if( toker_eager_mode )return false;
-    if( tneq( style, "inox" ) )return false;
-    if( teq( ch, ":" )
-    ||  ( teq( ch, ";" ) ) // ToDo: ?
-    ||  ( teq( ch, "/" ) && tneq( next_ch, "(" ) ) // /a/b/c is /a /b /c, a/b/c is a/ b/ c
-  //||  ch == "^"  // ToDo: ?
-  //||  ch == "."  // ToDo: notation where x .b( c ) eqv c x .:b eqv c x /b .:
-  //||  ch == "'"  // ToDo: xxx'yyy eqv xxx.yyy ?  _point'x _point'out()
-  //||  ch == "`"  // ToDo: back tick for Lisp like quote ?
-    || ( teq( ch, "(" ) && teq( next_ch, ")" ) ) // x() is x( and then )
-    ){
-      return true;
-    }else{
-      return false;
-    }
-  }
+  toker_previous_ii    = -1;
+  toker_previous_state = token_type_error;
 
-  /**/ function refill_next_ch(){
-    // Don't do it twice if same location
-    if( next_ch_ii == ii )return;
-    let jj;
-    for( jj = 0 ; jj < 4 ; jj++ ){
-      if( ( ii + jj ) >= toker_text_length ){
-        next_ch[ jj ] = " ";
-      }else{
-        next_ch[ jj ] = toker_text[ ii + jj ];
-        // Treat lf like a space
-        if( ch_is_eol( next_ch[ jj ] ) ){
-          next_ch[ jj ] = " ";
-        }
-      }
-    }
-    next_ch_ii = ii;
-  }
+  style_is_forth = teq( style, "forth" );
 
-  /**/ function handle_literate_style(){
-
-    // See https://github.com/cognate-lang/cognate
-
-    // ToDo: this assert fails, why? de&&mand( buf.length > 0 );
-
-    if( !is_literate )return;
-    if( teq( buf, "." ) )debugger;
-
-    // If word does not depend on case, leave it alone, not a comment
-    if( teq( buf.toLowerCase(), buf.toUpperCase() ) )return;
-
-    // If the word is one letter long then it's a comment
-    if( tlen( buf ) < 2 ){
-      token_type = token_type_comment;
-      return;
-    }
-
-    // In literate style, lower/upper case is significant on first 2 letters
-    const first_ch  = buf[ 0 ];
-    const second_ch = buf[ 1 ];
-
-    // If word starts with two lower case letters, then it is a comment
-    if( teq( first_ch.toLowerCase(), first_ch )
-    &&  teq( second_ch.toLowerCase(), second_ch )
-    ){
-      token_type = token_type_comment;
-      return;
-    }
-
-    // If word starts with 2 upper case letters, then it is code, as is
-    if( teq( first_ch.toUpperCase(),  first_ch )
-    &&  teq( second_ch.toUpperCase(), second_ch )
-    ){
-      return;
-    }
-
-    // It's code, but change uppercase first letter to lower case
-    if( teq( first_ch.toUpperCase(), first_ch ) ){
-      buf = first_ch.toLowerCase() + tbut( buf, 1 );
-      return;
-    }
-
-    // It's code, leave it alone
-    return;
-
-  }
-
-  let front_spaces = 0;
-
-  let previous_ii    = 0;
-  let previous_state = token_type_error;
-
-  const is_forth = teq( style, "forth" );
-
-  let token_is_ready = false;
-
-  /**/ function process_whitespaces(){
-
-    // EOF, end of file
-    if( ii == toker_text_length ){
-      // If there is a stream, try to get more text from it
-      if( toker_stream ){
-        const more_text = toker_stream.next();
-        if( more_text != "" ){
-          toker_text = more_text;
-          toker_text_length = tlen( more_text );
-          ch = more_text[ 0 ];
-          ii = 1;
-          previous_ii = 0;
-        }else{
-          is_eof = true;
-        }
-      }else{
-        is_eof = true;
-      }
-      if( is_eof && state != token_type_word && state != token_type_comment ){
-        token_type = token_type_eof;
-        token_is_ready = true;
-        return;
-      }
-      // Simulate a space to end the current word
-      ch = " ";
-
-    // Get next character in source
-    }else{
-      ch = toker_text[ ii++ ];
-    }
-
-    // Is it some space or something equivalent?
-    is_space = ch_is_space( ch );
-    is_eol   = ch_is_eol(   ch );
-
-    // Normalize all whitespaces into a single space character
-    if( is_space && state != token_type_comment && state != token_type_text ){
-      ch = " ";
-    }
-
-    // If end of line, detect it
-    if( is_eol ){
-      // Line numbering, don't double when \r\n
-      if( ch != "\r" ){
-        toker_line_no++;
-      }
-      // Restart indentation detection
-      front_spaces = 0;
-      toker_indentation_reached = false;
-      // Process eol as if it were a space
-      ch = " ";
-      is_space = true;
-
-    // Count front spaces on new line to detect changed indentation
-    }else if( ! toker_indentation_reached ){
-      if( is_space ){
-        front_spaces++;
-      // If first non space on new line, emit some indentation token
-      }else{
-        toker_indentation_reached = true;
-        // Emit either "++", "--" or "==" indentation token
-        if( state == token_base ){
-          token_type = token_type_indent;
-          if( front_spaces > toker_indentation ){
-            token_text = "++"
-          }else if( front_spaces < toker_indentation ){
-            token_text = "--"
-          }else{
-            token_text = "==";
-          }
-          token_column_no = front_spaces;
-          toker_previous_indentation = toker_indentation;
-          toker_indentation = front_spaces;
-          toker_column_no = front_spaces; // ToDo: needs updates
-          // Make sure first non space is processed normally next time
-          ii--
-          token_is_ready = true;
-        }
-      }
-    }
-  } // process_whitespaces()
-
-
-  /**/ function process_base_state(){
-
-    // skip whitespaces, including separators
-    // ToDo: handle separator sign ("," if Inox) with more semantic
-    if( is_space ){
-      return;
-    }
-
-    // Texts start with ", unless Forth
-    // ToDo: make it configurable?
-    if( teq( ch, "\"" ) && !is_forth ){
-      // ToDo: handle single quote 'xx' and backquote `xxxx`
-      // ToDo: handle template text literals, ie fmt"..."
-      start_ii = ii;
-      state = token_type_text;
-      return;
-    }
-
-    // Comments start differently depending on style
-    buf += ch;
-    de&&mand( tlen( buf ) > 0 );
-
-    // If literate style, a line starting without indentation is a comment
-    if( is_literate
-    &&  toker_indentation_reached
-    &&  toker_indentation == 0
-    ){
-      state = token_type_comment;
-      // The new ch will be added when processing the comment state
-      buf = tcut( buf, -1 );
-      start_ii = ii;
-      state = token_type_comment;
-      process_comment_state();
-      return;
-    }
-
-    // If actual start of comment, change state
-    if( teq( buf, comment_monoline )
-    ||  teq( buf, comment_multiline_begin )
-    ){
-      // The new ch will be added when processing the comment state
-      buf = tcut( buf, -1 );
-      start_ii = ii;
-      state = token_type_comment;
-      process_comment_state();
-      return;
-    }
-
-    // If potential start of comment, keep eating
-    if( teq( buf, comment_monoline_ch0 )
-    ||  teq( buf, comment_multiline_ch0 )
-    ){
-      return;
-    }
-
-    // Clear buf but keep the false start of comment if any
-    if( teq( buf[0], comment_monoline_ch0 )
-    ||  teq( buf[0], comment_multiline_ch0 )
-    ){
-      buf = tcut( buf, -1 );
-    }else{
-      buf = "";
-    }
-
-    // If not a comment nor a text then it has to be a word
-    start_ii = ii;
-    state = token_type_word;
-    process_word_state();
-
-  } // process_base_state()
-
-
-  /**/ function process_comment_state() {
-
-    buf += ch;
-
-    // When inside the first comment at the very beginning of the file
-    // Different programming language have different styles
-    // Icon uses literate programming with code lines started using >
-    // See https://en.wikipedia.org/wiki/Comment_(computer_programming)
-
-    if( ! first_comment_seen && !is_space ){
-
-      // ToDo: skip #! shebang
-      // see https://en.wikipedia.org/wiki/Shebang_(Unix)
-
-      // Inox style of comments, ~~ and ~| xxx |~
-      if( teq( ch, "~" ) ){
-        set_style( "inox" );
-
-      // sh shell type of comments, #
-      }else if( teq( ch, "#" ) ){
-        set_style( "sh" );
-
-      // C style of comments, either // or /* xxx */
-      }else if( teq( ch, "/" ) ){
-        set_style( "c" );
-
-      // Forth style, either \ or ( xxx )
-      }else if( teq( ch, "(" ) ){
-        set_style( "forth" );
-
-      // Lisp style, ;
-      }else if( teq( ch, ";" ) ){
-        set_style( "lisp" );
-
-      // Prolog style, %
-      }else if( teq( ch, "%" ) ){
-        set_style( "prolog" );
-      }
-    }
-
-    // If this is a monoline comment ending, emit it
-    if( is_eol || is_eof ){
-      // ~~ style of comments
-      if( tneq( comment_monoline, "" )
-        && ( teq(
-          tcut( buf, tlen( comment_monoline ) ),
-          comment_monoline
-        ) )
-      ){
-        // Emit token, without start of comment sequence and without lf
-        token_type = token_type_comment;
-        buf = tmid( buf, tlen( comment_monoline ), -1 );
-        token_text = buf;
-        token_is_ready = true;
-        return;
-      }
-      // Literate style of comments
-      if( is_literate ){
-        // Emit token, whole line without lf
-        token_type = token_type_comment;
-        buf = tcut( buf, - 1 );
-        token_text = buf;
-        token_is_ready = true;
-        return;
-      }
-    }
-
-    // If this terminates the multiline comment, emit the comment
-    if( teq( ch, comment_multine_last_ch )
-    && teq( tcut( buf, tlen(  comment_multiline_begin ) ),
-                              comment_multiline_begin )
-    && teq( tbut( buf, -tlen( comment_multiline_end ) ),
-                              comment_multiline_end )
-    ){
-      // Emit token, without start & end of comment sequence
-      token_type = token_comment_multiline;
-      buf = buf.slice(
-        tlen(   comment_multiline_begin ),
-        - tlen( comment_multiline_end )
-      );
-      token_text = buf;
-      token_is_ready = true;
-      return;
-    }
-
-    // Premature end of file, something else was expected
-    if( is_eof ){
-      token_type = first_comment_seen
-      ? token_type_error
-      : token_type_eof;
-      buf = first_comment_seen
-      ? S() + "eof in token state " + state
-        + " (" + token_type_to_text( state ) + ")"
-      : no_text;
-      token_text = buf;
-      token_is_ready = true;
-      return;
-    }
-
-  } // process_comment_state()
-
-
-  /**/ function process_text_state() {
-
-    // " marks the end of the text token
-    if( teq( ch, "\"" ) ){
-      token_type  = token_type_text;
-      token_text = buf;
-      token_is_ready = true;
-    }
-
-    // New lines are ok inside a "xxxx" text token
-    if( teq( ch, "\n" ) ){
-      toker_line_no++;
-      toker_column_no = 0;
-    }
-
-    // ToDo: handle escape sequences
-    buf += ch;
-
-  } // process_text_state()
-
-
-  /**/ function process_word_state() : boolean {
-    // ToDo: this assert fails, why? de&&mand( buf.length > 0 );
-
-    // If a xxx: naming prefix was there, it will come next
-    if( toker_post_literal_name != "" ){
-      back_token_type  = token_type_word;
-      back_token_text = toker_post_literal_name;
-      // ToDo: position, line_no, column_no of back token
-      toker_post_literal_name = "";
-    }
-
-    // space is always a word delimiter
-    if( is_space ){
-
-      // Eager mode is blind to alias, space only matters
-      if( toker_eager_mode ){
-        token_text = buf;
-        token_is_ready = true;
-        return;
-      }
-
-      // ToDo: this fails, why? de&&mand( buf.length > 0 );
-
-      // ToDo: refactor
-      handle_literate_style();
-      if( token_type == token_type_comment ){
-        token_text = buf;
-        token_is_ready = true;
-        return;
-      }
-
-      let aliased = alias( buf );
-
-      // If simple word substitution with an alias
-      if( aliased ){
-        if( tidx( aliased, " " ) == -1 ){
-          buf = aliased;
-          token_text = buf;
-          token_is_ready = true;
-        }else{
-          token_de&&bug( S()+ "alias for " + buf + " is " + aliased );
-          // When this happens, restart as if from new source, base state.
-          // Change source code to insert the extra stuff and scan again
-          // ToDo: this breaks the index/line/column scheme
-          // ToDo: this is very inefficient
-          // ToDo: this code is duplicated somewhere below
-          toker_text = aliased + toker_text.substring( ii );
-          toker_text_length  = tlen( toker_text );
-          toker_alias_cursor = tlen( aliased );
-          ii = 0;
-          buf = "";
-          state = token_base;
-        }
-        return;
-      // Unless no alias or alias expands into more than a simple word
-      }else if( !aliased ){
-        token_text = buf;
-        token_is_ready = true;
-        return;
-      }
-
-      // Forth uses only spaces as delimiters
-      if( is_forth ){
-        token_text = buf;
-        token_is_ready = true;
-        return;
-      }
-    }
-
-    de&&mand( !is_space );
-
-    // Comma is ignored, it is there for readability only, unless Forth
-    if( teq( ch, "," )
-    &&  !is_forth
-    &&  !toker_eager_mode
-    ){
-      return;
-    }
-
-    // If eager mode then only space is a terminator
-    if( is_forth
-    ||  toker_eager_mode
-    ){
-      buf += ch;
-      return;
-    }
-
-    // ToDo: what comes next needs some serious refactoring
-
-    // Get some next characters, some lookahead helps sometimes
-    refill_next_ch();
-
-    // Handle line continuation when \ is last character on line, unless Forth
-    // ToDo: should be defined by style
-    if( teq( ch, "\\" )
-    && ch_is_eol( next_ch[ 0 ] )
-    ){
-      ii++;
-      // Handle crlf
-      if( teq( ch[ 0 ], "\r" ) && teq( next_ch[ 1 ], "\n" ) ){
-        ii++;
-      }
-      return;
-    }
-
-    // . is a token if alone
-    if( teq( ch, end_define ) ){
-      is_limit = tlen( buf ) != 0 || ch_is_space( next_ch[ 0 ] );
-
-    // ; is a token
-    }else if( teq( ch, terminator_sign ) ){
-      is_limit = true;
-
-    // Some other special characters are a limit too
-    }else{
-      is_limit = ch_is_limit( ch, next_ch[ 0 ] );
-    }
-
-    // If no limit is reached, keep going
-    if( !is_limit ){
-      buf += ch;
-      return;
-    }
-
-    // If there was nothing before the limit, emit a single char token
-    if( tlen( buf ) == 0 && ! is_space ){
-      if( teq( ch, "/" ) ){
-        buf = "/";
-        return;
-      }else{
-        start_ii = ii - 1;
-        buf = ch;
-        token_text = buf;
-        token_is_ready = true;
-      }
-
-    // If there was something before the limit, deal with that
-    }else if( tlen( buf ) >= 0 ){
-
-      // xx(, xx[ and xx{ are words of a special type.
-      // so is xxx: when before a space or /xxx/yyy which is /xxx
-      if( teq( ch, "(" )
-      ||  teq( ch, '[' )
-      ||  teq( ch, '{' )
-      ||  ( teq( ch, ':' ) && teq( next_ch[ 0 ], " " ) )
-      || teq( ch, '/' ) && tneq( buf[0], "/" )
-      ){
-        buf = buf + ch;
-        ii++;
-
-      // ) and } are also words of a special type
-      } else if(
-        ( teq( ch, ")" ) || teq( ch, "}" ) )
-      && ch_is_limit( next_ch[ 0 ], "" )
-      ){
-        buf = buf + ch;
-        ii++;
-
-      // xxx:", xxx:123, xxx:-123, to name literals
-      } else if( teq( ch, ":" ) ){
-
-        // End of word if : is before a literal or another delimiter
-        // ToDo: enable :: in words?
-        if( teq( next_ch[ 0 ], "\"" )
-        ||  teq( next_ch[ 0 ], "-" )
-        ||  ch_is_digit( next_ch[ 0 ] )
-        ||  ch_is_limit( next_ch[ 0 ], "" )
-        ){
-          // ToDo: get rid of post_literal_name
-          toker_post_literal_name = ":" + buf;
-          back_token_type = token_type_word;
-          back_token_text = toker_post_literal_name;
-          // ToDo: handle position, line_no, column_no of back token
-          toker_post_literal_name = "";
-          buf = "";
-        }else{
-          buf += ":";
-        }
-        return;
-      }
-
-      // A well separated word was collected, before or with the limit
-      ii--;
-
-      // Change word if some alias was defined for it
-      handle_literate_style();
-      let word_alias = alias( buf );
-
-      // In Inox style the aliases can expand into multiple words
-      if( word_alias && teq( style, "inox" ) ){
-        // Complex case, potentially expand into multiple tokens
-        let index_space = tidx( word_alias, " " );
-        if( index_space != -1 ){
-          token_de&&bug( S()+ "alias for " + buf + " is " + word_alias );
-          // When this happens, restart as if from new source, base state.
-          // Change source code to insert the extra stuff and scan again
-          // ToDo: this breaks the index/line/column scheme
-          // ToDo: this is very inefficient
-          toker_text = word_alias + toker_text.substring( ii );
-          toker_text_length  = tlen( toker_text );
-          toker_alias_cursor = tlen( word_alias );
-          ii = 0;
-          buf = "";
-          state = token_base;
-          return;
-        }
-      }
-
-      if( word_alias ){
-        buf = word_alias;
-      }
-      token_text = buf;
-      token_is_ready = true;
-
-    }
-  } // process_word_state()
-
-
-  /**/ function detect_infinite_loop(){
-    if( !de )return;
-    if( ii == previous_ii && state == previous_state ){
-      bug( "Infinite loop detected in next_token" );
-      debugger;
-      // Skip to end of file
-      ii = toker_text_length;
-    }
-    previous_ii    = ii;
-    previous_state = state;
-  }
-
+  token_is_ready = false;
 
   while( !token_is_ready ){
     detect_infinite_loop();
@@ -11872,7 +12229,7 @@ primitive( "inox-next-token", primitive_next_token );
     // base -> word    -> base
     // base -> text    -> base
     // base -> comment -> base
-    switch( state ){
+    switch( toker_state ){
       case token_base    : process_base_state();    break;
       case token_type_comment : process_comment_state(); break;
       case token_type_text    : process_text_state();    break;
@@ -11887,7 +12244,7 @@ primitive( "inox-next-token", primitive_next_token );
   // Automatically get back to /base state when a token is ready
   de&&mand( token_is_ready );
   // de&&mand( buf == token_value );
-  state = token_base;
+  toker_state = token_base;
 
   // If a xxx: naming prefix was there, it comes next
   if( toker_post_literal_name != "" ){
@@ -11898,14 +12255,14 @@ primitive( "inox-next-token", primitive_next_token );
   }
 
   // Save state for next call to next_token()
-  toker_text_cursor = ii;
+  toker_text_cursor = toker_ii;
 
   if( token_de ){
     bug( S()+ "\n"
       + "Token. next is "
       + token_type_to_text( token_type ) + " " + token_text + ", "
       + "line " + N( toker_line_no )
-      + " is " + extract_line( toker_text, start_ii ) + "."
+      + " \"" + extract_line( toker_text, toker_start_ii ) + "\""
     );
   }
 
@@ -11915,7 +12272,7 @@ primitive( "inox-next-token", primitive_next_token );
 // Some basic tests of the tokenizer
 
 /**/ function test_token( typ : number, val : text ){
-/*c void      test_token( string typ, string val ){  c*/
+/*c void      test_token( int typ, const std::string& val ){  c*/
 
   // Save tokenizer context
   const save_cursor  = toker_text_cursor;
@@ -11936,7 +12293,7 @@ primitive( "inox-next-token", primitive_next_token );
     );
     error = true;
   }
-  if( val != null && token_text != val ){
+  if( tlen( val ) > 0 && tneq( token_text, val ) ){
     bug( S()
       + "Bad value from next_token(), " + token_text
       + " vs expected " + val + "."
@@ -11956,172 +12313,180 @@ primitive( "inox-next-token", primitive_next_token );
 
 }
 
-tokenizer_restart( "" );
-test_token( token_type_eof, "" );
+/**/ function test_tokenizer() : boolean {
+/*c bool test_tokenizer( void ){ c*/
+  tokenizer_restart( "" );
+  test_token( token_type_eof, "" );
 
-tokenizer_restart( "#!/bin/inox\n#ok" );
-test_token( token_type_comment, "!/bin/inox" );
-test_token( token_type_comment, "ok" );
-test_token( token_type_eof, "" );
+  tokenizer_restart( "#!/bin/inox\n#ok" );
+  test_token( token_type_comment, "!/bin/inox" );
+  test_token( token_type_comment, "ok" );
+  test_token( token_type_eof, "" );
 
-tokenizer_restart(  "/**/" );
-test_token( token_comment_multiline, "" );
-test_token( token_type_eof, "" );
+  tokenizer_restart(  "/**/" );
+  test_token( token_comment_multiline, "" );
+  test_token( token_type_eof, "" );
 
-tokenizer_restart(  "~| test |~~~ test" );
-test_token( token_comment_multiline, " test " );
-test_token( token_type_comment, " test" );
-test_token( token_type_eof, "" );
+  tokenizer_restart(  "~| test |~~~ test" );
+  test_token( token_comment_multiline, " test " );
+  test_token( token_type_comment, " test" );
+  test_token( token_type_eof, "" );
 
-tokenizer_restart( "~~ test\n~| test |~" );
-test_token( token_type_comment, " test" );
-test_token( token_comment_multiline, " test " );
-test_token( token_type_eof, "" );
+  tokenizer_restart( "~~ test\n~| test |~" );
+  test_token( token_type_comment, " test" );
+  test_token( token_comment_multiline, " test " );
+  test_token( token_type_eof, "" );
 
-tokenizer_restart( "( test1 )\\\n\\test2" );
-test_token( token_comment_multiline, " test1 " );
-test_token( token_type_comment, "" );
-test_token( token_type_comment, "test2" );
-test_token( token_type_eof, "" );
+  tokenizer_restart( "( test1 )\\\n\\test2" );
+  test_token( token_comment_multiline, " test1 " );
+  test_token( token_type_comment, "" );
+  test_token( token_type_comment, "test2" );
+  test_token( token_type_eof, "" );
 
-tokenizer_restart( "() 0 1234 \",\" + : abc, ; , ." );
-test_token( token_comment_multiline, "" );
-test_token( token_type_word, "0"     );
-test_token( token_type_word, "1234"  );
-test_token( token_type_word, "\",\"" );
-test_token( token_type_word, "+"     );
-test_token( token_type_word, ":"     );
-test_token( token_type_word, "abc,"  );
-test_token( token_type_word, ";"     );
-test_token( token_type_word, ","     );
-test_token( token_type_word, "."     );
-test_token( token_type_eof, ""       );
+  tokenizer_restart( "() 0 1234 \",\" + : abc, ; , ." );
+  test_token( token_comment_multiline, "" );
+  test_token( token_type_word, "0"     );
+  test_token( token_type_word, "1234"  );
+  test_token( token_type_word, "\",\"" );
+  test_token( token_type_word, "+"     );
+  test_token( token_type_word, ":"     );
+  test_token( token_type_word, "abc,"  );
+  test_token( token_type_word, ";"     );
+  test_token( token_type_word, ","     );
+  test_token( token_type_word, "."     );
+  test_token( token_type_eof, ""       );
 
-tokenizer_restart( "~~\n \",\" + : -: ( ) () o( o() (| |) (- -) (( )) [ ] " );
-test_token( token_type_comment, "" );
-test_token( token_type_text, ","  );
-test_token( token_type_word, "+"  );
-test_token( token_type_word, ":"  );
-test_token( token_type_word, "-:" );
-test_token( token_type_word, "("  );
-test_token( token_type_word, ")"  );
-test_token( token_type_word, "("  );
-test_token( token_type_word, ")"  );
-test_token( token_type_word, "o(" );
-test_token( token_type_word, "o(" );
-test_token( token_type_word, ")"  );
-test_token( token_type_word, "(|" );
-test_token( token_type_word, "|)" );
-test_token( token_type_word, "(-" );
-test_token( token_type_word, "-)" );
-test_token( token_type_word, "((" );
-test_token( token_type_word, "))" );
-test_token( token_type_word, "["  );
-test_token( token_type_word, "]"  );
-test_token( token_type_eof, ""    );
+  tokenizer_restart( "~~\n \",\" + : -: ( ) () o( o() (| |) (- -) (( )) [ ] " );
+  test_token( token_type_comment, "" );
+  test_token( token_type_text, ","  );
+  test_token( token_type_word, "+"  );
+  test_token( token_type_word, ":"  );
+  test_token( token_type_word, "-:" );
+  test_token( token_type_word, "("  );
+  test_token( token_type_word, ")"  );
+  test_token( token_type_word, "("  );
+  test_token( token_type_word, ")"  );
+  test_token( token_type_word, "o(" );
+  test_token( token_type_word, "o(" );
+  test_token( token_type_word, ")"  );
+  test_token( token_type_word, "(|" );
+  test_token( token_type_word, "|)" );
+  test_token( token_type_word, "(-" );
+  test_token( token_type_word, "-)" );
+  test_token( token_type_word, "((" );
+  test_token( token_type_word, "))" );
+  test_token( token_type_word, "["  );
+  test_token( token_type_word, "]"  );
+  test_token( token_type_eof, ""    );
 
-tokenizer_restart( "~~\n a, abc;,. [[ ]] #[ ]# xxx.[ ] " );
-test_token( token_type_comment, "" );
-test_token( token_type_word, "a"   );
-test_token( token_type_word, "abc" );
-test_token( token_type_word, ";"   );
-test_token( token_type_word, "."   );
-test_token( token_type_word, "[["  );
-test_token( token_type_word, "]]"  );
-test_token( token_type_word, "#["  );
-test_token( token_type_word, "]#"  );
-test_token( token_type_word, "xxx" );
-test_token( token_type_word, ".["  );
-test_token( token_type_word, "]"   );
-test_token( token_type_eof, ""     );
+  tokenizer_restart( "~~\n a, abc;,. [[ ]] #[ ]# xxx.[ ] " );
+  test_token( token_type_comment, "" );
+  test_token( token_type_word, "a"   );
+  test_token( token_type_word, "abc" );
+  test_token( token_type_word, ";"   );
+  test_token( token_type_word, "."   );
+  test_token( token_type_word, "[["  );
+  test_token( token_type_word, "]]"  );
+  test_token( token_type_word, "#["  );
+  test_token( token_type_word, "]#"  );
+  test_token( token_type_word, "xxx" );
+  test_token( token_type_word, ".["  );
+  test_token( token_type_word, "]"   );
+  test_token( token_type_eof, ""     );
 
-tokenizer_restart( "( forth )\n : .\" out abc ; a!" );
-test_token( token_comment_multiline, " forth " );
-test_token( token_type_word, ":"   );
-test_token( token_type_word, ".\"" );
-test_token( token_type_word, "out" );
-test_token( token_type_word, "abc" );
-test_token( token_type_word, ";"   );
-test_token( token_type_word, "a!"  );
-test_token( token_type_eof, ""     );
+  tokenizer_restart( "( forth )\n : .\" out abc ; a!" );
+  test_token( token_comment_multiline, " forth " );
+  test_token( token_type_word, ":"   );
+  test_token( token_type_word, ".\"" );
+  test_token( token_type_word, "out" );
+  test_token( token_type_word, "abc" );
+  test_token( token_type_word, ";"   );
+  test_token( token_type_word, "a!"  );
+  test_token( token_type_eof, ""     );
 
-tokenizer_restart( "/**/ to debugger inox-debugger." );
-test_token( token_comment_multiline, "" );
-test_token( token_type_word, "to" );
-test_token( token_type_word, "debugger"     );
-test_token( token_type_word, "inox-debugger" );
-test_token( token_type_word, "."  );
-test_token( token_type_eof,  ""   );
+  tokenizer_restart( "/**/ to debugger inox-debugger." );
+  test_token( token_comment_multiline, "" );
+  test_token( token_type_word, "to" );
+  test_token( token_type_word, "debugger"     );
+  test_token( token_type_word, "inox-debugger" );
+  test_token( token_type_word, "."  );
+  test_token( token_type_eof,  ""   );
 
+  tokenizer_restart(
+    "~~\n to aa ct: void is: as_v( void:0 );bb. .)."
+  );
+  test_token( token_type_comment, "" );
+  test_token( token_type_word, "to"    );
+  test_token( token_type_word, "aa"    );
+  test_token( token_type_word, "ct:"   );
+  test_token( token_type_word, "void"  );
+  test_token( token_type_word, "is:"   );
+  test_token( token_type_word, "as_v(" );
+  test_token( token_type_word, "0"     );
+  test_token( token_type_word, ":void" );
+  test_token( token_type_word, ")"     );
+  test_token( token_type_word, ";"     );
+  test_token( token_type_word, "bb"    );
+  test_token( token_type_word, "."     );
+  test_token( token_type_word, ".)"    );
+  test_token( token_type_word, "."     );
+  test_token( token_type_eof, ""       );
 
-tokenizer_restart(
-  "~~\n to aa ct: void is: as_v( void:0 );bb. .)."
-);
-test_token( token_type_comment, "" );
-test_token( token_type_word, "to"    );
-test_token( token_type_word, "aa"    );
-test_token( token_type_word, "ct:"   );
-test_token( token_type_word, "void"  );
-test_token( token_type_word, "is:"   );
-test_token( token_type_word, "as_v(" );
-test_token( token_type_word, "0"     );
-test_token( token_type_word, ":void" );
-test_token( token_type_word, ")"     );
-test_token( token_type_word, ";"     );
-test_token( token_type_word, "bb"    );
-test_token( token_type_word, "."     );
-test_token( token_type_word, ".)"    );
-test_token( token_type_word, "."     );
-test_token( token_type_eof, ""       );
+  tokenizer_restart(
+    "~||~ to ct:is: aa:bb void:0 .x! x| |x |x!"
+  );
+  test_token( token_comment_multiline, "" );
+  test_token( token_type_word, "to"     );
+  test_token( token_type_word, "ct:is:" );
+  test_token( token_type_word, "aa:bb"  );
+  test_token( token_type_word, "0"      );
+  test_token( token_type_word, ":void"  );
+  test_token( token_type_word, ".x!"    );
+  test_token( token_type_word, "x|"     );
+  test_token( token_type_word, "|x"     );
+  test_token( token_type_word, "|x!"    );
+  test_token( token_type_eof, ""        );
 
-tokenizer_restart(
-  "~||~ to ct:is: aa:bb void:0 .x! x| |x |x!"
-);
-test_token( token_comment_multiline, "" );
-test_token( token_type_word, "to"     );
-test_token( token_type_word, "ct:is:" );
-test_token( token_type_word, "aa:bb"  );
-test_token( token_type_word, "0"      );
-test_token( token_type_word, ":void"  );
-test_token( token_type_word, ".x!"    );
-test_token( token_type_word, "x|"     );
-test_token( token_type_word, "|x"     );
-test_token( token_type_word, "|x!"    );
-test_token( token_type_eof, ""        );
+  tokenizer_restart(
+    "~||~ it.x dup.:m d.m: m() dup.m() a:,b:"
+  );
+  test_token( token_comment_multiline, "" );
+  test_token( token_type_word, "it"   );
+  test_token( token_type_word, ".x"   );
+  test_token( token_type_word, "dup"  );
+  test_token( token_type_word, ".:m"  );
+  test_token( token_type_word, "d"    );
+  test_token( token_type_word, ".m:"  );
+  test_token( token_type_word, "m("   );
+  test_token( token_type_word, ")"    );
+  test_token( token_type_word, "dup"  );
+  test_token( token_type_word, ".m("  );
+  test_token( token_type_word, ")"    );
+  test_token( token_type_word, "a:b:" );
+  test_token( token_type_eof,  ""     );
 
-tokenizer_restart(
-  "~||~ it.x dup.:m d.m: m() dup.m() a:,b:"
-);
-test_token( token_comment_multiline, "" );
-test_token( token_type_word, "it"   );
-test_token( token_type_word, ".x"   );
-test_token( token_type_word, "dup"  );
-test_token( token_type_word, ".:m"  );
-test_token( token_type_word, "d"    );
-test_token( token_type_word, ".m:"  );
-test_token( token_type_word, "m("   );
-test_token( token_type_word, ")"    );
-test_token( token_type_word, "dup"  );
-test_token( token_type_word, ".m("  );
-test_token( token_type_word, ")"    );
-test_token( token_type_word, "a:b:" );
-test_token( token_type_eof,  ""     );
+  tokenizer_restart(
+    "~||~ a/ /a /a/b/c a/b/c a:."
+  );
+  test_token( token_comment_multiline, "" );
+  test_token( token_type_word, "a/" );
+  test_token( token_type_word, "/a" );
+  test_token( token_type_word, "/a" );
+  test_token( token_type_word, "/b" );
+  test_token( token_type_word, "/c" );
+  test_token( token_type_word, "a/" );
+  test_token( token_type_word, "b/" );
+  test_token( token_type_word, "c"  );
+  test_token( token_type_word, "a:" );
+  test_token( token_type_word, "."  );
+  test_token( token_type_eof,  ""   );
 
-tokenizer_restart(
-  "~||~ a/ /a /a/b/c a/b/c a:."
-);
-test_token( token_comment_multiline, "" );
-test_token( token_type_word, "a/" );
-test_token( token_type_word, "/a" );
-test_token( token_type_word, "/a" );
-test_token( token_type_word, "/b" );
-test_token( token_type_word, "/c" );
-test_token( token_type_word, "a/" );
-test_token( token_type_word, "b/" );
-test_token( token_type_word, "c"  );
-test_token( token_type_word, "a:" );
-test_token( token_type_word, "."  );
-test_token( token_type_eof,  ""   );
+  return true;
+}
+
+/**/ let
+/*c static bool c*/
+tokenizer_is_ok = test_tokenizer();
 
 
 /*
@@ -12169,7 +12534,8 @@ primitive( "inox-integer-text?", primitive_is_integer_text );
 /**/ function                    primitive_is_integer_text(){
 /*c void                         primitive_is_integer_text( void ){ c*/
   de&&mand_cell_type( TOS, tag_text );
-  const buf = cell_to_text( TOS );
+  /**/ const buf = cell_to_text( TOS );
+  /*c  std::string buf( cell_to_text( TOS ) ); c*/
   clear( TOS );
   push_boolean( is_integer( buf) );
   set_tos_name( tag_inox_is_integer_text );
@@ -12177,8 +12543,16 @@ primitive( "inox-integer-text?", primitive_is_integer_text );
 
 
 /**/ function is_integer( buf : text ) : boolean {
-/*c  boolean  is_integer( text buf   ){ c*/
-  return ! isNaN( parseInt( buf ) );
+/*c  boolean  is_integer( const std::string& buf   ){ c*/
+  /**/ return ! isNaN( parseInt( buf ) );
+  /*c
+  for( int i = 0; i < buf.length(); ++i ){
+    if( ! is_digit( buf[ i ] ) ){
+      return false;
+    }
+  }
+  return true;
+  c*/
 }
 
 
@@ -12193,8 +12567,10 @@ primitive( "inox-parse-integer", primitive_parse_integer );
 /**/ function                    primitive_parse_integer(){
 /*c void                         primitive_parse_integer( void ){ c*/
   de&&mand_cell_type( TOS, tag_text );
-  const buf = cell_to_text( TOS );
+  /**/ const buf = cell_to_text( TOS );
+  /*c  std::string buf( cell_to_text( TOS ) ); c*/
   clear( TOS );
+  /*!c{*/
   const parsed = parseInt( buf );
   if( isNaN( parsed ) ){
     push_tag( tag_NaN );
@@ -12202,14 +12578,23 @@ primitive( "inox-parse-integer", primitive_parse_integer );
     push_integer( parsed );
     set_tos_name( tag_inox_parse_integer );
   }
+  /*}{
+    if( ! is_integer( buf ) ){
+      push_tag( tag_NaN );
+    } else {
+      push_integer( text_to_integer( buf ) );
+      set_tos_name( tag_inox_parse_integer );
+    }
+  /*c*/
 }
 
 
 /**/ function text_to_integer( buf : text ) : Value {
-/*c  Value    text_to_integer( text buf   )         {  c*/
-  const parsed = parseInt( buf );
-  de&&mand( ! isNaN( parsed ) );
-  return parsed |0;
+/*c  Value    text_to_integer( const std::string& buf   )         {  c*/
+  /**/ const parsed = parseInt( buf );
+  /**/ de&&mand( ! isNaN( parsed ) );
+  /**/ return parsed |0;
+  /*c return std::stoi( buf ); c*/
 }
 
 
@@ -12226,13 +12611,13 @@ const tag_data       = tag( "inox-data"         );
 
 
 /**/ function mand_tos_is_in_bounds(){
-/*c  bool     mand_tos_in_bounds()   {  c*/
+/*c  bool     mand_tos_is_in_bounds( void ){  c*/
   de&&mand( TOS <  ACTOR_data_stack_limit );
   de&&mand( TOS >= ACTOR_data_stack       );
 }
 
-/**/ function mand_csp_in_bounds(){
-/*c  bool     mand_csp_in_bounds(){  c*/
+/**/ function mand_csp_is_in_bounds(){
+/*c  bool     mand_csp_is_in_bounds( void ){  c*/
   de&&mand( CSP <  ACTOR_control_stack_limit );
   de&&mand( CSP >= ACTOR_control_stack       );
 }
@@ -12268,12 +12653,14 @@ const tag_data       = tag( "inox-data"         );
 
 
 // A verb is made of cells. Let's name that Machine Codes
-type MachineCode = Cell;
+/**/ type MachineCode = Cell;
+/*c  typedef Cell MachineCode; c*/
 
 // A block is an array of encoded verbs from {} delimited source code.
 // The first cell is named inox-block, it contains the number of cells
 // in the block, including the first one and flags.
-type InoxBlock = Cell;
+/**/ type InoxBlock = Cell;
+/*c  typedef Cell InoxBlock; c*/
 
 
 /*
@@ -12358,77 +12745,37 @@ const tag_parse_unknown     = tag( "parse-unknown" );
 
 
 // Some syntactic constructions can nest: calls, sub expressions, etc.
-// ToDo: this should be a normal array of cells too, behaving like a stack.
 
-/*!c{*/
+const tag_block_start = tag( "block-start" );
+const tag_line_no     = tag( "line-no" );
+const tag_column_no   = tag( "column-no" );
 
-// Debug tool to dump the parse stack while debugging the compiler
-class ParseLevel {
-  type         : number  = parse_top_level;
-  depth        : Index = 0;
-  line_no      : Index = 0;
-  column_no    : Index = 0;
-  name         : text  = "";
-  verb         : InoxWord = 0;
-  block_start  : Index = 0;
-}
+// This is a stack of parsing contexts, a simplified AST
+let parse_stack = 0;
 
-// This is a stack of levels, a kind of AST, Abstract Syntax Tree
-// ToDo: it should be a normal stack of cells
-let parse_levels : ParseLevel[];
-let parse_level  : ParseLevel;
-
-/*}*/
-
-
-// Everything about the current parse level
-let parse_level_depth = 0;
-let parse_level_type = 0;
-/**/ let parse_level_name = "";
-/*c std::string parse_level_name( "" );  c*/
-let parse_level_verb = 0;
-let parse_level_block_start = 0;
-let parse_level_line_no = 0;
-let parse_level_column_no = 0;
-
-
-/**/ function init_parse_levels(){
-/*c  void     init_parse_levels(){  c*/
-
-  // ToDo: 100 is arbitrary
-  /**/ parse_levels = new Array< ParseLevel >( 100 );
-
-  let ii = 0;
-  while( ii < 100 ){
-
-    /**/ parse_levels[ ii ] = new ParseLevel();
-
-    ii++;
-  }
-
-  // The current level is the base level
-  /**/ parse_level = parse_levels[ 0 ];
-  parse_level_depth = 0;
-  /**/ parse_level.type = parse_top_level;
-  parse_level_type = parse_top_level;
-}
-
-init_parse_levels();
-
+// Everything about the current parse context, they nest
+let parse_depth       = 0;
+let parse_type        = 0;
+/**/ let parse_name   = "";
+/*c std::string parse_name( "" );  c*/
+let parse_verb        = 0;
+let parse_block_start = 0;
+let parse_line_no     = 0;
+let parse_column_no   = 0;
 
 // When a verb is defined, it's code is stored in a block
-let new_verb = false;
+let parse_new_verb    = false;
 
 // Name of new verb being defined
-/**/ let new_verb_name : text;
-/*c  std::string new_verb_name;  c*/
+/**/ let parse_new_verb_name : text;
+/*c  std::string parse_new_verb_name;  c*/
 
 // Codes of new verb being defined, a stack
-let codes;
+let parse_codes = 0;
 
 
 /* ------------------------------------------------------------------------
- *  Parse levels
+ *  Parse nesting levels
  *  It is actualy a stack, not a tree. This would change if I were to
  *  implement operators precedence and associativity.
  *  See also https://en.wikipedia.org/wiki/Operator-precedence_parser
@@ -12438,73 +12785,92 @@ let codes;
  *  would be another step towards a compiler that is written in Inox itself.
  */
 
-/*!c{*/
-
-function bug_levels( title ){
-/*c void bug_levels( std::string title ){ c*/
+/**/ function bug_parse_levels( title ) : boolean {
+/*c  bool bug_parse_levels( std::string& title ){ c*/
 
   /**/ let buf : string = "";
   /*c std::string buf( "" ); c*/
   buf += "Parser. Levels. " + title + " ";
 
-  let ii = 0;
-  while( ii <= parse_level_depth ){
-
-    buf += "\n" + ii + " "
-    + parse_type_to_text( parse_levels[ ii ].type )
-    + ( tneq( parse_levels[ ii ].name, no_text )
-      ? " = " + parse_levels[ ii ].name : no_text )
-    + ", line "   + parse_level_line_no
-    + ", column " + parse_level_column_no
-    + ".";
-
-    ii++;
-  }
-
-  bug( buf );
+  // Each level has type, name, verb, block_start, line_no, column_no
+  // That's 6 cells per level
+  buf += stack_split_dump( parse_stack, 6 );
+  trace( buf );
+  return true;
 }
 
-/*}*/
+
+function push_parse_state(){
+// Push the current parse context onto the parse stack
+  const tmp = allocate_cell();
+  // set( tmp, type_integer, tag_depth, parse_depth );
+  // stack_push( parse_stack, tmp );
+  set( tmp, type_integer, tag_type, parse_type );
+  stack_push( parse_stack, tmp );
+  set_text_cell( tmp, parse_name );
+  set_name( tmp, tag_name );
+  stack_push( parse_stack, tmp );
+  set( tmp, type_integer, tag_verb, parse_verb );
+  stack_push( parse_stack, tmp );
+  set( tmp, type_integer, tag_block_start, parse_block_start );
+  stack_push( parse_stack, tmp );
+  set( tmp, type_integer, tag_line_no, token_line_no );
+  stack_push( parse_stack, tmp );
+  set( tmp, type_integer, tag_column_no, token_column_no );
+  stack_push( parse_stack, tmp );
+  free_cell( tmp );
+}
+
+
+function pop_parse_state(){
+// Restore the current parse context using the parse stack
+  let c;
+  c = stack_pop( parse_stack );  // column_no
+  parse_column_no = eat_integer( c );
+  c = stack_pop( parse_stack );  // line_no
+  parse_line_no = eat_integer( c );
+  c = stack_pop( parse_stack );  // block_start
+  parse_block_start = eat_integer( c );
+  c = stack_pop( parse_stack );  // verb
+  parse_verb = eat_integer( c );
+  c = stack_pop( parse_stack );  // name
+  parse_name = cell_to_text( c );
+  clear( c );
+  c = stack_pop( parse_stack );  // type
+  parse_type = eat_integer( c );
+  // c = stack_pop( parse_stack );  // depth
+  // parse_depth = eat_integer( c );
+}
+
 
 
 /*
  *  compiler-enter primitive
  */
 
-
-/**/ function enter_level( type : number, name : string  ){
-/*c  void     enter_level( int type, std::string& name   ){  c*/
+/**/ function parse_enter( type : number, name : string  ){
+/*c  void     parse_enter( int type, const std::string& name   ){  c*/
 // Entering a ( xx yy ), a f( xx yy ), a key: x word: y; or a {} block
 
-  // No dump of parse levels in C++ version
-  /*!c{*/
-  /**/ const l = parse_levels[ parse_level.depth + 1 ];
-  l.depth = parse_level.depth + 1;
-  l.type  = type;
-  l.name  = name;
-  l.verb  = 0;
-  l.block_start = 0;
-  l.line_no
-  = token_line_no ? token_line_no : parse_level.line_no;
-  l.column_no
-  = token_column_no ? token_column_no : parse_level.column_no;
-  parse_level = l;
-  /*}*/
+  // Save the current parse context using the parse stack
+  push_parse_state();
 
-  // Update global parse level variables for new level
-  parse_level_depth       = parse_level_depth + 1;
-  parse_level_type        = type;
-  parse_level_name        = name;
-  parse_level_verb        = 0;
-  parse_level_block_start = 0;
+  // Update global parse variables for new context
+  parse_depth       = stack_length( parse_stack ) / 6;
+  parse_type        = type;
+  // Level 1 is the top level, levels 2 are verb definitions
+  de&&mand( parse_depth != 1 || parse_type == parse_top_level );
+  de&&mand( parse_type != parse_definition || parse_depth == 2 );
+  parse_name        = name;
+  parse_verb        = 0;
   if( token_line_no ){
-    parse_level_line_no   = token_line_no;
-    parse_level_column_no = token_column_no;
+    parse_line_no   = token_line_no;
+    parse_column_no = token_column_no;
   }
 
-  parse_de&&bug_levels( S()
+  parse_de&&bug_parse_levels( S()
     + "Entering " + parse_type_to_text( type )
-    + ", depth is " + parse_level_depth
+    + ", depth is " + N( parse_depth )
     + ( tneq( name, no_text ) ? ( S()+ ", name is " + name ) : no_text )
   );
 }
@@ -12515,35 +12881,29 @@ function bug_levels( title ){
  */
 
 
-/**/ function leave_level(){
-/*c  void     leave_level(){  c*/
+/**/ function parse_leave(){
+/*c  void     parse_leave(){  c*/
 
-  parse_de&&bug_levels( S()
-    + "Leaving " + parse_type_to_text( parse_level_type )
-    + ", depth is " + parse_level_depth
+  parse_de&&bug_parse_levels( S()
+    + "Leaving " + parse_type_to_text( parse_type )
+    + ", depth is " + N( parse_depth )
   );
 
-  let previous_level_type = parse_level_type;
-  let previous_level_verb = parse_level_verb;
+  let previous_level_type = parse_type;
+  let previous_level_verb = parse_verb;
 
-  parse_level = parse_levels[ parse_level_depth - 1 ];
-  // ToDo: extract data from parse level stack
-  parse_level_depth = parse_level_depth - 1;
-  parse_level_type = parse_level.type;
-  parse_level_name = parse_level.name;
-  parse_level_verb = parse_level.verb;
-  parse_level_block_start = parse_level.block_start;
-  parse_level_line_no = parse_level.line_no;
-  parse_level_column_no = parse_level.column_no;
-
-  // parse_level.codes_count = previous_level.codes_count;
+  // Restore previous parse context using the parse stack
+  pop_parse_state();
+  parse_depth = stack_length( parse_stack ) / 6;
+  de&&mand( parse_depth != 1 || parse_type == parse_top_level );
+  de&&mand( parse_type != parse_definition || parse_depth == 2 );
 
   // Close all infix operators at once
   if( previous_level_type == parse_infix ){
     eval_do_machine_code( previous_level_verb );
-    if( parse_level_type == parse_infix ){
+    if( parse_type == parse_infix ){
       // ToDo: avoid recursivity?
-      leave_level();
+      parse_leave();
     }
   }
 
@@ -12554,8 +12914,7 @@ function bug_levels( title ){
  *  inox-compile-definition-begin primitive
  */
 
-immediate_primitive( "inox-compile-definition-begin",
-                 primitive_compile_definition_begin );
+immediate_primitive( "inox-compile-definition-begin", primitive_compile_definition_begin );
 /**/ function    primitive_compile_definition_begin(){
 /*c  void        primitive_compile_definition_begin( void ){ c*/
   eval_definition_begin();
@@ -12568,12 +12927,14 @@ immediate_primitive( "inox-compile-definition-begin",
 
   // ToDo: should be an immediate primitive
 
-  enter_level( parse_definition, "" );
-  new_verb = true;
-  codes = stack_preallocate( 100 );
+  parse_enter( parse_definition, "" );
+  parse_new_verb = true;
+  if( parse_codes == 0 ){
+    parse_codes = stack_preallocate( 100 );
+  }
 
   // Next token is special, it's anything until some space
-  new_verb_name = "";
+  parse_new_verb_name = "";
   toker_eager_mode = true;
   de&&mand( eval_is_expecting_the_verb_name() );
 }
@@ -12583,8 +12944,7 @@ immediate_primitive( "inox-compile-definition-begin",
  *  inox-compile-definition-end primitive
  */
 
-immediate_primitive( "inox-compile-definition-end",
-                 primitive_compile_definition_end );
+immediate_primitive( "inox-compile-definition-end", primitive_compile_definition_end );
 /**/ function    primitive_compile_definition_end(){
 /*c void         primitive_compile_definition_end( void ){ c*/
   eval_definition_end();
@@ -12598,8 +12958,8 @@ immediate_primitive( "inox-compile-definition-end",
   check_de&&mand( eval_is_compiling() );
   // de&&mand( stack_is_not_empty( codes ) );
 
-  const verb_tag = tag( new_verb_name );
-  const len = stack_length( codes );
+  const verb_tag = tag( parse_new_verb_name );
+  const len = stack_length( parse_codes );
 
   // Allocate cells, including space for header and final return
   const header = allocate_cells( len + 2 );
@@ -12611,7 +12971,7 @@ immediate_primitive( "inox-compile-definition-end",
   const def = header + 1 * ONE;
 
   // Copy new verb definition into newly allocated memory
-  move_cells( stack_at( codes, 0 ), def, len );
+  move_cells( stack_at( parse_codes, 0 ), def, len );
 
   // Add code to return from verb, aka "return" special code
   set_return_cell( def + len * ONE );
@@ -12623,20 +12983,19 @@ immediate_primitive( "inox-compile-definition-end",
   the_last_defined_verb = verb_tag;
 
   /*de*/ if( de ){
-  /*de*/   const chk_def = definition_by_text_name( new_verb_name );
+  /*de*/   const chk_def = definition_by_text_name( parse_new_verb_name );
   /*de*/   de&&mand_eq( chk_def, def );
   /*de*/   //  Check that there is a final return.
   /*de*/   de&&mand_eq( value( chk_def + len * ONE ), 0 );
   /*de*/ }
 
-  stack_free( codes );
-  codes = 0;
+  stack_clear( parse_codes );
 
-  leave_level();
+  parse_leave();
 
   // Change compilation state
-  new_verb = false;
-  new_verb_name = no_text;
+  parse_new_verb = false;
+  parse_new_verb_name = no_text;
   de&&mand( ! eval_is_compiling() );
 
   eval_de&&bug( S()+ "\n" + verb_to_text_definition( verb_tag ) );
@@ -12650,14 +13009,14 @@ immediate_primitive( "inox-compile-definition-end",
 
 /**/ function eval_is_compiling() : boolean {
 /*c  boolean  eval_is_compiling(){ c*/
-  if( new_verb )return true;
+  if( parse_new_verb )return true;
   return false;
 }
 
 
 primitive( "inox-compiling?", primitive_is_compiling );
-/**/ function primitive_is_compiling() : void {
-/*c  boolean  primitive_is_compiling(){ c*/
+/**/ function                 primitive_is_compiling() : void {
+/*c  void                     primitive_is_compiling( void ){ c*/
   push_boolean( eval_is_compiling() );
 }
 
@@ -12668,14 +13027,14 @@ primitive( "inox-compiling?", primitive_is_compiling );
 
 
 /**/ function eval_is_expecting_the_verb_name() : boolean {
-/*c  bool     eval_is_expecting_the_verb_name()           {  c*/
+/*c  bool     eval_is_expecting_the_verb_name( void )     {  c*/
 
   // Should be called in compile mode only
   de&&mand( eval_is_compiling() );
-  if( parse_level_type != parse_definition )return false;
+  if( parse_type != parse_definition )return false;
 
   // Initialy the name of the verb is unknown, it follows "to"
-  let it_is = teq( new_verb_name, no_text );
+  let it_is = teq( parse_new_verb_name, no_text );
 
   // When expecting the name, eager mode must be on
   de&&mand( !it_is || toker_eager_mode );
@@ -12696,7 +13055,7 @@ primitive( "inox-compiler-expecting?", primitive_state_is_expecting );
  */
 
 /**/ function eval_do_literal(){
-/*c  void     eval_do_literal(){  c*/
+/*c  void     eval_do_literal( void ){  c*/
   eval_de&&bug( S()+ "Eval. push literal " + dump( TOS ) );
   if( eval_is_compiling() && immediate_mode_level == 0 ){
     eval_de&&bug( S()+ "Eval. Compile literal " + dump( TOS ) );
@@ -12708,12 +13067,12 @@ primitive( "inox-compiler-expecting?", primitive_state_is_expecting );
     // also embed a capture of the current data stack in order
     // to implement closures. This would also enable the currying
     // of verbs.
-    stack_push( codes, POP() );
+    stack_push( parse_codes, POP() );
     parse_de&&bug( S()
       + "Parse. Parse level "
-      + parse_type_to_text( parse_level_type )
-      + ", with literal " + dump( stack_peek( codes ) )
-      + ", now has " + stack_length( codes ) + " codes"
+      + parse_type_to_text( parse_type )
+      + ", with literal " + dump( stack_peek( parse_codes ) )
+      + ", now has " + N( stack_length( parse_codes ) ) + " codes"
     );
   }else{
     stack_de&&bug( S()+ "PUSH LITERAL\n" + stacks_dump() );
@@ -12747,8 +13106,8 @@ primitive( "inox-compile-literal", primitive_compile_literal );
 
 
 /**/ function eval_do_integer_literal( i : number ){
-/*c  void     eval_do_integer_literal( number i   ){  c*/
-  eval_de&&bug( S()+ "Eval. Do integer literal " + i );
+/*c  void     eval_do_integer_literal( int i   ){  c*/
+  eval_de&&bug( S()+ "Eval. Do integer literal " + N( i ) );
   push_integer( i );
   eval_do_literal();
 }
@@ -12773,7 +13132,7 @@ primitive( "inox-compile-literal", primitive_compile_literal );
     let ii;
     for( ii = 0 ; ii < length ; ii++ ){
       const c = def + ii * ONE;
-      stack_push_copy( codes, c );
+      stack_push_copy( parse_codes, c );
     }
 
   }else{
@@ -12794,20 +13153,21 @@ primitive( "inox-compile-literal", primitive_compile_literal );
     // I will study this later, avoiding premature optimization.
     const new_cell = allocate_cell();
     set( new_cell, type_verb, code, 0 );
-    stack_push( codes, new_cell );
+    stack_push( parse_codes, new_cell );
     free_cell( new_cell );
   }
 
-  de&&mand( stack_length( codes ) > 0 );
+  /*de*/ const len = stack_length( parse_codes );
+  de&&mand( len > 0 );
 
   // Remember last added code, see inox-last-token. ToDo: -last-verb?
   set_value( the_last_token_cell, code );
 
   parse_de&&bug( S()
     + "Parse. Parse level "
-    + parse_type_to_text( parse_level_type )
-    + ", with code for " + code + " " + tag_to_text( code )
-    + ", now has " + stack_length( codes ) + " codes"
+    + parse_type_to_text( parse_type )
+    + ", with code for " + N( code ) + " " + tag_to_text( code )
+    + ", now has " + N( stack_length( parse_codes ) ) + " codes"
   );
 }
 
@@ -12822,7 +13182,7 @@ primitive( "inox-compile-literal", primitive_compile_literal );
   ){
     eval_de&&bug( S()
       + "Eval. do_machine_code, RUN "
-      + tag + " " + tag_to_text( tag )
+      + N( tag ) + " " + tag_to_text( tag )
     );
 
     // Remember in control stack what verb is beeing entered
@@ -12863,6 +13223,7 @@ primitive( "inox-compile-literal", primitive_compile_literal );
     eval_de&&bug( S()
       + "Eval. do_machine_code, compile "
       + N( tag ) + " " + tag_to_text( tag )
+      + " into definition of " + parse_new_verb_name
     );
     add_machine_code( tag );
   }
@@ -12872,7 +13233,7 @@ primitive( "inox-compile-literal", primitive_compile_literal );
 
 primitive( "compile-verb",      primitive_compile_verb );
 /**/ function                   primitive_compile_verb(){
-/*c  primitive( "compile-verb", primitive_compile_verb ){  c*/
+/*c  void                       primitive_compile_verb(){  c*/
   const tag = pop_tag();
   eval_do_machine_code( tag );
 }
@@ -12894,7 +13255,7 @@ let eval_must_not_compile_next_token = false;
 
 primitive( "compile-quote",     primitive_compile_quote );
 /**/ function                   primitive_compile_quote(){
-/*c  primitive( "compile-quote", primitive_compile_quote ){  c*/
+/*c  void                       primitive_compile_quote(){  c*/
   eval_quote_next_token();
 }
 
@@ -12903,17 +13264,10 @@ primitive( "compile-quote",     primitive_compile_quote );
  *  compile-block-begin primitive
  */
 
-
 /**/ function eval_block_begin( verb : string ){
-/*c  void     eval_block_begin( std::string& verb ){  c*/
+/*c  void     eval_block_begin( const std::string& verb ){  c*/
 
-  if( tlen( verb ) == 0 ){
-    enter_level( parse_block, no_text );
-  }else{
-    enter_level( parse_call_block, verb );
-  }
-
-  // ToDo: value could be a qualifier about the block
+  // ToDo: value could be a qualifier about the block.
   // For verbs, only the name is used, the value is ignored but
   // it could be used in multiple ways to store various informations
   // at the call place. For example, it could be used to store
@@ -12929,21 +13283,24 @@ primitive( "compile-quote",     primitive_compile_quote );
 
   eval_do_machine_code( tag_inox_block );
 
-  // ToDo: handle a stack of block start indexes
-  /**/ parse_level.block_start = stack_length( codes );
-  parse_level_block_start = stack_length( codes );
-
   // Reserve one verb for block's length, like for verb definitions
-  stack_push_copy( codes, 0 );
-  set_type( stack_peek( codes ), type_integer );
-  set_name( stack_peek( codes ), tag_inox_block );
+  parse_block_start = stack_length( parse_codes );
+  stack_push_copy( parse_codes, 0 );
+  set_type( stack_peek( parse_codes ), type_integer );
+  set_name( stack_peek( parse_codes ), tag_inox_block_header );
+
+  if( tlen( verb ) == 0 ){
+    parse_enter( parse_block, no_text );
+  }else{
+    parse_enter( parse_call_block, verb );
+  }
 
 }
 
 
 primitive( "inox-compile-block-begin",  primitive_compile_block_begin );
 /**/ function                           primitive_compile_block_begin(){
-/*c  primitive( "inox-compile-block-begin", primitive_compile_block_begin ){  c*/
+/*c  void                               primitive_compile_block_begin(){  c*/
   eval_block_begin( pop_as_text() );
 }
 
@@ -12956,58 +13313,58 @@ primitive( "inox-compile-block-begin",  primitive_compile_block_begin );
 /*c  void     eval_block_end(){  c*/
 
   // Add a "return" at the end of the block, a 0/0/0 actually
-  stack_push_copy( codes, 0 );
+  stack_push_copy( parse_codes, 0 );
 
-  const block_length = stack_length( codes ) - parse_level_block_start;
+  const block_length = stack_length( parse_codes ) - parse_block_start;
 
   // Set argument for inox-block, make it look like a valid literal
-  de&&mand_eq(
-    name( stack_at( codes, parse_level_block_start ) ),
-    tag_inox_block
-  );
+  /**/ de&&mand_eq(
+  /**/   name( stack_at( parse_codes, parse_block_start ) ),
+  /**/   tag_inox_block_header
+  /**/ );
   set_value(
-    stack_at( codes, parse_level_block_start ),
+    stack_at( parse_codes, parse_block_start ),
     ( block_length - 1 ) | block_verb_flag
   ); // -1 not to add the length verb
 
-  leave_level();
+  parse_leave();
 }
 
 
 primitive( "inox-compile-block-end",    primitive_compile_block_end );
 /**/ function                           primitive_compile_block_end(){
-/*c  primitive( "inox-compile-block-end", primitive_compile_block_end ){  c*/
+/*c  void                               primitive_compile_block_end(){  c*/
   eval_block_end();
 }
 
 
 /*
- *  Helpers to strip prefix and suffix from a verb
+ *  Helpers to strip prefix and suffix from a verb's name
  */
 
-/**/ function operand_X( v : text ) : text {
-/*c  text     operand_X( text v   )        {  c*/
+/**/ function    operand_X( v : text            ) : text {
+/*c  std::string operand_X( const std::string v )        {  c*/
 // remove first character, ex .a becomes a
   return tbut( v, 1 );
 }
 
 
-/**/ function operand__X( v : text ) : text {
-/*c  text     operand__X( text v   )        {  c*/
+/**/ function    operand__X( v : text             ) : text {
+/*c  std::string operand__X( const std::string& v )        {  c*/
 // remove firts two characters
   return tbut( v, 2 );
 }
 
 
-/**/ function operand_X_( v : text ) : text {
-/*c  text     operand_X_( text v   )        {  c*/
+/**/ function    operand_X_( v : text             ) : text {
+/*c  std::string operand_X_( const std::string& v )        {  c*/
 // remove first and last characters
   return tmid( v, 1, -1 );
 }
 
 
-/**/ function operandX_( v : text) : text  {
-/*c  text     operandX_( text v  )         {  c*/
+/**/ function    operandX_( v : text             ) : text {
+/*c  std::string operandX_( const std::string v  )        {  c*/
 // remove last character
   return tcut( v, -1 );
 }
@@ -13027,13 +13384,15 @@ primitive( "inox-compile-block-end",    primitive_compile_block_end );
  */
 
 /**/ function is_special_verb( val : text ) : boolean {
-/*c  boolean  is_special_verb( text val   ) {  c*/
+/*c  boolean  is_special_verb( const std::string& val   ) {  c*/
   if( val == "." || val == ";" )return true;
   if( val == "(" || val == ")" )return true;
   if( val == "{" || val == "}" )return true;
   if( tlen( val ) < 2 )return false;
-  const first_ch = val[0];
-  const last_ch  = tlen( val ) > 1 ? val[ tlen( val ) - 1 ] : first_ch;
+  /**/ const first_ch = val[ 0 ];
+  /*c  std::string first_ch( tcut( val, 1 ) ); c*/
+  /**/ const last_ch  = tlen( val ) > 1 ? val[ tlen( val ) - 1 ] : first_ch;
+  /*c  std::string last_ch( tbut( val, -1 ) ); c*/
   if( last_ch == "?" )return false;        // Predicates are not special
   if( last_ch == first_ch )return false;   // xx and x...x is not special
   if( first_ch != "." && first_ch != ":"   // Member access and naming
@@ -13056,7 +13415,7 @@ primitive( "inox-compile-block-end",    primitive_compile_block_end );
  */
 
 /**/ function tok_match( t : Index, s : string ) : boolean {
-/*c  boolean  match( Index t, std::string& s ) {  c*/
+/*c  boolean  tok_match( Index t, const std::string& s ) {  c*/
   if( token_type != t )return false;
   if( tneq( token_text, s ) )return false;
   return true;
@@ -13064,19 +13423,19 @@ primitive( "inox-compile-block-end",    primitive_compile_block_end );
 
 
 /**/ function tok_word( s : text ) : boolean {
-/*c  boolean  word( std::string& s ) {  c*/
+/*c  boolean  tok_word( const std::string& s ) {  c*/
   return tok_match( token_type_word, s );
 }
 
 
 /**/ function tok_type( t : Index ) : boolean {
-/*c  boolean  type( Index t ) {  c*/
+/*c  boolean  tok_type( Index t ) {  c*/
   return token_type == t;
 }
 
 
 /**/ function tok( s : text ) : boolean {
-/*c  boolean  tok( std::string& s ) {  c*/
+/*c  boolean  tok( const std::string& s ) {  c*/
   return teq( token_text, s );
 }
 
@@ -13093,11 +13452,13 @@ primitive( "inox-eval", primitive_eval );
   tokenizer_restart( source );
   eval_de&&bug( S()+ "inox-eval " + tcut( source, 100 ) );
 
-  // The base level is the initial state of the parser
-  init_parse_levels();
+  // The top level is the initial state of the parser, depth 0
+  de&&mand_eq( parse_stack, 0 );
+  parse_stack = stack_preallocate( 100 );
+  parse_enter( parse_top_level, "" );
 
   // An existing verb named like the token's text value
-  let verb_id : Index;
+  let verb_id = 0;
 
   // Word to start a new verb definition
   /**/ let         define : text = "to";
@@ -13110,6 +13471,7 @@ primitive( "inox-eval", primitive_eval );
 
   let done            = false;
   let is_special_form = false;
+
 
   /* ---------------------------------------------------------------------------
    *  Eval loop, until error or eof
@@ -13134,6 +13496,13 @@ primitive( "inox-eval", primitive_eval );
      continue;
     }
 
+    // ++ indent has no effect, for now
+    if( tok_type( token_type_indent )
+    &&  tok( "++" )
+    ){
+      continue;
+    }
+
     // error ? exit loop on tokenizer error
     if( tok_type( token_type_error ) ){
       bug( S()
@@ -13147,7 +13516,7 @@ primitive( "inox-eval", primitive_eval );
     // eof ? exit loop at end of the input stream
     if( tok_type( token_type_eof ) ){
       // ToDo: signal premature end of file
-      if( parse_level_type != parse_top_level ){
+      if( parse_type != parse_top_level ){
         bug( S()+ "Eval, premature end of file" );
         debugger;
       }
@@ -13168,14 +13537,14 @@ primitive( "inox-eval", primitive_eval );
     // ToDo: enable nested definitions?
     if( tok_word( define ) ){
       // As a convenience it may terminate an unfinished previous definition
-      if( parse_level_type == parse_definition
+      if( parse_type == parse_definition
       &&  token_column_no == 0
-      &&  stack_length( codes ) > 0
+      &&  stack_length( parse_codes ) > 0
       &&  !eval_is_expecting_the_verb_name()
       ){
         eval_definition_end();
       }
-      if( parse_level_type == parse_top_level ){
+      if( parse_type == parse_top_level ){
         eval_definition_begin();
         de&&mand( eval_is_expecting_the_verb_name() );
         continue;
@@ -13185,8 +13554,8 @@ primitive( "inox-eval", primitive_eval );
     // eol, an absence of indentation may terminate a non empty definition
     if( tok_match( token_type_indent, "--" )
     &&  token_column_no    == 0
-    &&  parse_level_type   == parse_definition
-    &&  stack_length( codes ) > 0
+    &&  parse_type   == parse_definition
+    &&  stack_length( parse_codes ) > 0
     ){
       eval_definition_end();
       continue;
@@ -13198,7 +13567,7 @@ primitive( "inox-eval", primitive_eval );
     &&  eval_is_expecting_the_verb_name()
     ){
       // ToDo: make that a primitive
-      new_verb_name = token_text;
+      parse_new_verb_name = token_text;
       de&&mand( !eval_is_expecting_the_verb_name() );
       de&&mand( toker_eager_mode );
       if( toker_eager_mode ){
@@ -13218,7 +13587,7 @@ primitive( "inox-eval", primitive_eval );
     &&  tok_match( token_type_indent, "--" )
     ){
       if( eval_is_compiling()
-      &&  parse_level_type != parse_definition
+      &&  parse_type != parse_definition
       ){
         token_type = token_type_word;
         token_text = end_define;
@@ -13226,7 +13595,7 @@ primitive( "inox-eval", primitive_eval );
     }
 
     // . or ; or ) or } terminator ? first close all postponed infix operators
-    if( parse_level_type == parse_infix
+    if( parse_type == parse_infix
     && ( tok_type( token_type_word )
       && ( ( tok( ";" ) && !is_forth )
         || tok( ")" )
@@ -13234,7 +13603,7 @@ primitive( "inox-eval", primitive_eval );
         || tok( end_define ) // "."
       )
     ) ){
-      leave_level();
+      parse_leave();
     }
 
     // to, again ? common error is to forget some ; ) or }
@@ -13245,10 +13614,10 @@ primitive( "inox-eval", primitive_eval );
         + "Parser. Nesting error, unexpected " + token_text
         + " at line " + N( token_line_no )
         + " while expecting the end of "
-        + parse_type_to_text( parse_level_type )
-        + " in definition of " + new_verb_name
-        + " at line " + N( parse_level_line_no )
-        + ", column " + N( parse_level_column_no )
+        + parse_type_to_text( parse_type )
+        + " in definition of " + parse_new_verb_name
+        + " at line " + N( parse_line_no )
+        + ", column " + N( parse_column_no )
       );
       debugger;
       break;
@@ -13345,7 +13714,7 @@ primitive( "inox-eval", primitive_eval );
       ){
         if( !verb_exists( token_text ) ){
           parse_de&&bug( S()+ "Parser. Undefined verb: " + token_text );
-          breakpoint()
+          breakpoint();
           // ToDo: warning, user enabled
           // debugger;
         }else{
@@ -13363,70 +13732,70 @@ primitive( "inox-eval", primitive_eval );
 
       // If operator, transform order to get to RPN, Reverse Polish Notation
       if( is_operator
-      && ( parse_level_type != parse_definition
-        && parse_level_type != parse_block )
-      && ( parse_level_type == parse_call
-        || parse_level_type == parse_subexpr
-        || parse_level_type == parse_infix
-        || parse_level_type == parse_keyword
+      && ( parse_type != parse_definition
+        && parse_type != parse_block )
+      && ( parse_type == parse_call
+        || parse_type == parse_subexpr
+        || parse_type == parse_infix
+        || parse_type == parse_keyword
         || true
       )){
 
-        if( parse_level_type != parse_call
-        &&  parse_level_type != parse_call_block
-        &&  parse_level_type != parse_subexpr
-        &&  parse_level_type != parse_infix
-        &&  parse_level_type != parse_keyword
+        if( parse_type != parse_call
+        &&  parse_type != parse_call_block
+        &&  parse_type != parse_subexpr
+        &&  parse_type != parse_infix
+        &&  parse_type != parse_keyword
         )debugger;
 
         // If after another operator, left association
         // ToDo: configurable associativity and precedence
-        if( parse_level_type == parse_infix ){
-          leave_level();
+        if( parse_type == parse_infix ){
+          parse_leave();
         }
 
         // Otherwise processing occurs later at ; or start of keyword
-        enter_level( parse_infix, token_text );
-        parse_level_verb = verb_id;
+        parse_enter( parse_infix, token_text );
+        parse_verb = verb_id;
         continue;
       }
 
       is_operator = false;
 
       // function calls, keyword method calls and sub expressions
-      if( parse_level_depth > 0
-      &&  parse_level_verb == 0
+      if( parse_depth > 0
+      &&  parse_verb == 0
       ){
 
         // If building a function call and expecting the function name
-        if( false && parse_level_type == parse_call
-        &&  teq( parse_level_name, no_text )
+        if( false && parse_type == parse_call
+        &&  teq( parse_name, no_text )
         ){
-          /**/ parse_level.name = token_text;
-          parse_level_name = token_text;
-          /**/ parse_level.verb = verb_id;
-          parse_level_verb = verb_id;
+          // ToDo: never reached?
+          debugger;
+          parse_name = token_text;
+          parse_verb = verb_id;
           continue;
         }
 
         // If building a block call and expecting the function name
-        if( false && parse_level_type == parse_block
-        &&  teq( parse_level_name, no_text )
+        if( false && parse_type == parse_block
+        &&  teq( parse_name, no_text )
         ){
-          /**/ parse_level.name = token_text;
-          parse_level_name = token_text;
-          /**/ parse_level.verb = verb_id;
-          parse_level_verb = verb_id;
+          // ToDo: never reached?
+          debugger;
+          parse_name = token_text;
+          parse_verb = verb_id;
           continue;
         }
 
         // If building a keyword method call
-        if( parse_level_type == parse_keyword
+        if( parse_type == parse_keyword
         &&  teq( last_ch, ":" )
         ){
-          /**/ parse_level.name += token_text;
-          parse_level_name += token_text;
-          eval_de&&bug( S()+ "Eval. Collecting keywords:" + parse_level_name );
+          // ToDo: update stack, ie parse_level.name += token_text;
+          parse_name += token_text;
+          eval_de&&bug( S()+ "Eval. Collecting keywords:" + parse_name );
           continue;
         }
       }
@@ -13448,7 +13817,7 @@ primitive( "inox-eval", primitive_eval );
     // . or ; end of definition of the new Inox verb reached
     if( eval_is_compiling()
     && tok( end_define )
-    && parse_level_type == parse_definition
+    && parse_type == parse_definition
     // && stack_is_not_empty( codes )
     ){
       eval_definition_end();
@@ -13460,16 +13829,16 @@ primitive( "inox-eval", primitive_eval );
     // See https://learnxinyminutes.com/docs/smalltalk/
     if( teq( last_ch, ":" ) ){
       // first close all previous nested infix operators
-      if( parse_level_type == parse_infix ){
-        leave_level();
+      if( parse_type == parse_infix ){
+        parse_leave();
       }
       // If already collecting keywords of call, add new keyword item
-      if( parse_level_type == parse_keyword ){
-        /**/ parse_level.name += token_text;
-        parse_level_name += token_text;
+      if( parse_type == parse_keyword ){
+        // ToDo: update stack, ie parse_level.name += token_text;
+        parse_name += token_text;
       // If first element of a xxx: aaa yyy: bbb keyword call
       }else{
-        enter_level( parse_keyword, token_text );
+        parse_enter( parse_keyword, token_text );
       }
       continue;
     }
@@ -13478,11 +13847,10 @@ primitive( "inox-eval", primitive_eval );
     if( teq( last_ch, "(" ) ){
       // if ( of ( expr )
       if( tlen( token_text ) == 1 ){
-        enter_level( parse_subexpr, no_text );
+        parse_enter( parse_subexpr, no_text );
       // if ( of xxx(
       }else{
-        const operand = operandX_( token_text );
-        enter_level( parse_call, operand );
+        parse_enter( parse_call, operandX_( token_text ) );
       }
       done = true;
 
@@ -13495,7 +13863,7 @@ primitive( "inox-eval", primitive_eval );
         // If { start of a block but not within a definition
         }else{
           // ToDo: handle this case, avoiding memory leak
-          bug( S()
+          trace( S()
             + "Cannot compile block, not in a definition, "
             + "at line "  + N( token_line_no )
             + ", column " + N( token_column_no )
@@ -13505,11 +13873,11 @@ primitive( "inox-eval", primitive_eval );
       // if xxx{
       }else{
         if( eval_is_compiling() ){
-          // enter_level( parse_call_block, eval_token_value );
+          // parse_enter( parse_call_block, eval_token_value );
           eval_block_begin( token_text );
-          parse_de&&bug( S()+ "Eval. Block call:" + parse_level_name );
+          parse_de&&bug( S()+ "Eval. Block call:" + parse_name );
         }else{
-          bug( S()
+          trace( S()
             + "Cannot compile block, not in a definition, "
             + "at line "  + N( token_line_no )
             + ", column " + N( token_column_no )
@@ -13522,13 +13890,13 @@ primitive( "inox-eval", primitive_eval );
     // } end of a { block } or end of a xxx{
     }else if( teq( last_ch, "}" ) ){
 
-      if( parse_level_type == parse_call_block
-      ||  parse_level_type == parse_block
+      if( parse_type == parse_call_block
+      ||  parse_type == parse_block
       ){
 
         // If end of a xxx{
-        if( parse_level_type == parse_call_block ){
-          call_verb_name = parse_level_name;
+        if( parse_type == parse_call_block ){
+          call_verb_name = parse_name;
           eval_block_end();
           // If .xxx{ call
           if( tlen( call_verb_name ) > 1
@@ -13564,11 +13932,12 @@ primitive( "inox-eval", primitive_eval );
 
       // Premature/unexpected }
       }else{
-        bug( S()
+        trace( S()
           + "Parser. Nesting warning, unexpected } "
           + " at line " + N( token_line_no )
           + ", column " + N( token_column_no )
-          + ", while expecting the end of " + parse_level_type
+          + ", while expecting the end of "
+          + parse_type_to_text( parse_type )
         );
         done = true;
       }
@@ -13578,13 +13947,13 @@ primitive( "inox-eval", primitive_eval );
     // ) end of a ( sub expression ) or end of xxx( function call
     }else if( teq( first_ch, ")" ) ){
 
-      if( parse_level_type == parse_subexpr
-      ||  parse_level_type == parse_call
+      if( parse_type == parse_subexpr
+      ||  parse_type == parse_call
       ){
 
-        if( parse_level_type == parse_call ){
+        if( parse_type == parse_call ){
 
-          call_verb_name = parse_level_name;
+          call_verb_name = parse_name;
 
           // ) of .xxx( )
           if( tlen( call_verb_name ) > 1
@@ -13601,10 +13970,10 @@ primitive( "inox-eval", primitive_eval );
           // ) of xxx( )
           }else{
             verb_id = tag( call_verb_name );
-            /**/ parse_level.verb = verb_id;
-            parse_level_verb = verb_id;
+            // ToDo: update stack, ie parse_level.verb = verb_id;
+            parse_verb = verb_id;
             if( verb_id ){
-              eval_do_machine_code( parse_level_verb );
+              eval_do_machine_code( parse_verb );
             }else{
               eval_do_text_literal( call_verb_name );
               eval_do_machine_code( tag_missing_verb );
@@ -13622,7 +13991,7 @@ primitive( "inox-eval", primitive_eval );
           eval_do_machine_code( tag_inox_rename );
         }
 
-        leave_level();
+        parse_leave();
 
       // Premature/unexpected )
       }else{
@@ -13630,7 +13999,8 @@ primitive( "inox-eval", primitive_eval );
           + "Parser. Nesting warning, unexpected ) "
           + " at line " + N( token_line_no )
           + ", column " + N( token_column_no )
-          + ", while expecting the end of " + parse_level_type
+          + ", while expecting the end of "
+          + parse_type_to_text( parse_type )
         );
       }
       done = true;
@@ -13639,44 +14009,44 @@ primitive( "inox-eval", primitive_eval );
     }else if(
       (  tok( ";" )
       || tok( end_define ) )
-    && parse_level_type == parse_keyword
+    && parse_type == parse_keyword
     // ToDo: }, ) and ] should also do that
     ){
 
-      while( parse_level_type == parse_keyword ){
+      while( parse_type == parse_keyword ){
 
         // .xx: ... yy: ... ; keyword method call
-        if( teq( parse_level_name[0], "." ) ){
+        if( teq( parse_name[0], "." ) ){
           // ToDo: should it be a tag or a text literal?
           // Hint: use a tag if it already exist? a text otherwise?
-          eval_do_tag_literal( tcut( parse_level_name, 1 ) );
+          eval_do_tag_literal( tcut( parse_name, 1 ) );
           eval_do_machine_code( tag_inox_run_method_by_tag );
 
         // not a keyword method call
         }else{
 
           // If not multipart, remove trailing :
-          if( tidx( parse_level_name, ":" )
-          == tlen( parse_level_name ) - 1
+          if( tidx( parse_name, ":" )
+          == tlen( parse_name ) - 1
           ){
-            /**/ parse_level.name = tcut( parse_level_name, -1 );
-            parse_level_name = tcut( parse_level_name, -1 );
+            // ToDo: update stack, ie parse_level.name = tcut( parse_level_name, -1 );
+            parse_name = tcut( parse_name, -1 );
           }
 
           // If verb does not exist, use missing-verb instead
-          if( !verb_exists( parse_level_name ) ){
-            eval_do_text_literal( parse_level_name );
+          if( !verb_exists( parse_name ) ){
+            eval_do_text_literal( parse_name );
             eval_do_machine_code( tag_missing_verb );
             if( warn_de ){
-              trace( parse_level_name );
+              trace( parse_name );
               trace( "Warning, missing verb" );
             }
           }else{
-            verb_id = tag( parse_level_name );
+            verb_id = tag( parse_name );
             eval_do_machine_code( verb_id );
           }
         }
-        leave_level();
+        parse_leave();
         done = true;
 
         // Close all calls if terminating ., not when ;
@@ -13782,7 +14152,8 @@ primitive( "inox-eval", primitive_eval );
       && teq( last_ch, "}" )
       && tlen( token_text ) > 2
       ){
-        const verb = operand_X_( token_text );
+        /**/ const verb = operand_X_( token_text );
+        /*c  std::string verb = operand_X_( token_text ); c*/
         if( verb_exists( verb ) ){
           eval_do_integer_literal( definition( tag( verb ) ) );
         }else{
@@ -13799,18 +14170,18 @@ primitive( "inox-eval", primitive_eval );
       // ( start of subexpression
       if( tok( "(" ) ){
           debugger; // never reached?
-          enter_level( parse_subexpr, "" );
+          parse_enter( parse_subexpr, "" );
 
       // if xxx(
       }else if( teq( last_ch, "(" ) ){
         debugger; // never reached?
 
-        enter_level( parse_call, token_text );
+        parse_enter( parse_call, token_text );
 
         // If start of xxx( ... )
         if( tneq( first_ch, "." ) ){
-          /**/ parse_level.name = token_text;
-          parse_level_name = token_text;
+          // ToDo: update stack, ie parse_level.name = token_text;
+          parse_name = token_text;
           done = true;
         }
 
@@ -13832,6 +14203,19 @@ primitive( "inox-eval", primitive_eval );
     }
   }
 
+  // Empty the parse stack
+  de&&mand_eq( stack_length( parse_stack ), 6 );
+  parse_leave();
+  stack_free( parse_stack );
+  parse_stack = 0;
+
+  // Free memory used to compile new definitions, if any
+  if( parse_codes != 0 ){
+    de&&mand_eq( stack_length( parse_codes ), 0 );
+    stack_free( parse_codes );
+    parse_codes = 0;
+  }
+
 } // primitive inox-eval
 
 
@@ -13848,10 +14232,11 @@ primitive( "inox-trace", primitive_trace );
 /*c void                 primitive_trace( void ){ c*/
 // Output using console.log(), preserve TOS
   de&&mand_cell_type( TOS, type_text );
-  const text = cell_to_text( TOS );
+  /**/ const txt = cell_to_text( TOS );
+  /*c  std::string txt = cell_to_text( TOS ); c*/
   clear( POP() );
   // ToDo: output to stdout when running on POSIX systems
-  console.log( S()+ "\nTRACE " + text );
+  trace( S()+ "\nTRACE " + txt );
 }
 
 
@@ -13874,17 +14259,22 @@ primitive( "inox-trace-stacks", primitive_trace_stacks );
 /**/ function                   primitive_trace_stacks(){
 /*c void                        primitive_trace_stacks( void ){ c*/
   // ToDo: push text instead of using console.log() ?
-  bug( S()+ "STACKS TRACE\n" + stacks_dump() );
+  trace( S()+ "STACKS TRACE\n" + stacks_dump() );
 }
 
 
 // In some other dialects there are other names for this
-define_alias( "sh",     "echo",   "out")
-define_alias( "basic",  "PRINT",  "out" );
-define_alias( "icon",   "write",  "out" );
-define_alias( "python", "print",  "out" );
-define_alias( "c",      "printf", "out" );
-define_alias( "prolog", "write",  "out" );
+/**/ function init_alias(){
+/*c bool init_alias( void ){ c*/
+  define_alias( "sh",     "echo",   "out");
+  define_alias( "basic",  "PRINT",  "out" );
+  define_alias( "icon",   "write",  "out" );
+  define_alias( "python", "print",  "out" );
+  define_alias( "c",      "printf", "out" );
+  define_alias( "prolog", "write",  "out" );
+  return true;
+}
+let init_alias_done = init_alias();
 
 
 /*
@@ -13898,7 +14288,13 @@ primitive( "inox-ascii-character", primitive_ascii_character );
 /*c void                           primitive_ascii_character( void ){ c*/
 // Return a one character text from the TOS integer ascii code
   const char_code = eat_integer( TOS );
-  const ch = String.fromCharCode( char_code );
+  /**/ const ch = String.fromCharCode( char_code );
+  /*c{
+    char chs[ 2 ];
+    chs[ 0 ] = (char) char_code;
+    chs[ 1 ] = 0;
+    std::string ch( chs );
+  /*c*/
   set_text_cell( TOS, ch );
   set_tos_name( tag_ascii );
 }
@@ -13908,7 +14304,8 @@ primitive( "inox-ascii-code", primitive_ascii_code );
 /**/ function                 primitive_ascii_code(){
 /*c void                      primitive_ascii_code( void ){ c*/
 // Return ascii code of first character of TOS as a text
-  const code = cell_to_text( TOS ).charCodeAt( 0 );
+  /**/ const code = cell_to_text( TOS ).charCodeAt( 0 );
+  /*c  int code = cell_to_text( TOS )[ 0 ]; c*/
   clear( TOS );
   set( TOS, type_integer, code, tag_ascii );
 }
@@ -13958,7 +14355,7 @@ primitive( "inox-the-void", primitive_the_void );
  */
 
 /**/ function evaluate( source_code ){
-/*c void evaluate( std::string source_code ){ c*/
+/*c std::string evaluate( std::string& source_code ){ c*/
   push_text( source_code );
   run_eval();
   // Return empty string if stack is empty
@@ -13967,7 +14364,8 @@ primitive( "inox-the-void", primitive_the_void );
   }
   // Else, pop the result from the stack and return it as a text
   de&&mand_tos_is_in_bounds();
-  const result = cell_to_text( TOS );
+  /**/ const result = cell_to_text( TOS );
+  /*c  std::string result = cell_to_text( TOS ); c*/
   clear( POP() );
   return result;
 }
@@ -13984,8 +14382,8 @@ primitive( "inox-the-void", primitive_the_void );
 /**/   json_state,
 /**/   json_event,
 /**/   source_code
-/**/ ){
-/*c void processor( std::string json_state, std::string json_event, std::string source_code ){ c*/
+/**/ ) : string {
+/*c std::string processor( std::string json_state, std::string json_event, std::string source_code ){ c*/
 
   // ToDo: restore state and provide event from json encoded values
   // The idea there is about code that can execute in a stateless manner
@@ -13995,8 +14393,8 @@ primitive( "inox-the-void", primitive_the_void );
   // As a result every Inox program could run on any machine and
   // it would be the job of some "orchestration" layer to dispatch
   // jobs and propagate state changes harmoniouly. Not a simple task.
-  let state = JSON.parse( json_state );
-  let event = JSON.parse( json_event );
+  /**/ let state = JSON.parse( json_state );
+  /**/ let event = JSON.parse( json_event );
 
   // ToDo: build state object and push it onto the data stack.
   // ToDo: build event object and push it onto the data stack.
@@ -14009,7 +14407,8 @@ primitive( "inox-the-void", primitive_the_void );
 
   // ToDo: return diff to apply instead of new state
   // ToDo: cell_to_json_text( TOS );
-  let new_state = JSON.stringify( cell_to_text( TOS ) );
+  /**/ let new_state = JSON.stringify( cell_to_text( TOS ) );
+  /*c  std::string new_state = cell_to_text( TOS ); c*/
 
   primitive_clear_data();
   primitive_clear_control();
@@ -14024,12 +14423,13 @@ primitive( "inox-the-void", primitive_the_void );
  *  Typescript version of bootstrap and read-eval-print loop
  */
 
-// Not on metal
-/*!c{*/
 
 /*
  *  export functions for those who creates javascript primitives
  */
+
+// Not on metal
+/*!c{*/
 
 const fun = {
   TOS: () => TOS,
@@ -14060,19 +14460,19 @@ const fun = {
   memory_dump
 }
 
-/*}*/
+/*c*/
 
 // console.log( "C SOURCE:\n" + C_source + "\n" );
 
 // ToDo provide a mechanism to register event handlers
 /**/ function signal( event : string ){
-/*c  void     signal( std::string event ){ c*/
+/*c  void     signal( std::string& event ){ c*/
   // ToDo: push event object onto the data stack
   // ToDo: run_verb( "inox-signal" );
 }
 
 /**/ function on( event : string, handler : ( e : text ) => void ){
-/*c void      on( std::string event, void (*handler)( std::string e ) ){ c*/
+/*c void      on( const std::string& event, void (*handler)( const std::string& e ) ){ c*/
 // ToDo: register handler for event in the event handler table.
 // Possible events are: "exit", "reset" & "SIGINT"
 // ToDo: on micro-controler hardware it could register interupt handlers?
@@ -14098,18 +14498,36 @@ function inox(){
   return inox_exports;
 }
 
+/*c*/
+
 
 /* --------------------------------------------------------------------------
  *  Bootstraping and smoke test.
  */
 
+/*!c{*/
+
 const I   = inox();
 const Fun = I.fun;
 
+/*c*/
 
-function bootstrap_with_file( name ){
-  const source_code = require( "fs" ).readFileSync( "lib/" + name, 'utf8');
-  I.processor( "{}", "{}", source_code );
+/**/ function eval_file( name ){
+/*c void eval_file( const std::string& name ){ c*/
+  /**/ const source_code = require( "fs" ).readFileSync( "lib/" + name, 'utf8');
+  /**/ I.processor( "{}", "{}", source_code );
+  /*c{
+    std::string source_code;
+    std::ifstream file( name );
+    if( file.is_open() ){
+      std::string line;
+      while( getline( file, line ) ){
+        source_code += line + "\n";
+      }
+      file.close();
+    }
+    processor( "{}", "{}", source_code );
+  /*c*/
 }
 
 
@@ -14117,21 +14535,28 @@ function bootstrap_with_file( name ){
  *  inox-source primitive
  */
 
-I.primitive( "inox-source", primitive_source );
-function                    primitive_source(){
+/**/ I.primitive( "inox-source", primitive_source );
+/**/ function                    primitive_source(){
+/*c void primitive_source(){ c*/
 // Load a file and evaluate the content
   // ToDo: require, ?require, required?
   // ToDo: include, ?include, included?
   // ToDo: module management
-  bootstrap_with_file( Fun.pop_as_text() );
+  /**/ eval_file( Fun.pop_as_text() );
+  /*c  eval_file( pop_as_text() ); c*/
 }
 
-
-bootstrap_with_file( "bootstrap.nox" );
-bootstrap_with_file( "forth.nox" );
-if( run_de ){
-  bootstrap_with_file( "test/smoke.nox" );
+function bootstrap(){
+  eval_file( "bootstrap.nox" );
+  eval_file( "forth.nox" );
+  if( run_de ){
+    eval_file( "test/smoke.nox" );
+  }
 }
+
+/**/ bootstrap();
+
+
 
 
 // Pseudo code for a statefull event processor. Async requires promises.
@@ -14153,16 +14578,16 @@ if( run_de ){
  *  REPL, Read/Eval/Print/Loop. Interactive shell.
  */
 
+/*!c{*/
+
 function repl(){
 
   const repl = require( "node:repl" );
 
-  /*
-   *  inox-repl-out primitive
-   */
+  // inox-repl-out primitive
 
   I.primitive( "inox-repl-out", primitive_repl_dot );
-  /**/ function                      primitive_repl_dot(){
+  function                      primitive_repl_dot(){
     process.stdout.write( Fun.pop_as_text() );
   }
 
@@ -14233,48 +14658,44 @@ if( require && require.main === module ){
   exports.inox = inox;
 }
 
-/*}*/
+/*c*/
 
 
 /* ----------------------------------------------------------------------------
  *  C++ bootstrap and read-eval-print-loop
  */
 
-time_started = now();
+/**/ time_started = now();
 
-/*!c{*/
-
-function init_globals(){
-}
-
-init_globals();
-
-/*}{
+/*c{
 
 void init_globals(){
   ALL_PRIMITIVE_DECLARATIONS
+  bootstrap();
+  time_started = now();
 }
 
 void TODO( char *message ){
   fprintf( stderr, "TODO: %s", message );
 }
 
-void add_history( std::string line ){
+void add_history( std::string& line ){
   TODO( "add_history: free the history when the program exits" );
 }
 
-
 int repl(){
   while( true ){
-    std::string line = readline( "ok " );
-    if( !line ){
-      // ToDo: should try to convert TOS into an integer
+    cout << "ok ";
+    // Read line from stdin
+    std::string line;
+    getline( cin, line );
+    if( tlen( line ) == 0 ){
       break;
     }
     add_history( line );
-    evaluate( line );
-    free( line );
+    cout << evaluate( line );
   }
+  return 0;
 }
 
 

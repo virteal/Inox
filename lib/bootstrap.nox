@@ -1,11 +1,9 @@
 ~| bootstrap.nox
- |   Inox standard library.
+ |   Inox standard library
  |
  | JHR, 2023/01/11, made from test/smoke.nox
  |
  |~
-
- to a "a".
 
 ~~ Some basic vocabulary, primitive
 to the-void             inox-the-void
@@ -17,7 +15,7 @@ to breakpoint           inox-breakpoint
 to run                  inox-run
 to run-name             inox-run-name
 to run-tag              inox-run-tag
-to with                 inox-with  ~~ ToDo: use possibly faster /inox-with
+to with-locals          inox-with-locals
 to run-with-parameters  inox-run-with-parameters
 to run-with-it          inox-run-with-it
 to without-local        inox-without-local
@@ -100,6 +98,8 @@ to text-length          inox-text-length
 to text-cut             inox-text-cut
 to text-but             inox-text-but
 to text-mid             inox-text-mid
+to text-low             inox-text-low
+to text-up              inox-text-up
 to text-eq?             inox-text-eq?
 to text-neq?            inox-text-neq?
 to text-find            inox-text-find
@@ -264,25 +264,6 @@ to dump-object  ~| any -- any |~
 to method  ~| target a-block -- |~  run-with-it
 
 
-to test ~| name |~
-~~ Helper to test verbs. It runs the test-xxx testing verb.
-  "Testing " prefix out
-  /test-sentinel, over
-  "test-" swap text-join, run-name
-  ~~ checks that stack is unchanged, ie sentinel is still at the top
-  /test-sentinel <>? { out( "Stack mismatch!" ) debugger } if
-  "End of test " prefix out
-  drop
-
-to debug-test  ~~ Helper for tests that needs to be debugged
-  "Testing " prefix out
-  dup
-  "test-" swap text-join, debug, run-name, no-debug
-  ~~ ToDo: developer must also check that data stack is unchanged
-  "End of debug-test for " prefix out
-  drop
-
-
 ~~ verbs with formal parameters are functions called with arguments
 to with      /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with
 to fn{       run-with-parameters. inline
@@ -408,6 +389,8 @@ to text.&             text-join
 to text.cut           text-cut
 to text.but           text-but
 to text.mid           text-mid
+to text.low           text-low
+to text.up            text-up
 to text.==?           text-eq?
 to text.<>?           text-neq?
 to prefix             over text-join       ~| A B -- A BA |~
@@ -443,6 +426,25 @@ to text.line          text-line
 ~~ text-join-words
 ~~ text-split-characters
 ~~ text-join-characters
+
+
+to test ~| name |~
+~~ Helper to test verbs. It runs the test-xxx testing verb.
+  "Testing " prefix out
+  /test-sentinel, over
+  "test-" swap text-join, run-name
+  ~~ checks that stack is unchanged, ie sentinel is still at the top
+  /test-sentinel <>? { out( "Stack mismatch!" ) debugger } if
+  "End of test " prefix out
+  drop
+
+to debug-test  ~~ Helper for tests that needs to be debugged
+  "Testing " prefix out
+  dup
+  "test-" swap text-join, debug, run-name, no-debug
+  ~~ ToDo: developer must also check that data stack is unchanged
+  "End of debug-test for " prefix out
+  drop
 
 
 to InoxStyle
