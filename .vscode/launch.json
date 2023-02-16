@@ -1,7 +1,4 @@
 {
-        // Use IntelliSense to learn about possible attributes.
-        // Hover to view descriptions of existing attributes.
-        // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
         "version": "0.2.0",
         "configurations": [
                 {
@@ -17,27 +14,36 @@
                                 "<node_internals>/**"
                         ]
                 },
-
                 {
                         "name": "Launch Program",
                         "request": "launch",
                         "type": "node",
-                        "program": "${workspaceFolder}\\lib\\inox.ts",
+                        "program": "${workspaceFolder}\\builds\\inox.js",
                         "preLaunchTask": "tsc: build - tsconfig.json",
                         "skipFiles": [
                                 "<node_internals>/**"
                         ]
                 },
-
                 {
                         "name": "Launch node directly",
                         "request": "launch",
                         "type": "node",
-                        "program": "${workspaceFolder}\\lib\\inox.ts",
+                        "program": "${workspaceFolder}\\builds\\inox.js",
                         "skipFiles": [
                                 "<node_internals>/**"
                         ],
                         "outputCapture": "std"
-                }
+                },
+                {
+                        "name": "C/C++: cl.exe build and debug active file",
+                        "type": "cppvsdbg",
+                        "request": "launch",
+                        "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
+                        "args": [],
+                        "stopAtEntry": true,
+                        "cwd": "${fileDirname}",
+                        "environment": [],
+                        "preLaunchTask": "C/C++: cl.exe build active file"
+                },
         ]
 }

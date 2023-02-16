@@ -66,10 +66,11 @@
 		"terminal.integrated.fastScrollSensitivity": 20,
 		"terminal.integrated.scrollback": 10000,
 		"github.copilot.enable": {
+
 			"*": true,
 			"yaml": false,
 			"plaintext": true,
-			"markdown": false
+			"markdown": true
 		},
 		"editor.find.autoFindInSelection": "multiline",
 		"search.seedWithNearestWord": true,
@@ -133,6 +134,11 @@
 		"workbench.panel.defaultLocation": "right",
 		"workbench.sash.size": 8,
 		"workbench.statusBar.visible": false,
-		"search.seedOnFocus": true
+		"search.seedOnFocus": true,
+		"[cpp]": {
+			"editor.cursorSmoothCaretAnimation": "on",
+			"editor.dragAndDrop": false,
+			"editor.guides.bracketPairs": true
+		}
 	}
 }

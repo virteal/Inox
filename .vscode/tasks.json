@@ -1,0 +1,26 @@
+{
+        "tasks": [
+                {
+                        "type": "cppbuild",
+                        "label": "C/C++: cl.exe build active file",
+                        "command": "cl.exe",
+                        "args": [
+                                "/Zi",
+                                "/EHsc",
+                                "/nologo",
+                                "/std:c++17",
+                                "/Fe${fileDirname}\\${fileBasenameNoExtension}.exe",
+                                "${file}"
+                        ],
+                        "options": {
+                                "cwd": "${fileDirname}"
+                        },
+                        "problemMatcher": [
+                                "$msCompile"
+                        ],
+                        "group": "build",
+                        "detail": "compiler: cl.exe"
+                }
+        ],
+        "version": "2.0.0"
+}

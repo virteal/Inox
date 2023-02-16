@@ -1,16 +1,17 @@
 {
   "name": "inox",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "The Inox programming language.",
-  "main": "lib/inox.js",
+  "main": "builds/inox.js",
   "directories": {
     "lib": "lib",
+    "builds": "builds",
     "test": "test"
   },
   "scripts": {
     "build": "tsc",
-    "run": "tsc && node --enable-source-maps lib/inox.js",
-    "replit": "tsc&& node lib/inox.js"
+    "run": "tsc && node --enable-source-maps builds/inox.js",
+    "replit": "tsc&& node builds/inox.js"
   },
   "repository": {
     "type": "git",
