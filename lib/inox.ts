@@ -11,7 +11,7 @@
  *  december  7 2022 by jhr, class, object, malloc/free, refcount gc
  *  decembre 26 2022 by jhr, reactive dataflows and reactive sets from Toubkal
  *  january  29 2023 by jhr, crossed the 10 000 lines of code frontier
- *  february 27 2023 by jhr, runs in C++, 15Kloc
+ *  february 27 2023 by jhr, runs in C++, 15Kloc, 95 Mips
  */
 
 /* ----------------------------------------------------------------------------
@@ -574,8 +574,8 @@ c*/
 
 /**/ function F( fn : Function ){ return fn.name }
 // ToDo: C++ should search the symbol table to get the name of the function
-/*c Text _F( void* fn ){ return N( (int) fn ); } c*/
-/*c #define F( fn ) _F( (void*) fn )  c*/
+/*c Text _F( const void* fn ){ return N( (int) fn ); } c*/
+/*c #define F( fn ) _F( (const void*) fn )  c*/
 
 
 /*
@@ -583,7 +583,7 @@ c*/
  */
 
 /**/ function P( p : any ){ return N( p ); }
-/*c Text P( void* p ){ return N( (int) p ); }  c*/
+/*c Text P( const void* p ){ return N( (int) p ); }  c*/
 
 
 /*
@@ -3576,7 +3576,7 @@ const the_first_ever_area = the_next_free_cell;
 /*c static Tag tag_c_string = tag( "c_string" );  c*/
 
 /**/ function make_proxy( object : any ) : Index {
-/*c  Value    make_proxy( void* object )             {  c*/
+/*c  Value    make_proxy( const void* object )   {  c*/
   // In Typescript there is map between the id and the object
   /**/ const proxy = allocate_area( 0 );
   // In C++, the cell holds a char* to a strdup() of the C++ std::string
@@ -3625,19 +3625,19 @@ let the_empty_text_proxy = 0;
 
 
 /**/ function proxied_object_by_id( id : Cell ) : any {
-/*c  void*    proxied_object_by_id( Value id  )       {  c*/
+/*c  const void*    proxied_object_by_id( Value id  )       {  c*/
   alloc_de&&mand( is_safe_area( id ) );
   /**/ return all_proxied_objects_by_id.get( id );
-  /*c return (void*) value( id ); c*/
+  /*c return (const void*) value( id ); c*/
 }
 
 
 /**/ function cell_proxied_object( c : Cell ) : any {
- /*c void*    cell_proxied_object( Cell c   )       {  c*/
+ /*c const void*    cell_proxied_object( Cell c   )       {  c*/
  const area = value( c );
   alloc_de&&mand( is_safe_area( area ) );
   /**/ return proxied_object_by_id( area );
-  /*c return (void*) value( area ); c*/
+  /*c return (const void*) value( area ); c*/
 }
 
 
@@ -13555,7 +13555,7 @@ let parse_codes = 0;
  */
 
 /**/ function bug_parse_levels( title       ) : boolean {
-/*c  bool     bug_parse_levels( Text& title )           { c*/
+/*c  bool     bug_parse_levels( TxtC  title )           { c*/
 
   /**/ let buf = "";
   /*c Text buf(  "" ); c*/

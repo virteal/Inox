@@ -37,14 +37,16 @@
                         "args": [
                                 "/DEBUG",
                                 "/nologo",
+                                "/utf-8",
                                 "/Zi",
+                                "/JMC",
                                 "/EHsc",
-                                "/std:c++17",
+                                "/std:c++latest",
                                 "/Fe${workspaceFolder}\\builds\\inox.exe",
                                 "${workspaceFolder}\\builds\\inox.cpp"
                         ],
                         "options": {
-                                "cwd": "${workspaceFolder}"
+                                "cwd": "${workspaceFolder}\\builds"
                         },
                         "problemMatcher": [
                                 "$msCompile"
@@ -67,16 +69,28 @@
                         "command": "cl.exe",
                         "args": [
                                 "/nologo",
+                                "/utf-8",
                                 "/O2",
+                                "/Ot",
+                                "/Ob2",
+                                "/Oi",
                                 "/GL",
+                                "/Gr",
+                                "/Gw",
+                                "/Gy",
+                                "/GF",
+                                "/GS-",
+                                "/GR-",
                                 "/DFAST_INOX",
                                 "/EHsc",
-                                "/std:c++17",
+                                "/std:c++latest",
                                 "/Fe${workspaceFolder}\\builds\\inox.exe",
-                                "${workspaceFolder}\\builds\\inox.cpp"
+                                "${workspaceFolder}\\builds\\inox.cpp",
+                                "/link",
+                                "/OPT:REF"
                         ],
                         "options": {
-                                "cwd": "${workspaceFolder}"
+                                "cwd": "${workspaceFolder}\\builds"
                         },
                         "problemMatcher": [
                                 "$msCompile"
