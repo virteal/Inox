@@ -127,9 +127,15 @@
 			"xstddef": "cpp",
 			"xtr1common": "cpp",
 			"xutility": "cpp",
-			"vector": "cpp"
+			"vector": "cpp",
+			"algorithm": "cpp",
+			"charconv": "cpp",
+			"chrono": "cpp",
+			"format": "cpp",
+			"mutex": "cpp",
+			"thread": "cpp"
 		},
-		"workbench.activityBar.visible": false,
+		"workbench.activityBar.visible": true,
 		"workbench.commandPalette.experimental.suggestCommands": true,
 		"workbench.experimental.cloudChanges.autoStore": "onShutdown",
 		"workbench.panel.defaultLocation": "right",
@@ -140,6 +146,7 @@
 			"editor.cursorSmoothCaretAnimation": "on",
 			"editor.dragAndDrop": false,
 			"editor.guides.bracketPairs": true
-		}
+		},
+		"editor.minimap.enabled": false
 	}
 }

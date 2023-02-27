@@ -15,7 +15,7 @@
                         ]
                 },
                 {
-                        "name": "Build & launch inox.ts",
+                        "name": "Build & launch inox.js",
                         "request": "launch",
                         "type": "node",
                         "program": "${workspaceFolder}\\builds\\inox.js",
@@ -52,18 +52,18 @@
                         "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
                         "args": [],
                         "stopAtEntry": false,
-                        "cwd": "${fileDirname}",
+                        "cwd": "${workspaceFolder}",
                         "environment": [],
                         "console": "integratedTerminal"
                 },
                 {
-                        "name": "C++: run active file",
-                        "type": "",
+                        "name": "C++: debug inox.exe",
+                        "type": "cppvsdbg",
                         "request": "launch",
-                        "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
+                        "program": "${workspaceFolder}\\builds\\inox.exe",
                         "args": [],
                         "stopAtEntry": false,
-                        "cwd": "${fileDirname}",
+                        "cwd": "${workspaceFolder}",
                         "environment": [],
                         "console": "integratedTerminal"
                 }

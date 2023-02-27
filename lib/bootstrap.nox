@@ -397,7 +397,7 @@ to speed-index
     now
       times: speed-index-loops do: {  };
     now swap -
-    ~~ Delta is how long for addition alone
+    ~~ Delta is how long for additions alone
     -
     speed-index-loops
     " times 1 1 + drop in " &

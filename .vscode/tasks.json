@@ -32,7 +32,7 @@
                 },
                 {
                         "type": "shell",
-                        "label": "C++: shell build active file",
+                        "label": "C++: shell build debug inox.exe",
                         "command": "cl.exe",
                         "args": [
                                 "/DEBUG",
@@ -40,11 +40,43 @@
                                 "/Zi",
                                 "/EHsc",
                                 "/std:c++17",
-                                "/Fe${fileDirname}\\${fileBasenameNoExtension}.exe",
-                                "${file}"
+                                "/Fe${workspaceFolder}\\builds\\inox.exe",
+                                "${workspaceFolder}\\builds\\inox.cpp"
                         ],
                         "options": {
-                                "cwd": "${fileDirname}"
+                                "cwd": "${workspaceFolder}"
+                        },
+                        "problemMatcher": [
+                                "$msCompile"
+                        ],
+                        "group": "build",
+                        "presentation": {
+                          "reveal": "always",
+                          "panel": "shared",
+                          "showReuseMessage": true,
+                          "clear": true,
+                          "close": false,
+                          "echo": true,
+                          "focus": true
+                        },
+                        "detail": "JHR's, compiler: shell cl.exe"
+                },
+                {
+                        "type": "shell",
+                        "label": "C++: shell build fast inox.exe",
+                        "command": "cl.exe",
+                        "args": [
+                                "/nologo",
+                                "/O2",
+                                "/GL",
+                                "/DFAST_INOX",
+                                "/EHsc",
+                                "/std:c++17",
+                                "/Fe${workspaceFolder}\\builds\\inox.exe",
+                                "${workspaceFolder}\\builds\\inox.cpp"
+                        ],
+                        "options": {
+                                "cwd": "${workspaceFolder}"
                         },
                         "problemMatcher": [
                                 "$msCompile"
@@ -64,11 +96,20 @@
                 {
                         "type": "shell",
                         "label": "Shell that starts inox.exe",
-                        "command": ".\\inox.exe",
+                        "command": "${workspaceFolder}\\builds\\inox.exe",
                         "options": {
-                                "cwd": "${fileDirname}"
+                                "cwd": "${workspaceFolder}"
                         },
                         "group": "build",
+                        "presentation": {
+                          "reveal": "always",
+                          "panel": "shared",
+                          "showReuseMessage": false,
+                          "clear": true,
+                          "close": true,
+                          "echo": false,
+                          "focus": false
+                        },
                         "detail": "JHR's"
                 }
         ],

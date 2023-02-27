@@ -11,6 +11,7 @@
  *  december  7 2022 by jhr, class, object, malloc/free, refcount gc
  *  decembre 26 2022 by jhr, reactive dataflows and reactive sets from Toubkal
  *  january  29 2023 by jhr, crossed the 10 000 lines of code frontier
+ *  february 27 2023 by jhr, runs in C++, 15Kloc
  */
 
 /* ----------------------------------------------------------------------------
@@ -58,7 +59,7 @@
  *  the cloud. Running some Inox code somewhere should be fast because
  *  the code to run has a very small granularity. It's not like running
  *  a whole web page, or a whole application. It's more like running a lot
- *  of function, the so called "serverless" way.
+ *  of functions, the so called "serverless" way.
  *  Ultimately, the network becomes the computer.
  */
 
@@ -66,8 +67,17 @@
 
 /*c{
 
+// In the old days, circa 1990, gettimeofday() was the way to measure time.
+// It's still available on Linux, but it's not portable. The chrono library
+// is the way to go these days. It's available on Linux, Windows and Mac.
+
 #include <chrono>
 using namespace std::chrono;
+
+// There is also an int_now() function defined below, it uses a 32 bits
+// integer to express the number of milliseconds since epoch, where
+// the epoch is the time when the program started instead of the some
+// older time that requires a 64 bits integer to express the time now.
 
 std::chrono::milliseconds now( void ){
   std::chrono::time_point t = high_resolution_clock::now();
@@ -229,7 +239,7 @@ std::chrono::milliseconds now( void ){
 /*c  #define TxtC       const std::string& c*/
 
 /**/ type            Primitive = () => void;
-/*c  typedef  void (*Primitive) (void);  c*/
+/*c  typedef void ( *Primitive )( void );  c*/
 
 /**/ const no_text = "";
 /*c  Text  no_text ( "" );  c*/
@@ -237,11 +247,10 @@ std::chrono::milliseconds now( void ){
 
 /* -----------------------------------------------------------------------------
  *  Let's go.
- *   Some debug tools first.
+ *   Some debugging tools first.
  */
 
 /**/  import    assert from "assert";
-
 /*c   #include <assert.h>   c*/
 
 /*
@@ -260,10 +269,18 @@ std::chrono::milliseconds now( void ){
  *  this require some external tooling that would transpile the code.
  */
 
-let de = true;
+/**/ let de = true;
+/*c{
+  // In "fast" mode, 'de' flag cannot be activated at runtime
+  #ifdef INOX_FAST
+    #define de false
+  #else
+    bool de = true;
+  #endif
+}*/
 
 
-// not debug. To easely comment out a de&&bug, add a n prefix
+// not debug. To easely comment out a de&&bug, simply add a n prefix
 /**/ const   nde = false;
 /*c  #define nde   false  c*/
 
@@ -276,8 +293,8 @@ let de = true;
 
 
 /*
- * 'blabal' is a verbose debug domain to debug the interpreter itself.
- * It should be disabled in production.
+ *  'blabla' is a verbose debug domain to debug the interpreter itself.
+ *  It should be disabled in production.
  */
 
 let blabla_de = false;
@@ -288,8 +305,15 @@ let blabla_de = false;
  *  It should be disabled in production.
  */
 
-let mem_de = true;
-
+/**/ let mem_de = true;
+/*c{
+  // In "fast" mode, 'mem_de' flag cannot be activated at runtime
+  #ifdef INOX_FAST
+    #define mem_de false
+  #else
+    bool mem_de = true;
+  #endif
+}*/
 
 /*
  *  'alloc_de' is there to help debug the dynamic memory allocator.
@@ -297,7 +321,15 @@ let mem_de = true;
  *  some integrity checks on the heap.
  */
 
-let alloc_de = true;
+/**/ let alloc_de = true;
+/*c{
+  // In "fast" mode, 'alloc_de' flag cannot be activated at runtime
+  #ifdef INOX_FAST
+    #define alloc_de false
+  #else
+    bool alloc_de = true;
+  #endif
+}*/
 
 
 /*
@@ -310,23 +342,24 @@ let alloc_de = true;
 
 let check_de = true;
 
+
 /*
  *  'warn_de' is about warning messages that are not errors but look like
  *  they could be errors. It's useful to debug the code that is responsible
  *  for raising warnings.
  *  It should be disabled in production.
- *  It's useful for development and debugging.
  */
 
 let warn_de = true;
 
 
-/*
+/* -----------------------------------------------------------------------------
  *  The other debug domains are pure trace domains. They enable/disable
  *  verbose traces about various aspects of the execution of the code.
  *  They should be disabled in production.
  *  They are useful for development and debugging only.
  */
+
 
 /*
  *  'token_de' enables traces about tokenization. This is the first step
@@ -338,7 +371,7 @@ let token_de = false;
 
 
 /*
- * 'parse_de' enables traces about parsing. This is the second step
+ *  'parse_de' enables traces about parsing. This is the second step
  *  of the compilation process. It's useful to debug the parser that
  *  is responsible for compiling verb definitions. As in Forth, the
  *  parser is also an evaluator that runs the source code when it is
@@ -414,8 +447,12 @@ let can_log = true;
 /**/ function debug()      {
 /*c  void     debug( void ){  c*/
   can_log = true;
-  de = true;
-  mem_de = alloc_de = true;
+  /**/ de = mem_de = alloc_de = true;
+  /*c{
+    #ifndef INOX_FAST
+      de = mem_de = alloc_de = true;
+    #endif
+  }*/
   check_de = true;
   blabla_de = true;
   token_de = parse_de = eval_de = run_de = stack_de = true;
@@ -448,9 +485,12 @@ let can_log = true;
 /**/ function no_debug_at_all()      {
 /*c  void     no_debug_at_all( void ){  c*/
   no_debug();
-  de       = false;
-  mem_de   = false;
-  alloc_de = false;
+  /**/ de = mem_de = alloc_de = false;
+  /*c{
+    #ifndef INOX_FAST
+      de = mem_de = alloc_de = false;
+    #endif
+  }*/
   check_de = false;
 }
 
@@ -466,7 +506,6 @@ let can_log = true;
 
 // 0 = no_debug_at_all(), 1 = no_debug(), 2 = debug()
 const debug_level = init_debug();
-
 
 
 /* ----------------------------------------------------------------------------
@@ -507,7 +546,7 @@ c*/
  *  Helper functions to deal with Typescript and C++ strings
  *  in a way that is compatible with both languages.
  *
- *  tcut(), tbut() and tmid() to extract sub part of the text.
+ *  tcut(), tbut() and tmid() to extract sub parts of the text.
  *  S(), N(), P() and F() to concatenate text and numbers.
  */
 
@@ -534,6 +573,7 @@ c*/
  */
 
 /**/ function F( fn : Function ){ return fn.name }
+// ToDo: C++ should search the symbol table to get the name of the function
 /*c Text _F( void* fn ){ return N( (int) fn ); } c*/
 /*c #define F( fn ) _F( (void*) fn )  c*/
 
@@ -648,6 +688,7 @@ c*/
 Text tlow( TxtC s ){
   Text r;
   for( int i = 0; i < s.length(); i++ ){
+    // ToDo: very slow
     r += tolower( s[ i ] );
   }
   return r;
@@ -667,6 +708,7 @@ c*/
 Text tup( TxtC s ){
   Text r;
   for( int i = 0; i < s.length(); i++ ){
+    // ToDo: very slow
     r += toupper( s[ i ] );
   }
   return r;
@@ -762,7 +804,7 @@ c*/
 
 
 /*
- *  tidxr() - index of substring in text, -1 if not found
+ *  tidxr() - last index of substring in text, -1 if not found
  */
 
 /**/ function tidxr( s : string, sub : string ) : Index {
@@ -1376,15 +1418,15 @@ function test_pack(){
  *  ToDo: figure out some solution to avoid the right shift when
  *  optimizing for speed instead of for memory
  *  The resulting vm would then have access to less cells,
- *  half of them, but faster.
+ *  1/16 of them, but faster.
  */
 
 /* if( ! PORTABLE ){
 @inline function load32( index : u32 ) :u32 {
-  return load< u32 >( index << 3 );
+  return load< u32 >( index << 4 );
 }
 @inline function store32( index : u3, value : i32 ) :void {
-  store< InoxValue >( index << 3, value );
+  store< InoxValue >( index << 4, value );
 }
 */
 
@@ -4881,6 +4923,7 @@ const tag_csp            = tag( "csp" );
   return actor;
 }
 
+
 /**/ function actor_save_context(){
 /*c  void     actor_save_context(){  c*/
 // Save context (ip, tos, csp) of current actor
@@ -5150,15 +5193,15 @@ function build_targets(){
  */
 
 /*
- *  is-a-primitive primitive - true if TOS tag is also the name of a primitive
+ *  a-primitive? primitive - true if TOS tag is also the name of a primitive
  */
 
 
 const tag_is_a_primitive = tag( "a-primitive?" );
 
 
-primitive( "is-a-primitive", primitive_is_a_primitive );
-function                     primitive_is_a_primitive(){
+primitive( "a-primitive?", primitive_is_a_primitive );
+function                   primitive_is_a_primitive(){
   let name = eat_tag( TOS );
   let is_a_primitive = primitive_exists( name );
   set( TOS, type_boolean, tag_is_a_primitive, is_a_primitive ? 1 : 0 );
@@ -5435,7 +5478,6 @@ const tag_is_a_void = tag( "a-void?" );
 
 primitive( "a-void?", primitive_is_a_void );
 function              primitive_is_a_void(){
-
   const it_is = is_a_void_cell( TOS );
   if( !it_is ){ clear( TOS ); }
   set( TOS, type_boolean, tag_is_a_void, it_is ? 1 : 0 );
@@ -5443,7 +5485,7 @@ function              primitive_is_a_void(){
 
 
 /*
- *  inix-a-tag? primitive
+ *  a-tag? primitive
  */
 
 /**/ function is_a_tag_cell( c : Cell ) : boolean {
@@ -5456,7 +5498,6 @@ const tag_is_a_tag = tag( "a-tag?" );
 
 primitive( "a-tag?", primitive_is_a_tag );
 function             primitive_is_a_tag(){
-
   const it_is = is_a_tag_cell( TOS );
   if( !it_is ){ clear( TOS ); }
   set( TOS, type_boolean, tag_is_a_tag, it_is ? 1 : 0 );
@@ -5513,7 +5554,6 @@ const tag_is_a_text = tag( "a-text?" );
 
 primitive( "a-text?", primitive_is_a_text );
 function              primitive_is_a_text(){
-
   const it_is = is_a_text_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_text, it_is ? 1 : 0 );
@@ -5534,7 +5574,6 @@ const tag_is_a_reference = tag( "a-reference?" );
 
 primitive( "a-reference?", primitive_is_a_reference );
 function                   primitive_is_a_reference(){
-
   const it_is = is_a_reference_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_reference, it_is ? 1 : 0 );
@@ -5555,7 +5594,6 @@ const tag_is_a_verb = tag( "a-verb?" );
 
 primitive( "a-verb?", primitive_is_a_verb );
 function              primitive_is_a_verb(){
-
   const it_is = is_a_verb_cell( TOS );
   if( !it_is ){ clear( TOS ); }
   set( TOS, type_boolean, tag_is_a_verb, it_is ? 1 : 0 );
@@ -5576,7 +5614,6 @@ const tag_is_a_proxy = tag( "a-proxy?" );
 
 primitive( "a-proxy?", primitive_is_a_proxy );
 function               primitive_is_a_proxy(){
-
   const it_is = is_a_proxy_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_proxy, it_is ? 1 : 0 );
@@ -5597,7 +5634,6 @@ const tag_is_a_flow = tag( "a-flow?" );
 
 primitive( "a-flow?", primitive_is_a_flow );
 function              primitive_is_a_flow(){
-
   const it_is = is_a_flow_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_flow, it_is ? 1 : 0 );
@@ -5617,7 +5653,6 @@ const tag_is_a_list = tag( "a-list?" );
 
 primitive( "a-list?", primitive_is_a_list );
 function              primitive_is_a_list(){
-
   const it_is = is_a_list_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_list, it_is ? 1 : 0 );
@@ -5636,7 +5671,6 @@ function              primitive_is_a_list(){
 
 primitive( "push", primitive_push );
 function           primitive_push(){
-
   PUSH();
 }
 
@@ -5647,7 +5681,6 @@ function           primitive_push(){
 
 primitive( "drop", primitive_drop );
 function           primitive_drop(){
-
   clear( POP() );
 };
 
@@ -5657,7 +5690,7 @@ function           primitive_drop(){
  */
 
 primitive( "drops", primitive_drops );
-function       primitive_drops(){
+function            primitive_drops(){
   const n = pop_integer();
   check_de&&mand( n >= 0 );
   let ii;
@@ -5684,7 +5717,7 @@ function          primitive_dup(){
  */
 
 primitive( "2dup", primitive_2dup );
-function      primitive_2dup(){
+function           primitive_2dup(){
 
   const tos = TOS;
   copy_cell( tos - ONE, PUSH() );
@@ -5769,7 +5802,6 @@ function           primitive_swap(){
 
 primitive( "over", primitive_over );
 function           primitive_over(){
-
   const src = TOS - ONE;
   // WARNING, this bugs the C++ compiler: copy_cell( POS - 1, PUSH() );
   // Probably because it does not understand that PUSH() changes TOS and
@@ -5866,7 +5898,6 @@ function                 primitive_clear_data(){
 
 primitive( "data-dump", primitive_data_dump );
 function                primitive_data_dump(){
-
   /**/ let  buf = "DATA STACK";
   /*c  Text buf(  "DATA STACK" );  c*/
   let c;
@@ -6699,8 +6730,6 @@ const tag_is_fast = tag( "fast?" );
 
 primitive( "fast!", primitive_set_fast );
 function            primitive_set_fast(){
-
-// Turbo mode, no checks, no debug, no trace. Return previous state.
   // ToDo: per actor?
   check_de&&mand_boolean( TOS );
   const was_turbo = de;
@@ -6720,7 +6749,7 @@ function            primitive_set_fast(){
 
 primitive( "fast?", primitive_is_fast );
 function            primitive_is_fast(){
-  push_boolean( de ? false : true );
+  push_boolean( de || check_de ? false : true );
   set_tos_name( tag_is_fast );
 }
 
@@ -7060,7 +7089,6 @@ function              primitive_if_else(){
 
 primitive( "to-control", primitive_to_control );
 function                 primitive_to_control(){
-
   // >R in Forth
   CSP += ONE;
   move_cell( POP(), CSP );
@@ -7069,7 +7097,6 @@ function                 primitive_to_control(){
 
 primitive( "from-control", primitive_from_control );
 function                   primitive_from_control(){
-
   // R> in Forth
   move_cell( CSP, PUSH() );
   CSP -= ONE;
@@ -13234,12 +13261,11 @@ let dummy_test_tokenizer = test_tokenizer();
 
 
 /*
- *  set-literate primitive
+ *  set-literate primitive - set the tokenizer to literate style
  */
 
 primitive( "set-literate", primitive_set_literate );
 function                   primitive_set_literate(){
-
   const val = pop_boolean();
   tokenizer_set_literate_style( val ? true : false );
 }
@@ -13290,7 +13316,6 @@ const tag_is_integer_text = tag( "integer-text?" );
 
 primitive( "integer-text?", primitive_is_integer_text );
 function                    primitive_is_integer_text(){
-
   de&&mand_cell_type( TOS, tag_text );
   /**/ const buf = cell_to_text( TOS );
   /*c  Text  buf(  cell_to_text( TOS ) ); c*/
@@ -13320,7 +13345,6 @@ const tag_NaN = tag( "NaN" );
 
 primitive( "parse-integer", primitive_parse_integer );
 function                    primitive_parse_integer(){
-
   de&&mand_cell_type( TOS, tag_text );
   /**/ const buf = cell_to_text( TOS );
   /*c  Text  buf(  cell_to_text( TOS ) ); c*/
@@ -13688,7 +13712,6 @@ let parse_codes = 0;
 
 immediate_primitive( "compile-definition-begin", primitive_compile_definition_begin );
 function    primitive_compile_definition_begin(){
-
   eval_definition_begin();
 }
 
@@ -13766,7 +13789,6 @@ function    primitive_compile_definition_begin(){
 
 immediate_primitive( "compile-definition-end", primitive_compile_definition_end );
 function    primitive_compile_definition_end(){
-
   eval_definition_end();
 }
 
@@ -13777,7 +13799,6 @@ function    primitive_compile_definition_end(){
 
 primitive( "compiling?", primitive_is_compiling );
 function                 primitive_is_compiling(){
-
   push_boolean( eval_is_compiling() );
 }
 
@@ -14144,6 +14165,7 @@ function                        primitive_compile_block_end(){
 // remove last character
   return tcut( v, -1 );
 }
+
 
 /*
  *  Special verbs are verbs whose names are special.
@@ -14983,13 +15005,11 @@ function           primitive_eval(){
  */
 
 /*
- *  trace primitive
+ *  trace primitive - output text to console.log(), preserve TOS
  */
 
 primitive( "trace", primitive_trace );
 function            primitive_trace(){
-
-// Output using console.log(), preserve TOS
   de&&mand_cell_type( TOS, type_text );
   /**/ const txt = cell_to_text( TOS );
   /*c  Text  txt = cell_to_text( TOS ); c*/
@@ -15005,7 +15025,6 @@ function            primitive_trace(){
 
 primitive( "inox-out", primitive_out );
 function          primitive_out(){
-
   primitive_trace();
 }
 
@@ -15016,7 +15035,6 @@ function          primitive_out(){
 
 primitive( "trace-stacks", primitive_trace_stacks );
 function                   primitive_trace_stacks(){
-
   // ToDo: push text instead of using console.log() ?
   trace( S()+ "STACKS TRACE\n" + stacks_dump() );
 }
@@ -15044,7 +15062,6 @@ const tag_ascii = tag( "ascii" );
 
 primitive( "ascii-character", primitive_ascii_character );
 function                      primitive_ascii_character(){
-
 // Return a one character text from the TOS integer ascii code
   const char_code = eat_integer( TOS );
   /**/ const ch = String.fromCharCode( char_code );
@@ -15061,7 +15078,6 @@ function                      primitive_ascii_character(){
 
 primitive( "ascii-code", primitive_ascii_code );
 function                 primitive_ascii_code(){
-
 // Return ascii code of first character of TOS as a text
   /**/ const code = cell_to_text( TOS ).charCodeAt( 0 );
   /*c  int code = cell_to_text( TOS )[ 0 ]; c*/
@@ -15071,17 +15087,24 @@ function                 primitive_ascii_code(){
 
 
 /*
- *  now primitive
+ *  now primitive - return number of milliseconds since start
  */
 
 const tag_now = tag( "now" );
 
+/*c{
+int int_now( void ){
+  auto delta = std::chrono::milliseconds( now() - time_start );
+  long long count = ( long long ) delta.count();
+  return static_cast< int >( count );
+}
+c*/
+
+
 primitive( "now", primitive_now );
 function          primitive_now(){
   /**/ const since_start = now() - time_start;
-  /*c  auto delta = std::chrono::milliseconds( now() - time_start ); c*/
-  /*c  long long count = ( long long ) delta.count(); c*/
-  /*c  auto since_start = static_cast< int >( count ); c*/
+  /*c  auto since_start = int_now(); c*/
   push_integer( since_start );
   set_tos_name( tag_now );
 }
@@ -15095,7 +15118,6 @@ const tag_instructions = tag( "instructions" );
 
 primitive( "instructions", primitive_instructions );
 function                   primitive_instructions(){
-
   push_integer( instructions_total );
   set_tos_name( tag_instructions );
 }
@@ -15268,12 +15290,12 @@ const Fun = I.fun;
 /*c*/
 
 /**/ function eval_file( name      ){
-/*c  void     eval_file( TxtC name ){ c*/
-  /**/ const source_code = require( "fs" ).readFileSync( "lib/" + name, 'utf8');
+/*c  void     eval_file( TxtC name ){  c*/
+  /**/ const source_code = require( "fs" ).readFileSync( "lib/" + name, "utf8" );
   /**/ I.processor( "{}", "{}", source_code );
   /*c{
     Text source_code;
-    std::ifstream file( "../lib/" + name );
+    std::ifstream file( "lib/" + name );
     Text line;
     while( getline( file, line ) ){
       source_code += line + "\n";
@@ -15481,6 +15503,13 @@ int main( int argc, char *argv[] ){
   init_globals();
   // ToDo: fill some global ENV object
   // ToDo: push ENV object & arguments onto the data stack
+  // Display some speed info
+  auto duration_to_start = int_now();
+  cout << duration_to_start << " ms"
+  << " and " << (
+    ceil( ( instructions_total / duration_to_start )
+    / 1000  ) )
+  << " Mips to start REPL" << endl;
   return repl();
 }
 
