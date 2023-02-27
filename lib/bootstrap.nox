@@ -6,105 +6,9 @@
  |~
 
 ~~ Some basic vocabulary, primitive
-to the-void             inox-the-void
-to noop                 inox-noop
-to debugger             inox-debugger
-to debug                inox-debug
-to no-debug             inox-no-debug
-to breakpoint           inox-breakpoint
-to run                  inox-run
-to run-name             inox-run-name
-to run-tag              inox-run-tag
-to with-locals          inox-with-locals
-to run-with-parameters  inox-run-with-parameters
-to run-with-it          inox-run-with-it
-to without-local        inox-without-local
-to without-data         inox-without-data
-to with-it              inox-with-it
-to it                   inox-it
-to it!                  inox-it!
-to if                   inox-if
-to if-not               inox-if-not
-to break                inox-break
-to inline               inox-inline
-to while                inox-while-1 inox-while-2 inox-while-3. inline
-to until                inox-while-1 inox-while-2 inox-until-3. inline
-to sentinel             inox-sentinel
-to long-jump            inox-long-jump
-to loop                 inox-loop
-to make-object          inox-make-object
-to run                  inox-run
-to if-else              inox-if-else
-to rename               inox-rename
-to log                  inox-log
-to cast                 inox-cast
-to loop-while           inox-loop-while. inline
-to loop-until           inox-loop-until. inline
-to text-join            inox-text-join
-to alias                inox-alias
-to clear-data           inox-clear-data
-to clear-control        inox-clear-control
-to make-constant        inox-make-constant
-to tag                  inox-tag
-to class                inox-class
-to type                 inox-type
-to name                 inox-name
-to value                inox-value
-to definition           inox-definition
-to make-global          inox-make-global
-to make-local           inox-make-local
-to local                inox-local
-to upper                inox-upper-local
-to upper!               inox-set-upper-local
-to data                 inox-data
-to upper-data           inox-upper-data
-to upper-data!          inox-set-upper-data
-to immediate!           inox-immediate
-to ascii-character      inox-ascii-character
-to ascii-code           inox-ascii-code
-to inox-dialect         inox-inox-dialect
-to forth-dialect        inox-forth-dialect
-to current-dialect      inox-current-dialect
-to dialect              inox-dialect
-to object-set           inox-object-set  ~~ ToDo: @.!
-to object-get           inox-object-get  ~~ ToDo: @.
-to a-void?              inox-a-void?
-to boolean?             inox-a-boolean?
-to tag?                 inox-a-tag?
-to integer?             inox-an-integer?
-to reference?           inox-a-reference?
-to proxy?               inox-a-proxy?
-to verb?                inox-a-verb?
-to text?                inox-a-text?
-to make-actor           inox-make-actor
-to actor                inox-actor
-to switch-actor         inox-switch-actor
-to Ah                   inox-actor
-to Ah!                  inox-switch-actor
-to IP                   inox-IP
-to IP!                  inox-set-IP
-to CSP                  inox-CSP
-to CSP!                 inox-set-CSP
-to TOS                  inox-TOS
-to TOS!                 inox-set-TOS
-to to-control           inox-to-control
-to from-control         inox-from-control
-to fetch-control        inox-fetch-control
-to now                  inox-now
-to named?               inox-named?
-to as-text              inox-as-text
-to dump                 inox-dump
-to text-length          inox-text-length
-to text-cut             inox-text-cut
-to text-but             inox-text-but
-to text-mid             inox-text-mid
-to text-low             inox-text-low
-to text-up              inox-text-up
-to text-eq?             inox-text-eq?
-to text-neq?            inox-text-neq?
-to text-find            inox-text-find
-to text-find-last       inox-text-find-last
-to text-line            inox-text-line
+to while                while-1 while-2 while-3. inline
+to until                while-1 while-2 until-3. inline
+to immediate!           immediate
 
 ~~ Some synonyms, shorter than the original name
 to without             without-data
@@ -121,7 +25,7 @@ to do             run.           inline
 to if:then:       if.            inline
 to if:then:else:  if-else.       inline
 to if:do:         if:then:.      inline
-to unless:do:     not? if:do:.   inline
+to unless:do:     not if:do:.    inline
 to while:do:      while.         inline
 to until:do:      until.         inline
 to loop:while:    loop-while.    inline
@@ -139,7 +43,7 @@ to otherwise{     if-not.        inline
 to unless{        if-not.        inline
 
 to {}             noop
-to {drop}         /drop definition inox-literal. immediate!
+to {drop}         /drop definition literal. immediate!
 to range?         dup <=? and{ >=? }
 to range<?        dup <?  and{ >=? }
 
@@ -155,7 +59,7 @@ to FATAL         /FATAL-hook run-tag
 
 to ASSERT-hook   "ASSERT" out debugger clear-stacks
 to ASSERT        /ASSERT-hook run-tag
-to assert{       inox-assert. inline
+to assert{       assert. inline
 
 to constant:is:  make-constant
 to global:is:    make-global
@@ -163,7 +67,7 @@ to local:is:     swap rename to-control
 
 to init-globals
   constant: /inox-version      is: "v0.3.1";
-  constant: /inox-version-time is: 1674589501315  ;
+  constant: /inox-version-time is: 1674589501; ~~ ToDo: overflow when ms
   constant: /true              is: cast( true:1,    1 );
   constant: /false             is: cast( false:0,   1 );
   constant: /on                is: cast( on:1,      1 );
@@ -265,7 +169,7 @@ to method  ~| target a-block -- |~  run-with-it
 
 
 ~~ verbs with formal parameters are functions called with arguments
-to with      /inox-with  ~~ ToDo: inox-with primitive that pushes void:/with
+to with      /with
 to fn{       run-with-parameters. inline
 to s{        run-with-parameters. inline
 to function  run-with-parameters. inline
@@ -283,15 +187,15 @@ to --it!          it -- dup it!
 to ++it!          it ++ dup it!
 to it--!          it dup -- it!
 to it++!          it dup ++ it!
-to it{            inox-run-with-it
-to do-with-it     inox-run-with-it
+to it{            run-with-it
+to do-with-it     run-with-it
 
 
 to times:do:
   it{
     it >block, it!
     if: it >0? then: {
-      while: { it--! >=0? } do: {
+      while: { it--! >0? } do: {
         block> run
       };
     };
@@ -310,6 +214,8 @@ to that          that>
 
 to ii            it.  inline
 to ii!           it!. inline
+to upper         upper-local
+to upper!        set-upper-local
 to jj            /it 1 upper
 to jj!           /it 1 upper!
 to kk            /it 2 upper
@@ -391,11 +297,10 @@ to text.but           text-but
 to text.mid           text-mid
 to text.low           text-low
 to text.up            text-up
-to text.==?           text-eq?
-to text.<>?           text-neq?
+to text.=?            text=?
+to text.<>?           text<>?
 to prefix             over text-join       ~| A B -- A BA |~
 to suffix             over swap text-join  ~| A B -- A AB |~
-~~ text-length
 to text.length        text-length
 ~~ text-slice
 ~~ text-first         text-cut
@@ -473,27 +378,33 @@ To False  false.
 To True   true.
 
 
-constant: /speed-index-loops is: 10000000;
+global: /speed-index-loops is: 10000000;
 
 to speed-index
-  assert{ speed-index-loops =? 10000000 }
-  ~~ How long for integer addition
-  now
-    times: speed-index-loops do: { 1 1 + drop };
-  now swap -
-  ~~ How long for no operation
-  now
-    times: speed-index-loops do: {  };
-  now swap -
-  ~~ Delta is how long for addition alone
-  -
-  dup
-  out( ""
-    & speed-index-loops
-    & " times 1 1 + drop in "
-    &  & " ms"
-  )
-
-~~ speed-index
+  true fast!
+  ~~ debug
+  if: ( true or fast? ) then: {
+    if: fast? then: {
+      1000000 speed-index-loops!
+    } else: {
+      2 speed-index-loops!
+    };
+    ~~ How long for integer addition?
+    now
+      times: speed-index-loops do: { 1 1 + drop };
+    now swap -
+    ~~ How long for no operation?
+    now
+      times: speed-index-loops do: {  };
+    now swap -
+    ~~ Delta is how long for addition alone
+    -
+    speed-index-loops
+    " times 1 1 + drop in " &
+    swap " ms" & &
+    out
+  };
+  fast!
+speed-index
 
 ~~ forth.nox comes next

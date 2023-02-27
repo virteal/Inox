@@ -8,7 +8,7 @@
 inox-dialect
 
 
-to make-point  x:0 y:0 point:3 inox-make-object
+to make-point  x:0 y:0 point:3 make-object
 
 to test-point
   make-point
@@ -179,7 +179,7 @@ To test-Loop2
 
 Loop2/test
 
-inox-set-literate: true;
+set-literate: true;
 
 In order
   To test-literate
@@ -196,7 +196,7 @@ It does work with forth uppercase verbs because the rule about uppercase does no
   ToDo: "Ignore dots and maybe other punctuations when in literate style?";
 
 and then I need to restore the non literate mode using
-  Inox-set-literate( False )
+  Set-literate( False )
 
 
 out( "End of Iɴᴏx smoke test" )

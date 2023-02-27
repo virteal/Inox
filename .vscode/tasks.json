@@ -2,12 +2,12 @@
         "tasks": [
                 {
                         "type": "cppbuild",
-                        "label": "C/C++: cl.exe build active file",
+                        "label": "C++: build active file",
                         "command": "cl.exe",
                         "args": [
+                                "/DEBUG",
                                 "/Zi",
                                 "/EHsc",
-                                "/nologo",
                                 "/std:c++17",
                                 "/Fe${fileDirname}\\${fileBasenameNoExtension}.exe",
                                 "${file}"
@@ -19,7 +19,57 @@
                                 "$msCompile"
                         ],
                         "group": "build",
-                        "detail": "compiler: cl.exe"
+                        "presentation": {
+                          "reveal": "always",
+                          "panel": "shared",
+                          "showReuseMessage": true,
+                          "clear": true,
+                          "close": false,
+                          "echo": true,
+                          "focus": true
+                        },
+                        "detail": "JHR's, compiler: cl.exe"
+                },
+                {
+                        "type": "shell",
+                        "label": "C++: shell build active file",
+                        "command": "cl.exe",
+                        "args": [
+                                "/DEBUG",
+                                "/nologo",
+                                "/Zi",
+                                "/EHsc",
+                                "/std:c++17",
+                                "/Fe${fileDirname}\\${fileBasenameNoExtension}.exe",
+                                "${file}"
+                        ],
+                        "options": {
+                                "cwd": "${fileDirname}"
+                        },
+                        "problemMatcher": [
+                                "$msCompile"
+                        ],
+                        "group": "build",
+                        "presentation": {
+                          "reveal": "always",
+                          "panel": "dedicated",
+                          "showReuseMessage": true,
+                          "clear": true,
+                          "close": false,
+                          "echo": true,
+                          "focus": true
+                        },
+                        "detail": "JHR's, compiler: shell cl.exe"
+                },
+                {
+                        "type": "shell",
+                        "label": "Shell that starts inox.exe",
+                        "command": ".\\inox.exe",
+                        "options": {
+                                "cwd": "${fileDirname}"
+                        },
+                        "group": "build",
+                        "detail": "JHR's"
                 }
         ],
         "version": "2.0.0"

@@ -29,8 +29,8 @@ forth-dialect
 ( Standard Forth is supposed to be case insensitive, not true here )
 
 : forth-dot  out                      ;
-: EMIT       inox-ascii-character out ;
-: LITERAL    inox-literal             ;
+: EMIT       ascii-character out      ;
+: LITERAL    literal                  ;
 : SWAP       swap                     ;
 : DROP       drop                     ;
 : DUP        dup                      ;
@@ -44,13 +44,13 @@ forth-dialect
 : SPACE      32 EMIT                  ;
 : SPACES     { SPACE } SWAP times:do: ; \ ToDo: { and } defining words
 : CHAR       ascii-code               ;
-: >R         inox-to-control          ;
-: R>         inox-from-control        ;
-: @R         inox-fetch-control       ;
+: >R         to-control               ;
+: R>         from-control             ;
+: @R         fetch-control            ;
 : IMMEDIATE  immediate!               ; IMMEDIATE
 
-: ."         34 inox-ascii-character
-             inox-input-until
+: ."         34 ascii-character
+             input-until
              LITERAL
-             inox-quote .
-             inox-machine-code        ; IMMEDIATE
+             quote .
+             machine-code             ; IMMEDIATE

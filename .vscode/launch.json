@@ -2,7 +2,7 @@
         "version": "0.2.0",
         "configurations": [
                 {
-                        "name": "Launch via NPM",
+                        "name": "Launch Inox via NPM",
                         "request": "launch",
                         "type": "node",
                         "runtimeExecutable": "npm",
@@ -15,7 +15,7 @@
                         ]
                 },
                 {
-                        "name": "Launch Program",
+                        "name": "Build & launch inox.ts",
                         "request": "launch",
                         "type": "node",
                         "program": "${workspaceFolder}\\builds\\inox.js",
@@ -25,7 +25,7 @@
                         ]
                 },
                 {
-                        "name": "Launch node directly",
+                        "name": "Launch node inox.js",
                         "request": "launch",
                         "type": "node",
                         "program": "${workspaceFolder}\\builds\\inox.js",
@@ -35,7 +35,7 @@
                         "outputCapture": "std"
                 },
                 {
-                        "name": "C/C++: cl.exe build and debug active file",
+                        "name": "C++: build and debug active file",
                         "type": "cppvsdbg",
                         "request": "launch",
                         "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
@@ -43,7 +43,29 @@
                         "stopAtEntry": true,
                         "cwd": "${fileDirname}",
                         "environment": [],
-                        "preLaunchTask": "C/C++: cl.exe build active file"
+                        "preLaunchTask": "C++: shell build active file"
                 },
+                {
+                        "name": "C++: debug active file",
+                        "type": "cppvsdbg",
+                        "request": "launch",
+                        "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
+                        "args": [],
+                        "stopAtEntry": false,
+                        "cwd": "${fileDirname}",
+                        "environment": [],
+                        "console": "integratedTerminal"
+                },
+                {
+                        "name": "C++: run active file",
+                        "type": "",
+                        "request": "launch",
+                        "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
+                        "args": [],
+                        "stopAtEntry": false,
+                        "cwd": "${fileDirname}",
+                        "environment": [],
+                        "console": "integratedTerminal"
+                }
         ]
 }
