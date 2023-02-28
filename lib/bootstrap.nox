@@ -165,14 +165,15 @@ to dump-object  ~| any -- any |~
   ToDo: "dump each member";
 
 
-to method  ~| target a-block -- |~  run-with-it
+to method  ~| target a-block -- |~  run-with-it. inline
+to .{      ~| target a-block -- |~  run-with-it. inline
+to >{      ~| target a-block -- |~  run-with-it. inline
 
 
 ~~ verbs with formal parameters are functions called with arguments
 to with      /with
-to fn{       run-with-parameters. inline
-to s{        run-with-parameters. inline
 to function  run-with-parameters. inline
+to /{        run-with-parameters. inline
 
 
 to decrement  1 -

@@ -36,7 +36,7 @@ So, what's new?
 Named values
 ------------
 
-Every Iɴᴏx value as a name attached to it. That name comes in addition to the classic type and value that most languages provide.
+Every Iɴᴏx value has a name attached to it. That name comes in addition to the classic type and value that most languages provide.
 
 Because values are named, using a tag, it becomes possible to access them using that name. This is similar to the indirect access that pointers provide but without the notion of identity normaly associated to objects. That is so because many values can have the same name whereas the identity of an object is unique.
 
@@ -98,7 +98,7 @@ Runtime checks are enabled/disabled at user's will, at run time potentially. Thi
 
 Type checking at compile time is a mode that sustains the passage of time, it is not going to disappear soon. On the other end of the spectrum, script languages favor late binding and run time type identification. Let's try to unite these opposite styles, to the extend it is possible.
 
-Syntax is also a matter of taste. Iɴᴏx is rather opiniated about that. To some reasonnable extend it provide mechanisms to alter the syntax of the language, sometimes radically. Thanks Forth for that.
+Syntax is also a matter of taste. Iɴᴏx is rather opiniated about that. To some reasonnable extend it provide mechanisms to alter the syntax of the language, sometimes radically. Thank Forth for that.
 
 It is up to each programmer to apply the style she prefers, life is brief. There is more than one way to do it as they say in the wonderfull world of Perl. The principle of least surprise is cautious but girls love bad guys, don't they?
 
@@ -188,14 +188,18 @@ The `{}` enclosed _block_ that defines the function can then access the argument
 
 
 ```
-to tell-to/  with /m /d, s{ out( "T " & m> & "t " && d> }
+to tell-to/  with /m /d, /{ out( "T " & m> & "t " && d> }
 ```
 
-This is an abbreviated syntax that is defined in the _standard library_. `s{ ... }` is like `s( ... )` but the former invokes the `s{` verb with the block as sole argument whereas the later invokes the verb `f` when `)` is reached.
+This is an abbreviated syntax that is defined in the _standard library_. `xx{ ... }` is like `xx( ... )` but the former invokes the `xx{` verb with the block as sole argument whereas the later invokes the verb `xx` when `)` is reached.
 
-`s{` is like `{`, it marks the begining of a _block_, a sequence of verbs and literals. There is however an important difference, only `s{' creates a new _scope_. This is convenient to use _local variables_ that will be automaticcaly discarded when the block execution ends.
+`/{` is like `{`, it marks the begining of a _block_, a sequence of verbs and literals. There is however an important difference, only `/{' creates a new _scope_. This is convenient to use _local variables_ that will be automaticaly discarded when the block execution ends.
 
-Some high level _control structures_ automaticcaly create a scope. This is the case for all types of _loops_ and anything related to _exceptions_.
+In the case of `/{` the _scope_ is filled with local variables that are the formal parameters of the function. The _scope_ and all the local variables in it is discarded when the function returns.
+
+There is also a `.{` that is like `/{` but it creates a new scope with a single local variable named `it` that is the target of the operations in the block. When the target is not an object, but rather a value, then the synonym `>{` makes more sense (`it{` is another option, same meaning).
+
+Some high level _control structures_ automaticaly create a scope. This is the case for all types of _loops_ and anything related to _exceptions_.
 
 
 Assertions
@@ -278,7 +282,7 @@ to say:to:  "-" joint-text, out().
 say: "Hello" to: "Bob";  ~~ outputs Bob-Hello
 ```
 
-Keywords are multi parts verbs with a `:` (colon) after each part and a final `;` (semi colon). This is _syntaxic sugar_ to make the source mode readable.
+Keywords are multi parts verbs with a `:` (colon) after each part and a final `;` (semi colon). This is _syntactic sugar_ to make the source mode readable.
 
 
 ```sh
@@ -332,23 +336,25 @@ There are automatically two verbs that are created for each global variable. Fir
 
 Constants are like variables but with no _setter_ verb. Once set, at creation, the value cannot change anymore.
 
-Note that `constant: /error-state is: "error".` just means `to error-state "error".`, _syntaxic sugar_ again. Which form you use depends on the style you prefer.
+Note that `constant: /error-state is: "error".` just means `to error-state "error".`, _syntactic sugar_ again. Which form you use depends on the style you prefer.
 
 
 Local variables
 ---------------
 
 ``` sh
-to say-to/  s{ >dest >msg
-  out( "Say" & msg> & " to " & dest> )
+to say-to  >{ >msg
+  out( "Say " & msg> & " to " & it )
 }
+
+say-to( "Hello", "Bob" )  ~~ outputs Say Hello to Bob
 ```
 
 Local variables are variables stored into another stack, the _control stack_. Syntax `>xyz` creates such variables using values from the top of the _data stack_. It reads _"create local variable x"_. Use syntax `xyz>` to retrieve the value of the local variable. It reads _"get local variable x's value"_.
 
 To set the value of a local variable using the top of the stack, use `>xyz!`. `!` (exclamation point) means "set" in this context and by convention it means _"some side effect or surprise involved"_ is a more general sense.
 
-``fn{`` and `}` specify respectively the begining and the end of the **scope** within which local variables are created and used. These scopes can nest in such a way that a local variable created by a verb can be accessed from the other verbs invoked while the scope exists, unless that verb created another local variable with the same name.
+``>{`` and `}` specify respectively the begining and the end of the **scope** within which local variables are created and used. These scopes can nest in such a way that a local variable created by a verb can be accessed from the other verbs invoked while the scope exists, unless that verb created another local variable with the same name.
 
 This type of scoping for variables is named _"dynamic"_ by opposition to the more frequent static style named _"lexical"_ where a local variable stays purely local to the function that created it. Note: changing the value of a local variable outside the verb that created it is usually considered _"harmful"_ and should be avoided.
 
@@ -386,7 +392,7 @@ Such method verbs are typically defined using the `method:` verb. It creates a _
 Data variables
 --------------
 
-Data variables have their value stored in the _data stack_. To retrieve such a value it should first be pushed with a proper name and than later on retrieved using that name with a `_` prefix.
+Data variables have their value stored in the _data stack_. To retrieve such a value it should first be pushed with a proper name and then later on retrieved using that name with a `_` prefix.
 
 ``` sh
 x:3 y:5
@@ -411,7 +417,7 @@ Values
 
 Values are simple things such as `1`, `"hello"`, `/msg` or the identity of some object, or some more complex values, made of multiple simple values.
 
-Each value, either simple or complex, has a type and a name attached to it. These **named values** are often more convenient to manipulate than the classical anonymous values found in most computer languages.
+Every value, either simple or complex, has a type and a name attached to it. These **named values** are often more convenient to manipulate than the classical anonymous values found in most computer languages.
 
 
 Falsy values
