@@ -7,7 +7,7 @@ This file must be executed in order to get an approximately almost non standard 
 
 It assumes that bootstrap.nox has been executed first.
 
-This dialect of Forth is not based on the standard but on the work of many people who have contributed to the Forth community over the years. It is a mix of the ANS Forth standard, the Forth 2012 standard, and the work of many others. It is not a complete implementation of any of these standards but it is a good starting point for a Forth post modern implementation.
+This dialect of Forth is not based on the standard but on the work of many people who have contributed to the Forth community over the years. It is a mix of the ANS Forth standard, the Forth 2012 standard, and the work of so many others. It is not a complete implementation of any of these standards but it is a good starting point for a post modern Forth implementation.
 
 This dialect is not intended to be used as a general purpose Forth dialect but rather as an example for a new dialect. The main difference between this dialect and classical Forth dialects is that cells are named values with a rich semantic instead of basic binary words.
 
@@ -22,13 +22,34 @@ Dedicated to the memory of Charles Moore, the inventor of Forth.
 
 
 inox-dialect
+
+~~ Some global variables
+/Forth-safe-CSP  0 make-global
+/BASE           10 make-global
+
+~~ Let's jump into the Forth dimension
   "." "forth-dot"
+
 forth-dialect
   alias
 
+( Welcome young Forth walker )
+
 ( Standard Forth is supposed to be case insensitive, not true here )
 
-: forth-dot  out                      ;
+( equanimity is the key )
+
+: forth-dot  out                     ;
+
+: ."         34 ascii-character
+             input-until
+             literal
+             quote .
+             machine-code             ; immediate!
+
+( Now we can talk )
+
+: TODO       ." TODO " out            ;
 : EMIT       ascii-character out      ;
 : LITERAL    literal                  ;
 : SWAP       swap                     ;
@@ -48,9 +69,26 @@ forth-dialect
 : R>         from-control             ;
 : @R         fetch-control            ;
 : IMMEDIATE  immediate!               ; IMMEDIATE
+: !          poke                     ;
+: @          peek                     ;
+: !CSP       TOS Forth-safe-CSP!      ;
+: 2DROP      2 drops                  ;
+: 2OVER      2 overs                  ;
+: 2SWAP      2 swaps                  ;
+: ABORT"     ." ABORT " out           ;
+: ACCEPT     ." ACCEPT " out          ;
 
-: ."         34 ascii-character
-             input-until
-             LITERAL
-             quote .
-             machine-code             ; IMMEDIATE
+
+( So, what do I need to implement a compliant Forth implementation? )
+
+  ( I need to implement the following words )
+
+  ( 2DROP 2OVER 2SWAP >R R> @R ?DUP ABORT" ACCEPT ABORT"
+  and BASE C! C, C@ CHAR CHAR+ CHAR- CHAR/ CHAR0< CHAR0= CHAR< CHAR= CHAR>
+  COMPILE, COMPILE: COMPILE; COMPILE? CONSTANT CREATE CREATE, CREATE: CREATE;
+  CREATE? DECIMAL DEPTH DOES> and EXECUTE and EXIT FILL FIND FIND> HERE HOLD
+  IMMEDIATE INCLUDE INVERT KEY LATEST LITERAL LOAD-FILE LOOP+ LOOP- LOOP? LSHIFT
+  MAX MIN MOD M* M+ M- M/ M/MOD NEGATE OR OVER PAD PARSE PICK POSTPONE
+  POSTPONE? QUIT RECURSE RECURSE? REPEAT REPEAT? RESOLVE ROLL RSHIFT S>D
+  and also Fig-Forth words like S>D> and etc
+)

@@ -36,11 +36,14 @@
                         "command": "cl.exe",
                         "args": [
                                 "/DEBUG",
+                                "/DINOX_NDE",
+                                "/W4",
                                 "/nologo",
                                 "/utf-8",
                                 "/Zi",
                                 "/JMC",
                                 "/EHsc",
+                                "/fsanitize=address",
                                 "/std:c++latest",
                                 "/Fe${workspaceFolder}\\builds\\inox.exe",
                                 "${workspaceFolder}\\builds\\inox.cpp"
@@ -68,6 +71,7 @@
                         "label": "C++: shell build fast inox.exe",
                         "command": "cl.exe",
                         "args": [
+                                "/W4",
                                 "/nologo",
                                 "/utf-8",
                                 "/O2",
@@ -81,7 +85,7 @@
                                 "/GF",
                                 "/GS-",
                                 "/GR-",
-                                "/DFAST_INOX",
+                                "/DINOX_FAST",
                                 "/EHsc",
                                 "/std:c++latest",
                                 "/Fe${workspaceFolder}\\builds\\inox.exe",

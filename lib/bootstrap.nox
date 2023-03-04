@@ -35,12 +35,8 @@ to do:until:      loop-until.    inline
 
 to and{           if.            inline
 to or{            if-not.        inline
-to if{            if.            inline
 to then{          if.            inline
-to when{          if.            inline
 to else{          if-not.        inline
-to otherwise{     if-not.        inline
-to unless{        if-not.        inline
 
 to {}             noop
 to {drop}         /drop definition literal. immediate!
@@ -48,7 +44,7 @@ to range?         dup <=? and{ >=? }
 to range<?        dup <?  and{ >=? }
 
 
-to clear-stacks  clear-data clear-control
+to clear-stacks   clear-data clear-control
 
 to missing-verb     "missing-verb "     over text-join out clear-stacks
 to missing-method   "missing-method "   over text-join out clear-stacks
@@ -63,7 +59,7 @@ to assert{       assert. inline
 
 to constant:is:  make-constant
 to global:is:    make-global
-to local:is:     swap rename to-control
+to local:is:     swap, rename, to-control
 
 to init-globals
   constant: /inox-version      is: "v0.3.1";
@@ -89,12 +85,12 @@ to check-globals
 check-globals
 
 ~~ ToDo: :xx? special form?
-to :success? name /success =?
-to :failure? name /failure =?
-to :on?      name /on      =?
-to :off?     name /off     =?
-to :yes?     name /yes     =?
-to :no?      name /no      =?
+to :success?  name /success =?
+to :failure?  name /failure =?
+to :on?       name /on      =?
+to :off?      name /off     =?
+to :yes?      name /yes     =?
+to :no?       name /no      =?
 
 
 ~~ Class hierarchy
@@ -312,6 +308,8 @@ to text.last          text-but
 to text.find          text-find
 to text.find-last     text-find-last
 to text.line          text-line
+to text.quote         text-quote
+to text.unquote       text-unquote
 ~~ text-starts-with?
 ~~ text-ends-with?
 ~~ text-contains?
@@ -382,8 +380,8 @@ To True   true.
 global: /speed-index-loops is: 10000000;
 
 to speed-index
-  true fast!
-  ~~ debug
+  false fast!
+  debug
   if: ( true or fast? ) then: {
     if: fast? then: {
       1000000 speed-index-loops!

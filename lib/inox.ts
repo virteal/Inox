@@ -29,17 +29,26 @@
  *  with special comments processed to produce the other targets, specially the
  *  C++ target. See build_targets() below.
  */
- //  _*de*_         to ignore the rest of the line, debug code.
- //  _*as*_         to ignore the rest of the line when in AssemblyScript.
- //  _*as xxxx as*_ to include code when in AssemblyScript only.
- //  _**_           to ignore the rest of the line when in C++.
- //  _*c xxxx c*_   to include code when in C++ only, mono line.
- //  _*!c{*_        to switch to typescript mode.
- //  _*c{           to switch to C++ mode.
- //  _*}{           to switch from typescript to C++ mode.
- //  }*_            to switch back from C++ to typescript mode.
- // Note: I use _ here instead of / to preserve the comment in C++ code.
-
+ //  /*as*/         to ignore the rest of the line when in AssemblyScript.
+ //  /*as xxxx as*/ to include code when in AssemblyScript only.
+ //  /**/           to ignore the rest of the line when in C++.
+ //  /*c xxxx c*/   to include code when in C++ only, mono line.
+ //  /*!c{*/        to switch to typescript mode.
+ //  /*c{           to switch to C++ mode.
+ //  /*}{           to switch from typescript to C++ mode.
+ //  }*/            to switch back from C++ to typescript mode.
+/*
+ *  On Windows, using cl.exe, the compiler flags in debug mode are:
+ *  "/DWIN32",
+ *  "/DEBUG",
+ *  "/nologo",
+ *  "/utf-8",
+ *  /Zi",
+ *  "/JMC",
+ *  /EHsc",
+ *  "/fsanitize=address",
+ *  "/std:c++latest",
+ */
 
 /*c{
   #include <fstream>
@@ -48,6 +57,7 @@
   #include <stdbool.h>
   #include <stdint.h>
   #include <math.h>
+  #include <format>
   using namespace std;
   using namespace string_literals;
 }*/
@@ -275,10 +285,105 @@ std::chrono::milliseconds now( void ){
  *  this require some external tooling that would transpile the code.
  */
 
+// Conditional compilation of debug domains
+/*c{
+
+// INOX_FAST is without debug and without any other checks, for max speed
+#ifdef INOX_FAST
+  #define INOX_NDE
+  #define INOX_MEM_NDE
+  #define INOX_ALLOC_NDE
+  #define INOX_CHECK_NDE
+  #define INOX_EVAL_NDE
+  #define INOX_RUN_NDE
+  #define INOX_PARSE_NDE
+  #define INOX_TOKEN_NDE
+  #define INOX_STACK_NDE
+  #define INOX_BLABLA_NDE
+  #define INOX_WARN_NDE
+  #define INOX_STEP_NDE
+#endif
+
+#ifdef INOX_DE
+  #undef INOX_NDE
+#endif
+
+#ifdef INOX_MEM_DE
+  #undef INOX_MEM_NDE
+#endif
+
+#ifdef INOX_ALLOC_DE
+  #undef INOX_ALLOC_NDE
+#endif
+
+#ifdef INOX_CHECK_DE
+  #undef INOX_CHECK_NDE
+#endif
+
+#if !defined( INOX_EVAL_NDE ) && !defined( INOX_EVAL_DE )
+  #define INOX_EVAL_DE
+  #undef  INOX_EVAL_NDE
+#endif
+#ifdef INOX_EVAL_DE
+  #undef INOX_EVAL_NDE
+#endif
+
+#if !defined( INOX_RUN_NDE ) && !defined( INOX_RUN_DE )
+  #define INOX_RUN_DE
+  #undef  INOX_RUN_NDE
+#endif
+#ifdef INOX_RUN_DE
+  #undef INOX_RUN_NDE
+#endif
+
+#if !defined( INOX_TOKEN_NDE ) && !defined( INOX_TOKEN_DE )
+  #define INOX_TOKEN_DE
+  #undef  INOX_TOKEN_NDE
+#endif
+#ifdef INOX_TOKEN_DE
+  #undef INOX_TOKEN_NDE
+#endif
+
+#if !defined( INOX_PARSE_NDE ) && !defined( INOX_PARSE_DE )
+  #define INOX_PARSE_DE
+  #undef  INOX_PARSE_NDE
+#endif
+#ifdef INOX_PARSE_DE
+  #undef INOX_PARSE_NDE
+#endif
+
+#if !defined( INOX_STACK_NDE ) && !defined( INOX_STACK_DE )
+  #define INOX_STACK_DE
+  #undef  INOX_STACK_NDE
+#endif
+#ifdef INOX_STACK_DE
+  #undef INOX_STACK_NDE
+#endif
+
+#if !defined( INOX_BLABLA_NDE ) && !defined( INOX_BLABLA_DE )
+  #define INOX_BLABLA_DE
+  #undef  INOX_BLABLA_NDE
+#endif
+#ifdef INOX_BLABLA_DE
+  #undef INOX_BLABLA_NDE
+#endif
+
+#if !defined( INOX_STEP_NDE ) && !defined( INOX_STEP_DE )
+  #define INOX_STEP_DE
+  #undef  INOX_STEP_NDE
+#endif
+#ifdef INOX_STEP_DE
+  #undef INOX_STEP_NDE
+#endif
+
+
+}*/
+
+
 /**/ let de = true;
 /*c{
   // In "fast" mode, 'de' flag cannot be activated at runtime
-  #ifdef INOX_FAST
+  #ifdef INOX_NDE
     #define de false
   #else
     bool de = true;
@@ -303,7 +408,15 @@ std::chrono::milliseconds now( void ){
  *  It should be disabled in production.
  */
 
-let blabla_de = false;
+/**/ let blabla_de = false;
+/*c{
+  // In "fast" mode, 'blabla_de' flag cannot be activated at runtime
+  #ifdef INOX_BLABLA_NDE
+    #define blabla_de false
+  #else
+    bool blabla_de = false;
+  #endif
+}*/
 
 
 /*
@@ -314,12 +427,13 @@ let blabla_de = false;
 /**/ let mem_de = true;
 /*c{
   // In "fast" mode, 'mem_de' flag cannot be activated at runtime
-  #ifdef INOX_FAST
+  #ifdef INOX_MEM_NDE
     #define mem_de false
   #else
     bool mem_de = true;
   #endif
 }*/
+
 
 /*
  *  'alloc_de' is there to help debug the dynamic memory allocator.
@@ -330,7 +444,7 @@ let blabla_de = false;
 /**/ let alloc_de = true;
 /*c{
   // In "fast" mode, 'alloc_de' flag cannot be activated at runtime
-  #ifdef INOX_FAST
+  #ifdef INOX_ALLOC_NDE
     #define alloc_de false
   #else
     bool alloc_de = true;
@@ -346,7 +460,15 @@ let blabla_de = false;
  *  runs faster.
  */
 
-let check_de = true;
+/**/ let check_de = true;
+/*c{
+  // In "fast" mode, 'check_de' flag cannot be activated at runtime
+  #ifdef INOX_CHECK_NDE
+    #define check_de false
+  #else
+    bool check_de = true;
+  #endif
+}*/
 
 
 /*
@@ -356,7 +478,15 @@ let check_de = true;
  *  It should be disabled in production.
  */
 
-let warn_de = true;
+/**/ let warn_de = true;
+/*c{
+  // In "fast" mode, 'warn_de' flag cannot be activated at runtime
+  #ifdef INOX_WARN_NDE
+    #define warn_de false
+  #else
+    bool warn_de = true;
+  #endif
+}*/
 
 
 /* -----------------------------------------------------------------------------
@@ -373,7 +503,15 @@ let warn_de = true;
  *  is responsible for splitting the source code into tokens.
  */
 
-let token_de = false;
+/**/ let token_de = false;
+/*c{
+  // In "fast" mode, 'token_de' flag cannot be activated at runtime
+  #ifdef INOX_TOKEN_NDE
+    #define token_de false
+  #else
+    bool token_de = false;
+  #endif
+}*/
 
 
 /*
@@ -384,7 +522,15 @@ let token_de = false;
  *  not defining a verb.
  */
 
-let parse_de = false;
+/**/ let parse_de = false;
+/*c{
+  // In "fast" mode, 'parse_de' flag cannot be activated at runtime
+  #ifdef INOX_PARSE_NDE
+    #define parse_de false
+  #else
+    bool parse_de = false;
+  #endif
+}*/
 
 
 /*
@@ -394,7 +540,15 @@ let parse_de = false;
  *  the read-eval-print loop.
  */
 
-let eval_de = false;
+/**/ let eval_de = false;
+/*c{
+  // In "fast" mode, 'eval_de' flag cannot be activated at runtime
+  #ifdef INOX_EVAL_NDE
+    #define eval_de false
+  #else
+    bool eval_de = false;
+  #endif
+}*/
 
 
 /*
@@ -403,7 +557,15 @@ let eval_de = false;
  *  compiled by the parser when defining verbs.
  */
 
-let run_de = false;
+/**/ let run_de = false;
+/*c{
+  // In "fast" mode, 'run_de' flag cannot be activated at runtime
+  #ifdef INOX_RUN_NDE
+    #define run_de false
+  #else
+    bool run_de = false;
+  #endif
+}*/
 
 
 /*
@@ -412,7 +574,15 @@ let run_de = false;
  *  stack overflow/underflow checking, it only enables traces about the stacks.
  */
 
-let stack_de = false;
+/**/ let stack_de = false;
+/*c{
+  // In "fast" mode, 'stack_de' flag cannot be activated at runtime
+  #ifdef INOX_STACK_NDE
+    #define stack_de false
+  #else
+    bool stack_de = false;
+  #endif
+}*/
 
 
 /*
@@ -421,7 +591,15 @@ let stack_de = false;
  *  debugging of the code.
  */
 
-let step_de = false;
+/**/ let step_de = false;
+/*c{
+  // In "fast" mode, 'step_de' flag cannot be activated at runtime
+  #ifdef INOX_STEP_NDE
+    #define step_de false
+  #else
+    bool step_de = false;
+  #endif
+}*/
 
 
 /* ----------------------------------------------------------------------------
@@ -454,14 +632,43 @@ function debug(){
   can_log = true;
   /**/ de = mem_de = alloc_de = true;
   /*c{
-    #ifndef INOX_FAST
-      de = mem_de = alloc_de = true;
+    #ifndef INOX_NDE
+      de = true;
+    #endif
+    #ifndef INOX_MEM_NDE
+      mem_de = true;
+    #endif
+    #ifndef INOX_ALLOC_NDE
+      alloc_de = true;
+    #endif
+    #ifndef INOX_CHECK_NDE
+      check_de = true;
+    #endif
+    #ifndef INOX_WARN_NDE
+      warn_de = true;
+    #endif
+    #ifndef INOX_BLABLA_NDE
+      blabla_de = true;
+    #endif
+    #ifndef INOX_TOKEN_NDE
+      token_de = true;
+    #endif
+    #ifndef INOX_PARSE_NDE
+      parse_de = true;
+    #endif
+    #ifndef INOX_EVAL_NDE
+      eval_de = true;
+    #endif
+    #ifndef INOX_RUN_NDE
+      run_de = true;
+    #endif
+    #ifndef INOX_STACK_NDE
+      stack_de = true;
+    #endif
+    #ifndef INOX_STEP_NDE
+      step_de = false; // Not always convenient in C++
     #endif
   }*/
-  check_de = true;
-  blabla_de = true;
-  token_de = parse_de = eval_de = run_de = stack_de = true;
-  step_de = true;
 }
 
 
@@ -474,8 +681,31 @@ function debug(){
 
 function no_debug(){
   debug();
-  blabla_de = false;
-  token_de = parse_de = eval_de = run_de = stack_de = step_de = false;
+  /**/ blabla_de = false;
+  /**/ token_de = parse_de = eval_de = run_de = stack_de = step_de = false;
+  /*c{
+    #ifndef INOX_BLABLA_NDE
+      blabla_de = false;
+    #endif
+    #ifndef INOX_TOKEN_NDE
+      token_de = false;
+    #endif
+    #ifndef INOX_PARSE_NDE
+      parse_de = false;
+    #endif
+    #ifndef INOX_EVAL_NDE
+      eval_de = false;
+    #endif
+    #ifndef INOX_RUN_NDE
+      run_de = false;
+    #endif
+    #ifndef INOX_STACK_NDE
+      stack_de = false;
+    #endif
+    #ifndef INOX_STEP_NDE
+      step_de = false;
+    #endif
+  }*/
 }
 
 
@@ -490,8 +720,14 @@ function no_debug_at_all(){
   no_debug();
   /**/ de = mem_de = alloc_de = false;
   /*c{
-    #ifndef INOX_FAST
-      de = mem_de = alloc_de = false;
+    #ifndef INOX_NDE
+      de = false;
+    #endif
+    #ifndef INOX_MEM_NDE
+      mem_de = false;
+    #endif
+    #ifndef INOX_ALLOC_NDE
+      alloc_de = false;
     #endif
   }*/
   check_de = false;
@@ -499,11 +735,12 @@ function no_debug_at_all(){
 
 
 function init_debug() : Index {
-  // no_debug_at_all(); return 0;
-  no_debug();        return 1;
-  // debug();
-  /*c step_de = false; c*/
-  return 2;
+  let retcode = 0;
+  // no_debug_at_all();
+  // no_debug(); retcode = 1;
+  debug(); retcode = 2;
+  /*c step_de = false; c*/ // Not always convenient for debugging in C++
+  return retcode;
 }
 
 // 0 = no_debug_at_all(), 1 = no_debug(), 2 = debug()
@@ -553,91 +790,150 @@ c*/
 /*c{
 bool  trace( TxtC );
 void  trace_context( TxtC );
-void  set_text_cell( Cell, TxtC );
+void  FATAL( TxtC msg );
+Text  dump( Cell );
+Text  short_dump( Cell );
+bool  mand_cell_type( Cell, Index );
+bool  mand_cell_name( Cell, Tag );
+bool  mand_empty_cell( Cell );
+bool  mand_tos_is_in_bounds( void );
+bool  mand_csp_is_in_bounds( void );
+Cell  allocate_cell( void );
+int   init_areas_allocator( void );
+Cell  allocate_area( Count );
+void  free_area( Cell );
+bool  is_safe_area( Cell );
+bool  is_busy_area( Cell );
+Size  area_size( Cell );
+Count area_capacity( Cell );
+void  set_next_cell( Cell, Cell );
 bool  is_valid_tag( Tag );
 Text  tag_to_text( Tag );
 bool  is_a_tag_cell( Cell );
 bool  is_a_tag_singleton( Cell );
-void  increment_object_ref_count( Cell );
+bool  is_a_reference_cell( Cell );
 bool  needs_clear( Cell );
 void  clear( Cell );
-bool  needs_clear( Cell );
 Index object_length( Cell );
 void  free_text( Index );
 void  free_proxy( Index );
-bool  is_last_reference_to_area( Cell );
-void  decrement_object_ref_count( Cell );
 Cell  get_reference( Cell );
-void  free_area( Cell );
-void  FATAL( TxtC msg );
-Text  dump( Cell );
-Cell  allocate_area( Count );
+void  increment_object_ref_count( Cell );
+void  decrement_object_ref_count( Cell );
+bool  is_last_reference_to_area( Cell );
+Cell  stack_preallocate( Length );
 Count stack_length( Cell );
 bool  stack_is_extended( Cell );
-bool  mand_cell_type( Cell, Index );
-bool  mand_cell_name( Cell, Tag );
-void  free_area( Cell );
-bool  is_safe_area( Cell );
-bool  is_busy_area( Cell );
-Count area_size( Cell );
+void  stack_push( Cell, Cell );
 void  stack_put( Cell, Index, Cell );
 void  stack_put_copy( Cell, Index, Cell );
 Cell  stack_at( Cell, Index );
 void  stack_extend( Cell, Length );
-Text  short_dump( Cell );
-bool  is_a_reference_cell( Cell );
+Text  stacks_dump( void );
 bool  cell_looks_safe( Cell );
-Text  cell_to_text( Cell );
 void  set_return_cell( Cell );
 Text  type_to_text( Index );
-Cell  POP( void );
-Text  cell_to_text( Cell );
 Cell  PUSH( void );
+Cell  POP( void );
+void  push_integer( Value );
 void  set_text_cell( Cell, TxtC );
+Cell  make_proxy( any );
 void  set_proxy_cell( Cell, Cell );
-Text  inox_machine_code_cell_to_text( Cell );
-Text  stacks_dump( void );
 void  primitive_clear_control( void );
 void  primitive_clear_data( void );
-Text  verb_to_text_definition( Tag );
-void  push_integer( Value );
-i32   PUSH( void );
-Text  type_to_text( Index );
 Text  cell_to_text( Cell );
+Text  type_to_text( Index );
 Text  proxy_to_text( Cell );
 Text  integer_to_text( Value );
-Count block_length( Cell );
+Cell  definition( Tag );
+Text  verb_to_text_definition( Tag );
+Text  inox_machine_code_cell_to_text( Cell );
 Tag   type_to_tag( Index );
 Index tag_to_type( Tag );
-Tag   type_to_tag( Index );
+Count block_length( Cell );
 void  primitive_if( void );
 void  primitive_run( void );
-Text  extract_line( TxtC, Index );
-bool  mand_tos_is_in_bounds( void );
-bool  mand_csp_is_in_bounds( void );
+void  primitive_noop( void );
 void  set_style( TxtC );
+Text  extract_line( TxtC, Index );
 void  eval_do_literal( void );
 void  eval_do_machine_code( Tag );
 void  eval_quote_next_token( void );
+bool  eval_is_expecting_the_verb_name( void );
 void  process_comment_state( void );
 void  process_word_state( void );
-bool  eval_is_expecting_the_verb_name( void );
 bool  parsing( Index );
+Primitive get_primitive( Tag );
 
 }*/
 
+/* -----------------------------------------------------------------------------
+ *  The Inox interpreter's memory inside the CPU's one.
+ *  The Typescript version uses a single big ArrayBuffer.
+ *  The C++ version uses calloc() linked chunks.
+ */
+
+// This is "the data segment" of the virtual machine.
+// the "void" first cell is allocated at absolute address 0.
+// It's an array of 64 bits words indexed using 28 bits addresses.
+// That's a 31 bits address space, 2 giga bytes, plenty.
+// ToDo: study webassembly modules
+// See https://webassembly.github.io/spec/core/syntax/modules.html
+
+
+// That the flat memory where the Inox interpretor will run
+// ToDo: make the size configurable at run time
+// Current default is 256 KB
+/**/ const   INOX_HEAP_SIZE =   1024 * 256;
+/*c  #define INOX_HEAP_SIZE   ( 1024 * 256 )   c*/
+
+// cell number 0 is reserved, special, 0/0/0, void/void/void
+// It should never be accessed, but it is used as a default value.
+// If accidentely accessed, this may raise an hardware exception
+const cell_0 = 0;
+
+// Some basic memory allocation, LIFO oriented
+// This is like sbrk() on Unix
+// See https://en.wikipedia.org/wiki/Sbrk
+// Smart pointers use a malloc/free scheme with reference counters.
+
+// This last cell would be HERE in Forth
+// See https://forth-standard.org/standard/core/HERE
+let the_next_free_cell = 0;
+
+// The very first cell is not 0 when running in C++, see init_cells()
+let the_very_first_cell = 0;
+
+// There is also an upper limit, see init_cells() too
+let the_free_cell_limit = 0;
+
+// The memory is accessed differently depending on the target
+/**/ let mem8  = new ArrayBuffer( INOX_HEAP_SIZE  ); // 256 kb
+/**/ let mem32 = new Int32Array( mem8 );
+// ToDo: with AssemblyScript const mem64 = new Int64Array( mem8 );
+
+// Linked list of free byte areas, see init_areas_allocator()
+let the_first_free_area = 0;
+
+let the_empty_text_cell = 0;
+
+// Having a tempory cell is convenient sometimes
+let the_tmp_cell = 0;
+
 
 /* -----------------------------------------------------------------------------
- *  Helper functions to deal with Typescript and C++ strings
- *  in a way that is compatible with both languages.
+ *  Helper functions to deal with Typescript and C++ strings in a way that is
+ *  compatible with both languages (and with possible future target languages).
  *
  *  tcut(), tbut() and tmid() to extract sub parts of the text.
- *  S(), N(), P() and F() to concatenate text and numbers.
+ *
+ *  S(), N(), C(), P() and F() to concatenate text and various types of numbers.
  */
 
 /*
  *  S() - start of text concatenation operations.
- *    Usage: x = S()+ "ab" + "c" + N( 123 ) + "de" + "f"
+ *  Note: in many cases the C++ type inference mechanism is enough to avoid
+ *  the S() call but there are still a few cases where it is apparently needed.
  */
 
 /**/ function S(){ return ""; }
@@ -646,11 +942,31 @@ bool  parsing( Index );
 
 /*
  *  N( n ) - convert a number to a text.
- *    Usage: S()+ "Some:" + N( 123 ) + "."
+ *  If number is a cell address, it is converted to a text with the @ prefix.
  */
 
-/**/ function N( n ){ return "" + n; }
-/*c  Text N( int n ){ return std::to_string( n ); }  c*/
+/**/ function N( n : number ){ return "" + n; }
+/*c{
+  Text N( int n ){
+    if( n >= the_very_first_cell && n <= the_next_free_cell ){
+      return "@" + std::to_string( n );
+    }
+    return std::to_string( n );
+  }
+}*/
+
+
+/*
+ *  C( c ) - convert a cell address to a text, with the @ prefix.
+ *  If the cell is not in the valid range, @!!! is prepended to the number.
+ */
+
+function C( c : Cell ) : Text {
+  if( c >= the_very_first_cell && c <= the_next_free_cell ){
+    return "@" + N( c - the_very_first_cell );
+  }
+  return "@!!!" + N( c );
+}
 
 
 /*
@@ -693,7 +1009,7 @@ bool  parsing( Index );
 
 Text tbut( TxtC s, int n ){
   if( n >= 0 ){
-    if( n >= s.length() )return no_text;
+    if( (unsigned int) n >= s.length() )return no_text;
     return s.substr( n );
   }else{
     int start = s.length() + n;
@@ -715,7 +1031,7 @@ c*/
 /*c
 Text tcut( TxtC s, int n ){
   if( n >= 0 ){
-    if( n >= s.length() )return s;
+    if( (unsigned int) n >= s.length() )return s;
     return s.substr( 0, n );
   }else{
     int end = s.length() + n;
@@ -772,9 +1088,14 @@ c*/
 /*c
 Text tlow( TxtC s ){
   Text r;
-  for( int i = 0; i < s.length(); i++ ){
+  for( unsigned int ii = 0; ii < s.length(); ii++ ){
     // ToDo: very slow
-    r += tolower( s[ i ] );
+    auto ch = s[ ii ];
+    if( ch < 128 ){
+      r += (char) tolower( s[ ii ] );
+    }else{
+      r += ch;
+    }
   }
   return r;
 }
@@ -792,9 +1113,14 @@ c*/
 /*c
 Text tup( TxtC s ){
   Text r;
-  for( int i = 0; i < s.length(); i++ ){
+  for( unsigned int ii = 0; ii < s.length(); ii++ ){
     // ToDo: very slow
-    r += toupper( s[ i ] );
+    auto ch = s[ ii ];
+    if( ch < 128 ){
+      r += (char) toupper( s[ ii ] );
+    }else{
+      r += ch;
+    }
   }
   return r;
 }
@@ -1189,184 +1515,111 @@ function mand_neq( a : i32, b : i32 ) : boolean {
 // For the webassembly version, see https://wasmbyexample.dev/examples/webassembly-linear-memory/webassembly-linear-memory.assemblyscript.en-us.html
 
 
-// This is "the data segment" of the virtual machine.
-// the "void" first cell is allocated at absolute address 0.
-// It's an array of 64 bits words indexed using 28 bits addresses.
-// That's a 31 bits address space, 2 giga bytes, plenty.
-// ToDo: study webassembly modules
-// See https://webassembly.github.io/spec/core/syntax/modules.html
-
-
-// That the flat memory where the Inox interpretor will run
-// ToDo: make the size configurable at run time
-// Current default is 256 kb
-/**/ const   INOX_HEAP_SIZE =   1024 * 256;
-/*c  #define INOX_HEAP_SIZE   ( 1024 * 256 )   c*/
-
-
-// The flat memory is accessed differently depending on the target
-/**/ const mem8  = new ArrayBuffer( INOX_HEAP_SIZE  ); // 256 kb
-/**/ const mem32 = new Int32Array( mem8 );
-// ToDo: with AssemblyScript const mem64 = new Int64Array( mem8 );
-
-
 // Write access to that cell triggers a debugger breakpoint in debug mode
 let breakpoint_cell = 1;
-
 
 /*
  *  set_value() and set_info() are the only way to write to memory
  */
 
-/**/ function set_value( c : Cell, v : Value ) : void  {
-/**/   if( de && c == breakpoint_cell )debugger;
-/**/   mem32[ c << 1 ] = v |0;
-/**/ }
+function set_value( c : Cell, v : Value ){
+   if( de && c == breakpoint_cell )debugger;
+   /**/ mem32[ c << 1 ] = v |0;
+   /*c  *cast_ptr( c << 4 ) = v;  c*/
+}
 
-// On metal, direct access to memory
-/*c
-#define set_value( c, v )  ( *cast_ptr( c << 4 ) = v );
-c*/
 
-/**/ function set_info( c : Cell, i : Info  ) : void  {
-/**/   /*de*/ if( de && c == breakpoint_cell )debugger;
-/**/   mem32[ ( c << 1 ) + 1 ] = i |0;
-/**/ }
-
-// On metal
-/*c
-#define set_info( c, i )  ( *cast_ptr( ( c << 4 ) + 4 ) = i )
-c*/
+function set_info( c : Cell, i : Info  ){
+  if( de && c == breakpoint_cell )debugger;
+  /**/ mem32[ ( c << 1 ) + 1 ] = i |0;
+  /*c  *cast_ptr( ( c << 4 ) + 4 ) = i;  c*/
+}
 
 
 /*
  *  value() and info() are the only way to read from memory
  */
 
-/**/  function value( c : Cell ) : Value {
-/**/    // return mem64[ c ] & 0xffffffff
-/**/    return mem32[ c << 1 |0 ];
-/**/  }
-
-// On metal
-/*c
-#define value( c )  ( *cast_ptr( c << 4 ) & 0xffffffff )
-c*/
+function value( c : Cell ) : Value {
+  // return mem64[ c ] & 0xffffffff
+  /**/ return mem32[ c << 1 |0 ];
+  /*c  return *cast_ptr( c << 4 );  c*/
+}
 
 
-/**/  function info( c : Cell ) : Info {
-/**/    // return mem64[ c ] >>> 32;
-/**/    return mem32[ ( c << 1 ) + 1 ] |0;
-/**/  }
-
-// On metal
-/*c
-#define info( c )  ( *cast_ptr( ( c << 4 ) + 4 ) )
-c*/
+function info( c : Cell ) : Info {
+  // return mem64[ c ] >>> 32;
+  /**/ return mem32[ (     c << 1 ) + 1 ] |0;
+  /*c  return *cast_ptr( ( c << 4 ) + 4 );  c*/
+}
 
 
 /*
  *  reset() is the way to clear a cell
  */
 
-/**/  function reset( c : Cell ) : void {
-/**/    /*de*/ if( de && c == breakpoint_cell )debugger;
-/**/    // mem64[ c ] = 0;
-/**/    mem32[   c << 1       ] = 0;
-/**/    mem32[ ( c << 1 ) + 1 ] = 0;
-/**/  }
-
-// On metal
-/*c
-#define reset( c )  ( *cast_ptr( c << 4 ) = 0, *cast_ptr( ( c << 4 ) + 4 ) = 0 )
-c*/
+function reset( c : Cell ){
+  if( de && c == breakpoint_cell )debugger;
+  // mem64[ c ] = 0;
+  /**/ mem32[       c << 1       ] = 0;
+  /**/ mem32[     ( c << 1 ) + 1 ] = 0;
+  /*c  *cast_ptr(   c << 4       ) = 0;  c*/
+  /*c  *cast_ptr( ( c << 4 ) + 4 ) = 0;  c*/
+}
 
 
 /*
  *  reset_value()
  */
 
-/**/  function reset_value( c : Cell ) : void {
-/**/    /*de*/ if( de && c == breakpoint_cell )debugger;
-/**/    mem32[ c << 1 ] = 0;
-/**/  }
-
-// On metal
-/*c
-#define reset_value( c )  ( *cast_ptr( c << 4 ) = 0 )
-c*/
+function reset_value( c : Cell ) : void {
+  if( de && c == breakpoint_cell )debugger;
+  /**/ mem32[     c << 1 ] = 0;
+  /*c  *cast_ptr( c << 4 ) = 0;  c*/
+}
 
 
 /*
  *  reset_info()
  */
 
-/**/  function reset_info( c : Cell ) : void {
-/**/    /*de*/ if( de && c == breakpoint_cell )debugger;
-/**/    mem32[ ( c << 1 ) + 1 ] = 0;
-/**/  }
-
-// On metal
-/*c
-#define reset_info( c )  ( *cast_ptr( ( c << 4 ) + 4 ) = 0 )
-c*/
+function reset_info( c : Cell ) : void {
+  if( de && c == breakpoint_cell )debugger;
+  /**/ mem32[     ( c << 1 ) + 1 ] = 0;
+  /*c  *cast_ptr( ( c << 4 ) + 4 ) = 0;  c*/
+}
 
 
 /*
  *  init_cell() to initialize a cell to zeros
  */
 
-// Not on metal
-/*!c{*/
-
-function init_cell( c : Cell, v : Value, i : Info ) : void{
+function init_cell( c : Cell, v : Value, i : Info ){
   if( de && c == breakpoint_cell )debugger;
   // mem64[ c ] = v | ( i << 32 );
-  mem32[   c << 1       ] = v |0;
-  mem32[ ( c << 1 ) + 1 ] = i |0;
+  /**/ mem32[       c << 1       ] = v |0;
+  /**/ mem32[     ( c << 1 ) + 1 ] = i |0;
+  /*c  *cast_ptr(   c << 4       ) = v;  c*/
+  /*c  *cast_ptr( ( c << 4 ) + 4 ) = i;  c*/
 }
-
-// On metal
-/*}{
-
-void init_cell( Cell c, Value v, Info i ) {
-  if( de && c == breakpoint_cell )debugger;
-  u32 dst = c << 4;
-  *cast_ptr( dst     ) = v;
-  *cast_ptr( dst + 4 ) = i;
-}
-
-}*/
 
 
 /*
  *  init_copy_cell() to initialize a cell to the value of another one
  */
 
-// Not on metal
-/*!c{*/
-
-function init_copy_cell( dst : Cell, src : Cell ) : void {
+function init_copy_cell( dst : Cell, src : Cell ){
 // Initialize a cell, using another one, raw copy.
   if( de && dst == breakpoint_cell )debugger;
-  const dst1 = dst << 1;
-  const src1 = src << 1;
-  mem32[ dst1     ] = mem32[ src1     ] |0;
-  mem32[ dst1 + 1 ] = mem32[ src1 + 1 ] |0;
+  /**/ const dst1 = dst << 1;
+  /**/ const src1 = src << 1;
+  /**/ mem32[ dst1     ] = mem32[ src1     ] |0;
+  /**/ mem32[ dst1 + 1 ] = mem32[ src1 + 1 ] |0;
+  /*c  auto dst4 = dst << 4;  c*/
+  /*c  auto src4 = src << 4;  c*/
+  /*c  *cast_ptr( dst4     ) = *cast_ptr( src4     );  c*/
+  /*c  *cast_ptr( dst4 + 4 ) = *cast_ptr( src4 + 4 );  c*/
 }
-
-// On metal
-/*}{
-
-void init_copy_cell( Cell dst, Cell src ) {
-  if( de && dst == breakpoint_cell )debugger;
-  u32 dst4 = dst << 4;
-  u32 src4 = src << 4;
-  *cast_ptr( dst4     ) = *cast_ptr( src4 );
-  *cast_ptr( dst4 + 4 ) = *cast_ptr( src4 + 4 );
-}
-
-}*/
 
 
 /*
@@ -1385,7 +1638,7 @@ function name( c : Cell )          : Tag  { return unpack_name( info( c ) ); }
 // On metal
 /*}{
 
-#define pack( t, n )       ( ( n ) | ( t ) << 28 )
+#define pack( t, n )       ( ( n ) | ( ( t ) << 28 ) )
 #define unpack_type( i )   ( ( i ) >> 28 )
 #define unpack_name( i )   ( ( i ) & 0xffffff )
 #define type( c )          ( unpack_type( info( c ) ) )
@@ -1571,19 +1824,74 @@ function test_pack(){
  *  Cell allocator
  */
 
-// cell number 0 is reserved, special, 0/0/0, void/void/void
-// It should never be accessed, but it is used as a default value
-// If accidentely accessed, this may raise an hardware exception
-const cell_0 = 0;
+function init_cells_allocator(){
 
-// Some basic memory allocation, purely growing.
-// This is like sbrk() on Unix
-// See https://en.wikipedia.org/wiki/Sbrk
-// Smart pointers use a malloc/free scheme with reference counters.
+  // Typescript version, using ArrayBuffers:
+  /**/ the_very_first_cell = 0;
+  /**/ the_free_cell_limit = mem32.length;
 
-// This last cell would be HERE in Forth
-// See https://forth-standard.org/standard/core/HERE
-let the_next_free_cell = 0;
+  // C++ version, using calloc() chuncks:
+  /*c{
+    the_very_first_cell = ( (int) calloc( INOX_HEAP_SIZE, 1 ) >> 4 );
+    if( the_very_first_cell == 0 ){
+      FATAL( "Out of memory, first calloc() failed" );
+      return;
+    }
+    the_free_cell_limit
+    = the_very_first_cell + INOX_HEAP_SIZE / size_of_cell - 1;
+  }*/
+
+  the_next_free_cell = the_very_first_cell;
+
+  // Avoid using the addresses that match a type id
+  // It helps for debugging traces, see N() and C()
+  /**/ allocate_cells( 16 );
+
+  the_tmp_cell = allocate_cell();
+
+}
+
+
+function resize_memory(){
+  // The heap is full, we need to expand it
+
+  // Typescript version:
+  /**/  const new_size = mem32.length + INOX_HEAP_SIZE / 16;
+  /**/  const new_mem8  = new ArrayBuffer( new_size );
+  /**/  const new_mem32 = new Int32Array( new_mem8 );
+  /**/  // Copy the old memory buffer into the new one
+  /**/  // ToDo: use ArrayBuffer.transfert() when it becomes available (03/2023)
+  /**/  new_mem32.set( mem32 );
+  /**/  // Update the global variables
+  /**/  mem8  = new_mem8;
+  /**/  mem32 = new_mem32;
+  /**/  the_free_cell_limit = mem32.length;
+
+  // C++ version:
+  /*c{
+    // Add a sentinel cell at the end of the older chunk, see memory_dump()
+    // ToDo: maybe I should create a "fake" busy area?
+    set_next_cell( the_free_cell_limit, -1 );
+    // Allocate a new chunk
+    // ToDo: it bugs if new_mem is at a lower address than the old limit
+    // Workaround: use a bigger chunk until it's address is higher?
+    // Another workaround is to use realloc() and relocate everything...
+    void* new_mem = calloc( 1, INOX_HEAP_SIZE / 16 ); // 16 Kb
+    if( new_mem == NULL ){
+      FATAL( "Out of memory for cells" );
+      return;
+    }
+    if( new_mem < (void*) ( the_free_cell_limit << 4 ) ){
+      FATAL( "Out of memory, new alloc is too low" );
+      return;
+    }
+    // Set the new limit (including space for sentinel) & the new next free cell
+    the_free_cell_limit
+    = ( ( ( (int) new_mem ) + ( INOX_HEAP_SIZE / 16  ) ) >> 4 ) - 1;
+    the_next_free_cell
+    =   ( (int) new_mem )                                >> 4;
+  }*/
+}
 
 
 // Forward declaration to please C++ compiler
@@ -1616,8 +1924,7 @@ function is_last_cell( c : Cell ) : boolean {
 
 function set_next_cell( c : Cell, nxt : Cell ) : void {
   // Turn cell into a list member, set the next cell in list
-  /**/ init_cell( c, nxt, tag_list );
-  /*c  init_cell( c, nxt, 0 );  c*/ // ToDo: why the diff?
+  init_cell( c, nxt, tag_list );
   mem_de&&mand_eq( next( c ), nxt );
 }
 
@@ -1626,73 +1933,109 @@ let debug_next_allocate = 0;
 
 
 function allocate_cells( n : Count ) : Cell {
-  // Allocate a number of consecutive cells. Static. See also allocate_bytes().
-  // Cells allocated this way are not freeable unless very quickly.
-  /*de*/ if( de && debug_next_allocate != 0 ){
-  /*de*/   debug_next_allocate = the_next_free_cell - debug_next_allocate;
-  /*de*/   debugger;
-  /*de*/   debug_next_allocate = 0;
-  /*de*/ }
+// Allocate a number of consecutive cells. See also allocate_area()
+  if( de && debug_next_allocate != 0 ){
+    debug_next_allocate = the_next_free_cell - debug_next_allocate;
+    debugger;
+    debug_next_allocate = 0;
+  }
+  // Do we cross the limit?
+  while( the_next_free_cell + n * ONE > the_free_cell_limit ){
+    // The heap is full, we need to expand it
+    resize_memory();
+  }
+  alloc_de&&mand( the_next_free_cell           < the_free_cell_limit  );
+  alloc_de&&mand( the_next_free_cell + n * ONE <= the_free_cell_limit );
   const cell = the_next_free_cell;
   the_next_free_cell += n * ONE;
   return cell;
 }
 
-
-// This is initialy the sentinel tail of the list of reallocatable cells
-let nil_cell = 0; // it will soon be the void/void/void cell
-
 // Linked list of free cells.
 let the_first_free_cell = 0;
 
-
 function allocate_cell() : Cell {
   // Allocate a new cell or reuse a free one
-  /*de*/ if( de && debug_next_allocate != 0 ){
-  /*de*/   debug_next_allocate = the_next_free_cell - debug_next_allocate;
-  /*de*/   debugger;
-  /*de*/   debug_next_allocate = 0;
-  /*de*/ }
+
+  if( de && debug_next_allocate != 0 ){
+    debug_next_allocate = the_next_free_cell - debug_next_allocate;
+    debugger;
+    debug_next_allocate = 0;
+  }
+
+  // If the free list is empty, allocate a new cell
   let cell = the_first_free_cell;
-  if( cell == nil_cell ){
+  if( cell == 0 ){
+    // ToDo: check that the heap does not overflow
+    if( the_next_free_cell == the_free_cell_limit ){
+      // The heap is full, we need to expand it
+      resize_memory();
+    }
     // The heap grows upward
     cell = the_next_free_cell;
     the_next_free_cell += ONE;
-    // ToDo: check that the heap does not overflow
+
+  // Consume the first cell of the free list
   } else {
     the_first_free_cell = next( cell );
     reset( cell );
   }
-  de&&mand( type(  cell ) == 0 );
-  de&&mand( name(  cell ) == 0 );
-  de&&mand( value( cell ) == 0 );
+
+  de&&mand_empty_cell( cell  );
   return cell;
+
 }
 
 
-function free_last_cell( c : Cell ) : void {
-  // Called by allocate_cell() only
-  // ToDo: alloc/free for tempory cells is not efficient.
-  de&&mand_eq( c, the_next_free_cell - ONE );
-  the_next_free_cell -= ONE;
+function compact_free_cells() : void {
+// Compact the free list of cells
+
+  // Try to free cells in the free list
+  let previous = 0;
+  let candidate_cell = the_first_free_cell;
+  let limit = 1000;
+
+  // Loop while there are free cells that may be compacted
+  while( candidate_cell != 0 ){
+    // Never loop forever
+    if( --limit == 0 )break;
+    // If the candidate cell happens to be the last allocated cell
+    if( candidate_cell == the_next_free_cell - ONE ){
+      // Free it
+      the_next_free_cell -= ONE;
+      // Remove it from the free list
+      if( previous == 0 ){
+        the_first_free_cell = next( candidate_cell );
+      } else {
+        set_next_cell( previous, next( candidate_cell ) );
+      }
+      reset( candidate_cell );
+      // Restart the loop
+      candidate_cell = the_first_free_cell;
+      previous = 0;
+    }else{
+      // The candidate cell is not the last allocated cell
+      // Move to the next cell in the free list
+      previous = candidate_cell;
+      candidate_cell = next( candidate_cell );
+    }
+  }
 }
 
 
 function free_cell( c : Cell ) : void {
 // Free a cell, add it to the free list
 
-  // Check that cell is empty
-  de&&mand_eq( type(  c ), 0 );
-  de&&mand_eq( name(  c ), 0 );
-  de&&mand_eq( value( c ), 0 );
+  de&&mand_empty_cell( c );
 
   // Special case when free is about the last allocated cell.
   if( c == the_next_free_cell - ONE ){
     // It happens with tempory cells that are needed sometimes.
-    // ToDo: get rid of that special case.
-    free_last_cell( c );
+    // ToDo: get rid of that special case where possible.
+    the_next_free_cell = c;
     return;
   }
+
   // Else, add cell to the linked list of free cells
   set_next_cell( c, the_first_free_cell );
   the_first_free_cell = c;
@@ -1702,20 +2045,29 @@ function free_cell( c : Cell ) : void {
 
 function free_cells( c : Cell, n : Count ) : void {
 // Free a number of consecutive cells
-  // ToDo: not used yet but it would make sense for stack style allocations.
-  // If the area is big enough, it is better to add it to the dynamic pool.
+
+  // If last allocated cells, restore the next free cell
+  if( c + n * ONE == the_next_free_cell ){
+    // This works well for fast LIFO style allocations
+    the_next_free_cell = c;
+    compact_free_cells();
+    return;
+  }
+
+  // ToDo: If big enough, it is better to add it to the dynamic pool.
   let ii;
   for( ii = 0 ; ii < n ; ii++ ){
     free_cell( c + ii * ONE );
   }
+
 }
 
 
 function mand_empty_cell( c : Cell ) : boolean {
 // Check that a cell is empty, 0, 0, 0
-  mand_eq( type(  c ), 0 );
   mand_eq( name(  c ), 0 );
   mand_eq( value( c ), 0 );
+  mand_eq( type(  c ), 0 );
   return true;
 }
 
@@ -1926,11 +2278,18 @@ let all_symbol_cells_capacity = 0;
 /**/ let    all_definitions : Array< Cell >;
 /*c  Cell*  all_definitions = (Cell*) 0;  c*/
 
+// It becomes a stack object during the bootstrap
+let all_definitions_stack = 0;
+
 // The associated array of primitives, if any
 /**/ let all_primitives : Array< Primitive >;
 /*c  Primitive* all_primitives = (Primitive*) 0; c*/
 
+// It becomes a stack object during the bootstrap
+let all_primitives_stack = 0;
+
 // Typescript grows arrays automatically, C++ does not
+// ToDo: get rid of this once upgrade_symbols() works
 /*c Length all_primitives_capacity  = 0; c*/
 /*c Length all_definitions_capacity = 0; c*/
 
@@ -1941,8 +2300,17 @@ let all_symbol_cells_capacity = 0;
  *  Init all of that
  */
 
+
+function init_allocators(){
+  init_cells_allocator();
+  // Done later one: init_areas_allocator();
+}
+
+
 function init_symbols() : Index {
 // Initialize the global arrays of all symbols
+
+  init_allocators();
 
   // See tables below, from "void" to "stack", 21 symbols
   all_symbol_cells_length = 21;
@@ -1953,11 +2321,8 @@ function init_symbols() : Index {
   /*c all_primitives_capacity  = 512; c*/
   /*c all_definitions_capacity = 512; c*/
 
-  // The lower part of the memory should never be used
-  // ToDo: In C++, it should be the result of some big malloc() I guess
-  /*c the_next_free_cell = ( (int) calloc( 256 * 1024, 1 ) >> 4 ); c*/
-  allocate_cells( 16 );
-
+  // ToDo: turn this into a normal stack object asap
+  // This becomes possible later on, when the area allocator is ready
   all_symbol_cells
   = allocate_cells( all_symbol_cells_capacity );
 
@@ -1997,7 +2362,7 @@ function init_symbols() : Index {
       "true",       // 19 - misc
       "stack",      // 20
     ];
-    // ToDo: I should use a stack for that
+    // ToDo: I should use a stack for that too
     all_primitives  = [];
     all_definitions = [];
   /*}{
@@ -2038,8 +2403,70 @@ function init_symbols() : Index {
   }*/
 
   tag_list = tag( "list" );
-  return 0;
+  return 1;
 }
+
+
+function upgrade_symbols(){
+// Upgrade the global arrays of all symbols into real stack objects
+
+  // First the tag to text table
+  const new_symbols = stack_preallocate( all_symbol_cells_length );
+  let ii;
+  let symbol_tag = 0;
+  let auto_symbol_text = S();
+  for( ii = 0 ; ii < all_symbol_cells_length ; ii++ ){
+    symbol_tag = name( all_symbol_cells + ii * ONE );
+    auto_symbol_text = tag_to_text( symbol_tag );
+    set_text_cell( the_tmp_cell, auto_symbol_text );
+    set_name( the_tmp_cell, symbol_tag );
+    stack_push( new_symbols, the_tmp_cell );
+  }
+
+  // Then the tag to definition table
+  const new_definitions = stack_preallocate( all_symbol_cells_length );
+  let symbol_definition = 0;
+  for( ii = 0 ; ii < all_symbol_cells_length ; ii++ ){
+    symbol_tag = name( all_symbol_cells + ii * ONE );
+    symbol_definition = definition( symbol_tag );
+    set( the_tmp_cell, type_verb, symbol_tag, symbol_definition );
+    stack_push( new_definitions, the_tmp_cell );
+  }
+
+  // Then the tag to primitive table
+  const new_primitives = stack_preallocate( all_symbol_cells_length );
+  let auto_symbol_primitive = primitive_noop;
+  let primitive_proxy = 0;
+  for( ii = 0 ; ii < all_symbol_cells_length ; ii++ ){
+    symbol_tag = name( all_symbol_cells + ii * ONE );
+    auto_symbol_primitive = get_primitive( symbol_tag );
+    primitive_proxy = make_proxy( auto_symbol_primitive );
+    set( the_tmp_cell, type_proxy, symbol_tag, primitive_proxy );
+    stack_push( new_primitives, the_tmp_cell );
+  }
+
+  // Clear the old global arrays
+  for( ii = 0 ; ii < all_symbol_cells_capacity ; ii++ ){
+    clear( all_symbol_cells + ii * ONE );
+  }
+  free_cells( all_symbol_cells, all_symbol_cells_capacity );
+  // C++ version needs to free the other arrays too
+  /*c{
+    delete all_symbol_texts;
+    delete all_primitives;
+    delete all_definitions;
+  }*/
+
+  // Now we can replace the global arrays with the new stacks
+  all_symbol_cells = new_symbols;
+  all_definitions_stack = new_definitions;
+  all_primitives_stack  = new_primitives;
+
+  // From now one, the symbols are handled as normal objects
+
+
+}
+
 
 // Hack to force calling init_symbols() during C++ "dynamic initialization"
 // See https://en.cppreference.com/w/cpp/language/initialization
@@ -2065,7 +2492,10 @@ const tag_stack     = tag( "stack" );
 
 function tag_to_text( t : Tag ) : Text {
 // Return the string value of a tag
-  de&&mand( t < all_symbol_cells_length );
+  de&&mand( is_valid_tag( t ) );
+  if( ! is_valid_tag( t ) ){
+    return "invalid-tag-" + C( t );
+  }
   return all_symbol_texts[ t ];
 }
 
@@ -2136,7 +2566,7 @@ function register_symbol( name : TxtC ) : Index {
 
   // Add the name to the arrays, as a tag and as a string
   /**/ all_symbol_texts[ all_symbol_cells_length ] = name;
-  /*c all_symbol_texts[ all_symbol_cells_length ] = strdup( name.data() ); c*/
+  /*c all_symbol_texts[ all_symbol_cells_length ] = _strdup( name.data() ); c*/
   set(
     all_symbol_cells + all_symbol_cells_length * ONE,
     type_tag,
@@ -2268,7 +2698,7 @@ function definition_exists( t : Tag ) : boolean {
  *
  *  The implementation of names varies depending on the target.
  *  In Javascript, there is a shadow array of string values.
- *  In C, there is a shadow array of pointers to nul terminated characters.
+ *  In C++, there is a shadow array of pointers to std::string objects.
  */
 
 function stack_allocate( l : Length ) : Cell {
@@ -2346,15 +2776,13 @@ function stack_free( s : Cell ) : void {
 }
 
 
-
-
 function stack_capacity( s : Cell ) : Length {
 // Return the capacity of a stack
   // The capacity does not include the first cell that holds the length itself
   if( stack_is_extended( s ) ){
-    return area_size( value( s ) ) / size_of_cell - 1;
+    return area_capacity( value( s ) ) - 1;
   }else{
-    return area_size( s ) / size_of_cell - 1;
+    return area_capacity( s ) - 1;
   }
 }
 
@@ -2607,7 +3035,7 @@ function stack_update_by_value( s : Cell, c : Cell ){
   }
   FATAL( S()
     + "stack_update_by_value, attribute not found,"
-    + N( c)
+    + C( c )
   );
 }
 
@@ -2792,6 +3220,11 @@ function set_tag_cell( c : Cell, n : Tag ){
 }
 
 
+function set_verb_cell( c : Cell, n : Tag ){
+  set( c, type_verb, n, n );
+}
+
+
 /**/ const   the_void_cell = 0; // tag_singleton_cell_by_name( "void" );
 /*c  #define the_void_cell   0   c*/
 
@@ -2834,7 +3267,6 @@ function cell_integer( c : Cell ) : Value {
  *  is a total of 16 bytes versus the non optimized 24 bytes.
  */
 
-
 // The first cell of a busy header is the reference counter.
 const tag_dynamic_ref_count = tag( "_dynrc" );
 
@@ -2847,8 +3279,17 @@ const tag_dynamic_area_size = tag( "_dynsz" );
 // This is where to find the size relative to the area first header address.
 const offset_of_area_size = ONE;
 
-// Linked list of free byte areas, initialy empty, malloc/free related
-let the_free_area = 0;
+const the_first_ever_area = the_next_free_cell;
+
+function init_areas_allocator() : Index {
+  the_first_free_area = 0;
+  // ToDo: until the bug with the allocator is fixed, get by with a big area
+  // const big_area = allocate_area( INOX_HEAP_SIZE / 2 );
+  // free_area( big_area );
+  return 1;
+}
+let init_areas_allocator_done = init_areas_allocator();
+
 
 function area_header( area : Cell ) : Cell {
   // Return the address of the first header cell of a byte area, the ref count.
@@ -2870,8 +3311,11 @@ function area_ref_count( area : Cell ) : Value {
 
 
 function set_area_busy( area : Cell ){
-// Set the tag of the header of a byte area to tag_dynamic_ref_count
-  set_name( area_header( area ), tag_dynamic_ref_count );
+// Set the reference count header of a byte area to 1
+  const header = area_header( area );
+  // Before it becomes busy, it was free, so it has a next_area header.
+  alloc_de&&mand_cell_name( header, tag_dynamic_next_area );
+  set( header, type_integer, tag_dynamic_ref_count, 1 );
 }
 
 
@@ -2896,31 +3340,27 @@ function is_free_area( area : Cell ) : boolean {
 function is_dynamic_area( area : Cell ) : boolean {
 // Return true if the area is a dynamic area, false otherwise
   // This is maybe not 100% reliable, but it is good enough.
-  const first_header_ok  = is_busy_area( area ) || is_free_area( area );
-  if( ! first_header_ok )return false;
-  const second_header_ok
+  const auto_first_header_ok = is_busy_area( area ) || is_free_area( area );
+  if( ! auto_first_header_ok )return false;
+  const auto_second_header_ok
   = name( area_header( area ) + ONE ) == tag_dynamic_area_size;
-  return second_header_ok;
-}
-
-
-function free_if_area( area : Cell ){
-// Unlock the area if it is a dynamic area
-  if( is_dynamic_area( area ) ){
-    free_area( area );
-  }
+  return auto_second_header_ok;
 }
 
 
 function next_area( area : Cell ) : Cell {
 // Return the address of the next free area
+  alloc_de&&mand( is_safe_area( area ) );
   alloc_de&&mand( is_free_area( area ) );
+  const next_area = value( area_header( area ) );
+  alloc_de&&mand( next_area == 0 || is_safe_area( next_area ) );
   return value( area_header( area ) );
 }
 
 
 function set_next_area( area : Cell, nxt : Cell ){
 // Set the address of the next free area
+  alloc_de&&mand( is_safe_area( area ) );
   alloc_de&&mand( is_free_area( area ) );
   set_value( area_header( area ), nxt );
 }
@@ -2934,35 +3374,34 @@ function set_area_ref_count( area : Cell, v : Value ){
 
 
 function area_size( area : Cell ) : Size {
-// Return the size of a byte area, in bytes
+// Return the size of a byte area, in bytes. It includes the 2 header cells.
+  alloc_de&&mand_cell_name(
+    area_header( area ) + offset_of_area_size * ONE,
+    tag_dynamic_area_size
+  );
   return value( area_header( area ) + offset_of_area_size );
+}
+
+function area_capacity( area : Cell ) : Length {
+// Return the capacity, in cells. It does not include the 2 header cells
+  return ( area_size( area ) / size_of_cell ) - 2;
 }
 
 
 function set_area_size( area : Cell, s : Size ) : void {
-// Set the size of a byte area
-  set_value( area_header( area ) + offset_of_area_size, s );
-}
-
-
-function set_area_size_tag( area : Cell ){
-// Set the tag of the second header of a byte area to tag_dynamic_area_size
+// Set the size of a byte area, it includes the header
+  const header = area_header( area );
   // The second header is after the first one, ie after the ref count.
-  set_name(
-    area_header( area ) + offset_of_area_size,
-    tag_dynamic_area_size
-  );
+  set( header + offset_of_area_size, type_integer, tag_dynamic_area_size, s );
 }
 
 
 function adjusted_bytes_size( s : Size ) : Size {
   // Align on size of cells and add size for heap management
   // The header is two cells, first is the ref count, second is the size.
-  let aligned_size = 2 * size_of_cell
+  let aligned_size
+  = 2 * size_of_cell
   + ( s + ( size_of_cell - 1 ) ) & ~( size_of_cell - 1 );
-  // + ( s         + ( size_of_cell - 1 ) )
-  //   & ( 0xffffffff - ( size_of_cell - 1 )
-  // );
   return aligned_size;
 }
 
@@ -2998,8 +3437,8 @@ function area_free_small_areas() : boolean {
     let free;
     while( ( free = all_free_lists_by_area_length[ ii ] ) != 0 ){
       all_free_lists_by_area_length[ ii ] = next_area( free );
-      set_next_area( free, the_free_area );
-      the_free_area = free;
+      set_next_area( free, the_first_free_area );
+      the_first_free_area = free;
       de&&mand( is_free_area( free ) );
       something_was_collected = true;
     }
@@ -3025,7 +3464,12 @@ function area_garbage_collector() : boolean {
 
   // Limit the time taken, don't restart from the beginning nor end too far
   let cell = last_visited_cell;
+  if( cell < the_very_first_cell ){
+    cell = the_very_first_cell;
+  }
+
   let count_visited = 0;
+  let cells_in_heap = the_next_free_cell - the_very_first_cell;
 
   while( true ){
 
@@ -3035,41 +3479,52 @@ function area_garbage_collector() : boolean {
     // Time is proportional to the number of cells visited
     count_visited++;
 
-    // We're not supposed to visit cells after the last cell
-    if( count_visited > the_next_free_cell ){
-      return false;
-    }
+    // When all cells have been visited, exit loop
+    if( count_visited >= cells_in_heap )break;
 
     // OK, advance to next cell. Note: cell 0 is never visited, that's ok
     cell += ONE;
 
     // Time to restart if last cell was reached
     if( cell >= the_next_free_cell ){
-      cell = 0;
+      cell = the_very_first_cell;
       continue;
     }
 
-    // If something looks like two consecutive free areas, maybe coalesce them
-    if( !is_free_area( cell ) )continue;
+    // Detect areas, continue if none found
+    if( !is_dynamic_area( cell + 2 * ONE ) )continue;
+
+    // If busy, skip it
+    if( !is_free_area( cell + 2 * ONE ) ){
+      cell += area_size( cell + 2 * ONE ) / size_of_cell;
+      continue;
+    }
+
+    // The area is after two header cells, ptr to next area and size
+    cell += 2 * ONE;
+
+    alloc_de&&mand( is_free_area( cell ) );
 
     // Coalesce consecutive free areas, as long as there are some
     while( true ){
 
-      const potential_next_area = cell + area_size( cell );
+      const potential_next_area = cell + area_size( cell ) / size_of_cell;
 
       if( potential_next_area >= the_next_free_cell
+      || !is_dynamic_area( potential_next_area )
       || !is_free_area( potential_next_area )
-      || !is_dynamic_area(  cell )
-      || !is_dynamic_area(  potential_next_area )
       )break;
 
       // Coalesce consecutive two free areas
-      debugger;
       let total_size = area_size( cell ) + area_size( potential_next_area );
       set_area_size( cell, total_size );
       set_next_area( cell, next_area( potential_next_area ) );
       reset( area_header( potential_next_area ) );
       reset( area_header( potential_next_area ) + ONE );
+      // If that was the head of the free list, update it
+      if( the_first_free_area == potential_next_area ){
+        the_first_free_area = cell;
+      }
       something_was_collected = true;
 
     } // End of while( true ) over consecutive free areas
@@ -3083,8 +3538,11 @@ function area_garbage_collector() : boolean {
 
 function area_garbage_collector_all(){
 // Run garbage collector until nothing is collected
+  // First compact the free cells used by allocate_cell()
+  compact_free_cells();
   // Start from the beginning and loop until nothing is collected
   last_visited_cell = 0;
+  // Loop until nothing is collected
   while( area_garbage_collector() );
 }
 
@@ -3094,13 +3552,18 @@ function allocate_area( s : Size ) : Cell {
 
   /*de*/ if( de ){
   /*de*/   if( s > 1000 ){
-  /*de*/     if( s != 4096 ){
+  /*de*/     if( s != INOX_HEAP_SIZE / 2 ){
   /*de*/       bug( S()+ "Large memory allocation, " + N( s ) );
   /*de*/       debugger;
   /*de*/     }
   /*de*/   }
   /*de*/   // alloc_de&&mand( size != 0 );
   /*de*/ }
+
+  // Was something broken?
+  alloc_de&&mand(
+    the_first_free_area == 0 || is_safe_area( the_first_free_area )
+  );
 
   // Align on 64 bits, size of a cell, plus size of headers
   let adjusted_size = adjusted_bytes_size( s );
@@ -3110,108 +3573,151 @@ function allocate_area( s : Size ) : Cell {
     /*c && false c*/  // ToDo: disabled for now, it's not working in C++
   ){
     let try_length = adjusted_size / size_of_cell;
-    while( true ){
-      let buddy_free_area
-      = all_free_lists_by_area_length[ try_length ];
-      if( buddy_free_area ){
-        all_free_lists_by_area_length[ try_length ]
-        = next_area( buddy_free_area );
-        set_area_busy(      buddy_free_area );
-        set_area_ref_count( buddy_free_area, 1 );
-        set_area_size(      buddy_free_area, try_length * size_of_cell );
-        return buddy_free_area;
-      }else{
-        // Try with a bigger area
-        try_length++;
-        if( try_length > 10 )break;
-      }
+    let small_free_area = all_free_lists_by_area_length[ try_length ];
+    if( small_free_area ){
+      all_free_lists_by_area_length[ try_length ]
+      = next_area( small_free_area );
+      set_area_busy( small_free_area );
+      // ToDo: isn't size already correct?
+      set_area_size( small_free_area, try_length * size_of_cell );
+      return small_free_area;
     }
   }
 
-  // ToDo: search for free area
-
-  // Starting from the first item of the free area list
-  let area = the_free_area;
+  // Search first fit, starting from the first item of the free area list
+  alloc_de&&mand(
+    the_first_free_area == 0 || is_safe_area( the_first_free_area )
+  );
+  let area = the_first_free_area;
+  let area_sz = 0;
   let previous_area = 0;
-  if( alloc_de && area ){
-    alloc_de&&mand( is_safe_area( area ) );
-    alloc_de&&mand( is_free_area( area ) );
-  }
+  let limit = 1000;
   while( area ){
+
+    // Never loop forever
+    if( limit-- == 0 ){
+      FATAL( "Infinite loop in allocate_area" );
+      return 0;
+    }
+
     alloc_de&&mand( is_safe_area( area ) );
     alloc_de&&mand( is_free_area( area ) );
-    const area_sz = area_size( area );
+    area_sz = area_size( area );
+
     if( area_sz < adjusted_size ){
+      // The area is too small, try next one
       previous_area = area;
       area = next_area( area );
       continue;
     }
+
     // The area is big enough, use it
+    if( previous_area ){
+      // The area is not the first one, remove it from the list
+      alloc_de&&mand_eq( next_area( previous_area ), area );
+      set_next_area( previous_area, next_area( area ) );
+    }else{
+      // The area is the first one, update the list
+      alloc_de&&mand_eq( area, the_first_free_area );
+      the_first_free_area = next_area( area );
+      alloc_de&&mand(
+        the_first_free_area == 0 || is_safe_area( the_first_free_area )
+      );
+    }
+
     // Break big area and release extra space
     let remaining_size = area_sz - adjusted_size;
+
     // Only split if the remaining area is big enough for headers
     if( remaining_size >= 2 * size_of_cell ){
       let remaining_area = area + ( adjusted_size / size_of_cell );
-      set_area_size_tag( remaining_area );
-      set_area_size(     remaining_area, remaining_size );
-      set_area_free(     remaining_area );
-      set_next_area(     remaining_area, next_area( area ) );
-      if( previous_area ){
-        set_next_area( previous_area, remaining_area );
-      }else{
-        the_free_area = remaining_area;
+      set_area_size( remaining_area, remaining_size );
+      set_area_free( remaining_area );
+      set_next_area( remaining_area, next_area( area ) );
+      if( the_first_free_area ){
+        alloc_de&&mand( is_safe_area( the_first_free_area ) );
+        set_next_area( remaining_area, the_first_free_area );
       }
+      the_first_free_area = remaining_area;
       alloc_de&&mand( is_safe_area( remaining_area ) );
       alloc_de&&mand( is_free_area( remaining_area ) );
+
     }else{
       // The area is too small to split, use it all
       adjusted_size = area_sz;
-      if( previous_area ){
-        set_next_area( previous_area, next_area( area ) );
-      }else{
-        the_free_area = next_area( area );
-      }
     }
-    break;
+
+    // Mark the found area as busy
+    set_area_busy( area );
+    set_area_size( area, adjusted_size );
+
+    alloc_de&&mand( is_safe_area( area ) );
+    alloc_de&&mand( is_busy_area( area ) );
+    alloc_de&&mand( is_last_reference_to_area( area ) );
+    alloc_de&&mand_neq( area, the_first_free_area );
+    alloc_de&&mand(
+      the_first_free_area == 0 || is_safe_area( the_first_free_area )
+    );
+    return area;
   }
 
   // If nothing was found, allocate more memory for the heap and retry
-  if( ! area ){
-    // It' a good time to free whatever was accumulated in small areas
-    // ToDo: check limit, ie out of memory
-    area = the_next_free_cell + ONE + 2 * ONE;
-    // This is like sbrk() in C, hence allocate some spare room
-    adjusted_size += 4 * 1024;
-    the_next_free_cell += adjusted_size / size_of_cell;
-    // Pretend it is a busy area and then free it to add it to the heap
-    set_area_busy(      area );
-    set_area_ref_count( area, 1 );
-    set_area_size_tag(  area );
-    set_area_size(      area, adjusted_size );
-    free_area(          area );
-    return allocate_area( s );
-  }
+  alloc_de&&mand(
+    the_first_free_area == 0 || is_safe_area( the_first_free_area )
+  );
 
-  // Area is locked initialy, once, see lock_bytes()
-  set_area_busy(      area );
-  set_area_ref_count( area, 1 );
+  // Add some extra cells to avoid too many small allocations
+  let extra_cells = 128;
 
-  // Remember size of area, this does include the header overhead
-  set_area_size_tag( area );
-  set_area_size(     area, adjusted_size );
+  // Don't forget the cell for the refcount and size headers
+  let needed_cells = ( adjusted_size / size_of_cell ) + extra_cells + 2;
 
-  // Return an address that is after the header, at the start of the payload
+  const cells = allocate_cells( needed_cells );
+  alloc_de&&mand( cells + needed_cells * ONE <= the_next_free_cell );
+
+  alloc_de&&mand(
+    the_first_free_area == 0 || is_safe_area( the_first_free_area )
+  );
+
+  // Skip the refcount and size headers future headers
+  area = cells + 2 * ONE;
+
+  // Pretend it is a busy area and then free it to add it to the heap
+  set_area_free( area );
+  alloc_de&&mand(
+    the_first_free_area == 0 || is_safe_area( the_first_free_area )
+  );
+  set_area_busy( area );
+  set_area_size( area, adjusted_size + extra_cells * size_of_cell );
   alloc_de&&mand( is_safe_area( area ) );
-  alloc_de&&mand( is_busy_area( area ) );
-  alloc_de&&mand( is_last_reference_to_area( area) );
-  alloc_de&&mand_neq( area, the_free_area );
-  return area;
+  free_area(     area );
+
+  // Retry the allocation, it should work now
+  const allocated_area = allocate_area( s );
+
+  // The result should be the newly added area but without the extra cells
+  alloc_de&&mand_eq( allocated_area, area );
+  alloc_de&&mand_eq(
+    area + ( adjusted_size / size_of_cell ),
+    the_first_free_area
+  );
+  alloc_de&&mand_eq(
+    area_size( the_first_free_area ),
+    extra_cells * size_of_cell
+  );
+
+  // Defensive
+  alloc_de&&mand(
+    the_first_free_area == 0 || is_safe_area( the_first_free_area )
+  );
+
+  return allocated_area;
 
 }
 
 
 function resize_area( a : Cell, s : Size ) : Cell {
-  de&&mand( is_safe_area( a ) );
+  alloc_de&&mand( is_safe_area( a ) );
   let ii = area_size( a );
   if( s <= ii ){
     // ToDo: should split the area and free the extra space
@@ -3229,70 +3735,70 @@ function resize_area( a : Cell, s : Size ) : Cell {
   return new_mem;
 }
 
-let the_empty_text_cell = 0;
-
 function free_area( area : Cell ){
-  // ToDo: add to pool for malloc()
-  // ToDo: a simple solution is to split the array into cells
-  // and call free_cell() for each of them. That's easy.
-  // Another solution is to keep lists of free zones of
-  // frequent sizes.
-  // Other malloc/free style solution would not be much more complex.
+
   if( area == 0 ){
     // Assume it's about the empty text, ""
     debugger;
     return;
   }
+
   if( de
   && the_empty_text_cell != 0
   && area == value( the_empty_text_cell )
   ){
     // What! free of the empty text, ""?
+    trace( "Internal err, free of the empty text" );
+    // FATAL( "Internal error, free of the empty text" );
     return; // ToDo: handle this properly
-    FATAL( "Internal error, free of the empty text" );
   }
+
   alloc_de&&mand( is_safe_area( area ) );
   const old_count = area_ref_count( area );
-  // Free now if not locked
-  if( old_count == 1 ){
 
-    const size = area_size( area );
-
-    // The whole area should be full of zeros, ie cleared
-    if( de ){
-      // The size includes the header overhead, currently 2 cells
-      let ncells = size / size_of_cell - 2;
-      let ii;
-      for( ii = 0 ; ii < ncells ; ii += ONE ){
-        mand_eq( value( area + ii ), 0 );
-        mand_eq( info(  area + ii ), 0 );
-      }
-    }
-
-    // Add to a "per length" free list if small enough area
-    if( size <= 10 * size_of_cell ){
-      set_area_free( area );
-      set_next_area( area, all_free_lists_by_area_length[ size / size_of_cell ] );
-      all_free_lists_by_area_length[ size / size_of_cell ] = area;
-      // ToDo: this can degenerate when too many small areas are unused.
-      // I should from time to time empty the free lists and add areas to the
-      // global pool, the older areas first to maximize locality.
-      return;
-    }
-
-    // Add area in free list, at the end to avoid premature reallocation
-    // ToDo: insert area in sorted list instead of at the start?
-    // I should do this to coalesce adjacent free areas to avoid fragmentation
-    set_area_free( area );
-    set_next_area( area, the_free_area );
-    the_free_area = area;
-    alloc_de&&mand( is_safe_area( area ) );
-    alloc_de&&mand( is_free_area( area ) );
+  // Just decrement the reference counter if it's not the last reference
+  if( old_count != 1 ){
+    set_area_ref_count( area, old_count - 1 );
     return;
   }
-  // Decrement reference counter
-  const new_count = old_count - 1;
-  set_area_ref_count( area, new_count );
+
+  // The whole area should be full of zeros, ie cleared
+  if( de ){
+    const capacity = area_capacity( area );
+    let ii;
+    for( ii = 0 ; ii < capacity ; ii++ ){
+      mand_empty_cell( area + ii * ONE );
+    }
+  }
+
+  // Add to a "per length" free list if small enough area
+  const size = area_size( area );
+  if( size <= 10 * size_of_cell ){
+    set_area_free( area );
+    set_next_area(
+      area,
+      all_free_lists_by_area_length[ size / size_of_cell ]
+    );
+    all_free_lists_by_area_length[ size / size_of_cell ] = area;
+    // ToDo: this can degenerate when too many small areas are unused.
+    // I should from time to time empty the free lists and add areas to the
+    // global pool, the older areas first to maximize locality.
+    // That is what collect_garbage() does, supposedly.
+    // ToDo: when is collect_garbage() called?
+    return;
+  }
+
+  // Add area in free list
+  // ToDo: insert area in sorted list instead of at the start?
+  // I should do this to coalesce adjacent free areas to avoid fragmentation
+  set_area_free( area );
+  alloc_de&&mand(
+    the_first_free_area == 0 || is_safe_area( the_first_free_area )
+  );
+  set_next_area( area, the_first_free_area );
+  the_first_free_area = area;
+  alloc_de&&mand( is_safe_area( area ) );
+  alloc_de&&mand( is_free_area( area ) );
 }
 
 
@@ -3322,9 +3828,6 @@ function is_last_reference_to_area( area : Cell ) : boolean {
 }
 
 
-const the_first_ever_area = the_next_free_cell;
-
-
 function is_safe_area( area : Cell ) : boolean {
 // Try to determine if the address points to a valid area allocated
 // using allocates_area() and not already released.
@@ -3337,20 +3840,29 @@ function is_safe_area( area : Cell ) : boolean {
     return true;
   }
 
+  // The address must be in the heap
+  if( area < the_very_first_cell
+  ||  area - 2 * ONE >= the_next_free_cell
+  ){
+    FATAL( S()+ "Invalid area, not in the heap, " + C( area ) );
+    return false;
+  }
+
   // The address must be aligned on a cell boundary
   if( area % ( size_of_cell / size_of_word ) != 0 ){
-    bug( S()+ "Invalid area, not aligned on a cell boundary, " + N( area ) );
+    FATAL( S()+ "Invalid area, not aligned on a cell boundary, " + C( area ) );
     return false;
   }
 
   // The address must be in the heap
   if( area < the_first_ever_area ){
-    bug( S()+ "Invalid area before the first cell, " + N( area ) );
+    FATAL( S()+ "Invalid area before the first cell, " + C( area ) );
     return false;
   }
 
   if( area - 2 * ONE >= the_next_free_cell ){
-    bug( S()+ "Invalid area after the end, " + N( area ) );
+    FATAL( S()+ "Invalid area after the end, " + C( area ) );
+    return false;
   }
 
   if( is_busy_area( area ) ){
@@ -3358,7 +3870,7 @@ function is_safe_area( area : Cell ) : boolean {
     // The reference counter must be non zero if busy
     const reference_counter = area_ref_count( area );
     if( reference_counter == 0 ){
-      bug( S()
+      FATAL( S()
         + "Invalid reference counter for area, " + N( reference_counter )
         + " " + N( area )
       );
@@ -3368,7 +3880,7 @@ function is_safe_area( area : Cell ) : boolean {
     // When one of the 4 most significant bits is set, that's a type id probably
     if( reference_counter >= ( 1 << 28 ) ){
       const type = unpack_type( reference_counter );
-      bug( S()+ "Invalid counter for area? " + N( type ) + " " + N( area ) );
+      FATAL( S()+ "Invalid counter for area? " + N( type ) + " " + C( area ) );
       return false;
     }
 
@@ -3377,39 +3889,48 @@ function is_safe_area( area : Cell ) : boolean {
   // The size must be bigger than the size of the headers
   const size = area_size( area );
   if( size <= 2 * ( size_of_cell / size_of_word ) ){
-    bug( S()+ "Invalid size for area, " + N( size ) + " " + N( area ) );
+    FATAL( S()+ "Invalid size for area, " + N( size ) + " " + C( area ) );
+    return false;
+  }
+
+  // The whole area must be in the heap
+  if( area + size / size_of_cell > the_next_free_cell ){
+    FATAL( S()+
+      "Invalid area, out of heap, size " + N( size ) + ", " + C( area )
+    );
     return false;
   }
 
   // When one of the 4 most significant bits is set, that's a type id probably
   if( size >= ( 1 << 29 ) ){
     const type = unpack_type( size );
-    bug( S()+ "Invalid counter for area? " + N( type ) + " " + N( area ) );
+    FATAL( S()+ "Invalid counter for area? " + N( type ) + " " + C( area ) );
     return false;
   }
 
   // The size must be a multiple of the size of a cell
   if( size % ( size_of_cell / size_of_word ) != 0 ){
-    bug( S()+ "Invalid size for area " + N( size ) + " " + N( area ) );
+    FATAL( S()+ "Invalid size for area " + N( size ) + " " + C( area ) );
     return false;
   }
 
   // The size must be smaller than the heap size
   if( size > ( the_next_free_cell - the_first_ever_area ) * size_of_cell ){
-    bug( S()+ "Invalid size for area " + N( size ) + " " + N( area ) );
+    FATAL( S()+ "Invalid size for area " + N( size ) + " " + C( area ) );
     return false;
   }
 
   return true;
 }
 
-function increment_object_ref_count( c : Cell ){
-  lock_area( c );
+
+function increment_object_ref_count( area : Cell ){
+  lock_area( area );
 }
 
 
-function decrement_object_ref_count( c : Cell ){
-  free_area( c );
+function decrement_object_ref_count( area : Cell ){
+  free_area( area );
 }
 
 
@@ -3476,6 +3997,7 @@ function make_proxy( object : any ) : Index {
   /**/ const proxy = allocate_area( 0 );
   // In C++, the cell holds a char* to a strdup() of the C++ std::string
   /*c  Cell  proxy = allocate_area( 1 );  c*/
+  alloc_de&&mand( is_safe_area( proxy ) );
   /**/ all_proxied_objects_by_id.set( proxy, object );
   /*c  set( proxy, type_integer, tag_c_string, (int) object );  c*/
   // de&&mand_eq( value( proxy ), 0 );
@@ -3547,8 +4069,8 @@ function proxy_to_text( area : Cell ) : Text {
     let obj = all_proxied_objects_by_id.get( area );
     return obj.toString ? obj.toString() : "";
   /*}{
-      de&&mand_cell_name( area, tag_c_string );
-      return TxtD( (const char*) value( area ) );
+    de&&mand_cell_name( area, tag_c_string );
+    return TxtD( (const char*) value( area ) );
   /*c*/
 }
 
@@ -3557,10 +4079,13 @@ function proxy_to_text( area : Cell ) : Text {
  *  Text, type 6
  *  Currently implemented in typescript using a proxy object, a string.
  *  C++ implementation uses a one cell area with strdup() as value.
+ *  ToDo: use allocate_area() to implement a local strdup()?
+ *  ToDo: use such a local strdup() even in Typescript?
  */
 
 function set_text_cell( c : Cell, txt : TxtC ){
   if( tlen( txt ) == 0 ){
+    alloc_de&&mand( is_safe_area( value( the_empty_text_cell ) ) );
     copy_cell( the_empty_text_cell, c );
     return;
   }
@@ -3568,7 +4093,7 @@ function set_text_cell( c : Cell, txt : TxtC ){
   // using a map, const text_cache = new Map< text, proxy >();
   // If the text is already in the cache, increment the reference counter.
   /**/ const proxy = make_proxy( txt );
-  /*c  Index proxy = make_proxy( strdup( txt.data() ) );  c*/
+  /*c  Index proxy = make_proxy( _strdup( txt.data() ) );  c*/
   set( c, type_text, tag_text, proxy );
   de&&mand( cell_looks_safe( c ) );
   de&&mand( teq( cell_to_text( c ), txt ) );
@@ -3581,7 +4106,7 @@ function free_text( oid : Index ){
 }
 
 
-/* -----------------------------------------------------------------------
+/* -----------------------------------------------------------------------------
  *  ToDo: a custom string implementation.
  *  This is to avoid using the native string implementation.
  *  It should handle UTF-8, UTF-16, UTF-32, etc.
@@ -3589,12 +4114,26 @@ function free_text( oid : Index ){
  *  It should be able to handle strings of u8, u16, u32, etc.
  *  It is actually more a buffer than a string.
  *  That's not needed initially, but it will be needed later.
+ *
+ *  For very small strings, 3 chars at most, I could store them in the
+ *  address itself with some kind of encoding where the last byte is set to 0?
+ *  That would require that such a case never happens when allocate_area()
+ *  returns a new area. It would be endian dependent and possible only
+ *  when the lowest byte of the address is stored at the highest address,
+ *  ie big ending. A big-endian system stores the most significant byte of
+ *  a word at the smallest memory address and the least significant byte
+ *  at the largest. On little endian, this would require the addresses to be
+ *  limited to 20 bits, which is OK as long as 24 bits addressable memory
+ *  is OK, ie 16 MB. Another option is to handle short string of 2 chars
+ *  at most and have allocate_area() avoid returning an address with the
+ *  sentinel byte set to 0.
  */
 
 
 /* -----------------------------------------------------------------------
  *  ToDo: a custome map implementation.
  *  This is an optimisation to avoid the sequential search in the stacks.
+ *  ToDo: study AssemblyScript's Map implementation.
  */
 
 
@@ -3732,8 +4271,8 @@ function mand_definition( def : Cell ) : boolean {
   if( type( header ) == type_integer )return true;
   const n = name( header );
   FATAL( S()
-    + "Not a definition: " + N( n ) + " " + tag_to_text( n )
-    + " at cell " + N( def )
+    + "Not a definition: " + C( n ) + " " + tag_to_text( n )
+    + " at cell " + C( def )
   );
   return false;
 }
@@ -3771,50 +4310,88 @@ function set_definition_length( def : Cell, length : Count ){
 /*!c{*/
 
 // ToDo: implement Map as an object
-const all_definitions_by_hashcode = new Map< Value, Cell >();
-
-function find_definition_by_hashcode( hashcode : Value ) : Cell {
-// Find a method verb definition in the dictionary
-  if( !all_definitions_by_hashcode.has( hashcode ) ){
-    return 0;
-  }
-  return all_definitions_by_hashcode.get( hashcode );
-}
+const class_cache      = new Map< Value, Cell >();
+const method_cache     = new Map< Value, Cell >();
+const definition_cache = new Map< Value, Cell >();
 
 
 function find_method( class_tag : Tag, method_tag : Tag ) : Cell {
 // Find a method in the dictionary
+
+  // First check the cache
+  // ToDo: figure out a better hash function, 13 is an arbitrary number
   const hashcode = ( class_tag << 13 ) + method_tag;
-  return find_definition_by_hashcode( hashcode );
+  if( definition_cache.has( hashcode )
+  &&  class_cache.get(      hashcode ) != class_tag
+  &&  method_cache.get(     hashcode ) != method_tag
+  ){
+    return definition_cache.get( hashcode );
+  }
+
+  // Slow version, lookup in the dictionary
+  const fullname = tag_to_text( class_tag ) + "." + tag_to_text( method_tag );
+  const def = find_definition_by_name( fullname );
+  if( def == 0 ){
+    return 0;
+  }
+  cache_method( class_tag, method_tag, def );
+
 }
 
 
-function register_method( klass : Tag, method : Tag, def : Cell ){
+function cache_method( klass : Tag, method : Tag, def : Cell ){
 // Register a method in the method dictionary
+  // ToDo: better hash function
   const hashcode = ( klass << 13 ) + method;
-  all_definitions_by_hashcode.set( hashcode, def );
+  class_cache.set(      hashcode, klass );
+  method_cache.set(     hashcode, method );
+  definition_cache.set( hashcode, def );
 }
 
 
 // C++ version
 /*}{
 
-void register_method( Tag klass, Tag method, Cell def ){
-  // ToDo: implement using some hash table
+#define METHOD_CACHE_LENGTH 1009 // A prime number
+static Tag  class_cache[      METHOD_CACHE_LENGTH ];
+static Tag  method_cache[     METHOD_CACHE_LENGTH ];
+static Cell definition_cache[ METHOD_CACHE_LENGTH ];
+
+static Count cache_hits = 0;
+static Count cache_misses = 0;
+
+
+void cache_method( Tag klass, Tag method, Cell def ){
+  // ToDo: implement using some better hash function
+  const hashcode = ( ( klass << 13 ) + method ) % METHOD_CACHE_LENGTH;
+  class_cache[      hashcode ] = klass;
+  method_cache[     hashcode ] = method;
+  definition_cache[ hashcode ] = def;
 }
 
 
 Cell find_method( Tag class_tag, Tag method_tag ){
-  // ToDo: find the method in the vtable of the class
-  Text class_name  = tag_to_text( class_tag );
-  Text method_name = tag_to_text( method_tag );
-  Text fullname = class_name + "." + method_name;
-  // Very slow naive version looks up sequentially in the symbol table
-  int ii;
-  for( ii = 0; ii < all_symbol_cells_length ; ii++ ){
+  // Try in cache first
+  const hashcode = ( ( class_tag << 13 ) + method_tag ) % METHOD_CACHE_LENGTH;
+  if( class_cache[  hashcode ] == class_tag
+  &&  method_cache[ hashcode ] == method_tag
+  ){
+    cache_hits++;
+    return definition_cache[ hashcode ];
+  }
+  // Slow version
+  cache_misses++;
+  auto class_name  = tag_to_text( class_tag );
+  auto method_name = tag_to_text( method_tag );
+  auto fullname    = class_name + "." + method_name;
+  auto ii = all_symbol_cells_length;
+  while( --ii >= 0 ){
     Text t = all_symbol_texts[ ii ];
     if( teq( t, fullname ) ){
-      return all_definitions[ ii ];
+      auto def = all_definitions[ ii ];
+      // Update cache
+      cache_method( class_tag, method_tag, def );
+      return all_definitions[ def ];
     }
   }
   return 0;
@@ -3846,7 +4423,7 @@ function register_method_definition( verb_tag : Tag, def : Cell ){
     if( auto_method_name != "" ){
       const class_tag  = tag( auto_class_name );
       const method_tag = tag( auto_method_name );
-      register_method( class_tag, method_tag, def );
+      cache_method( class_tag, method_tag, def );
     }
   }
 }
@@ -4141,7 +4718,7 @@ function mand_cell_type( c : Cell, type_id : Index ) : boolean {
   const actual_type = type( c );
   if( actual_type == type_id )return true;
   let auto_msg = S();
-  auto_msg += "Bad type for cell " + c;
+  auto_msg += "Bad type for cell " + C( c );
   auto_msg += ", expected " + N( type_id )
   + "/" + type_to_text( type_id );
   auto_msg += " vs actual " + N( actual_type )
@@ -4188,7 +4765,7 @@ function mand_cell_name( c : Cell, n : Tag ) : boolean{
   const actual_name = name( c );
   if( actual_name == n )return true;
   let auto_msg = S();
-  auto_msg += "Bad name for cell " + c;
+  auto_msg += "Bad name for cell " + C( c );
   auto_msg += ", expected " + N( n )
   + " /" + tag_to_text( n );
   auto_msg += " vs actual " + N( actual_name )
@@ -4395,6 +4972,12 @@ function push_tag( t : Tag ){
 }
 
 
+function push_verb( t : Tag ){
+  PUSH();
+  set_verb_cell( TOS, t );
+}
+
+
 function push_integer( i : Index ){
   PUSH();
   set_integer_cell( TOS, i );
@@ -4425,8 +5008,6 @@ function push_proxy( proxy : Index ){
 /* -----------------------------------------------------------------------------
  *  Some global cells
  */
-
-
 const tag_the_empty_text = tag( "the-empty-text" );
 
 function init_the_empty_text_cell() : Index {
@@ -4438,47 +5019,54 @@ function init_the_empty_text_cell() : Index {
     tag_the_empty_text,
     the_empty_text_proxy
   );
+  alloc_de&&mand( is_safe_area( value( the_empty_text_cell ) ) );
   // It's only now that testing the area allocator is possible.
   area_test_suite();
-  return 0;
+  return 1;
 }
 let init_the_empty_text_cell_done = init_the_empty_text_cell();
 
 
+/* ----------------------------------------------------------------------------
+ *  Helpers to dump the memory
+ */
+
+
+// Set to last seen invalid cell by dump()
+let dump_invalid_cell = 0;
+
 function memory_dump(){
-  // First, let's collect all garbage.
+
+  // First, let's collect all garbage
   area_garbage_collector_all();
-  // Then let's dump each cell.
+
+  // Then let's dump each cell
   let count = 0;
   let delta_void = 0;
   let count_voids = 0;
-  let last = 0;
-  let i;
-  let v;
+  let previous = the_very_first_cell - ONE;
+  let c = previous;
   const limit = the_next_free_cell;
-  // ToDo: should not start at 0 but at the first cell
-  for( i = 0 ; i <= limit ; i += 2 ){
 
-    // Dump 64 bits at a time, ie skip odd words.
-    if( ( i & 0x1 ) != 0 ) return;
+  trace( S()+ "\nMEMORY DUMP\n"
+  + "from " + N( the_very_first_cell ) + " to " + N( limit ) + "\n"
+  + N( limit - the_very_first_cell ) + " cells\n\n"
+  );
 
-    // I would prefer a mem64 but it's not available.
-    const c = i >> 1; // ToDo: change that if size of word changes
-
-    v = value( c );
+  while( ++c < limit ){
 
     // Skip void cells
-    if( v == 0 && info( c ) == 0 ) return;
+    if( value( c ) == 0 && info( c ) == 0 )continue;
 
     // Non void after the_last_cell is problematic...
     if( c >= the_next_free_cell ){
-      trace( "Warning: " + N( c ) + " >= the_last_cell" );
+      trace( "Warning: " + C( c ) + " >= the_last_cell" );
     }
 
     // Trace about consecutive skipped void cells
-    if( c != last + ONE ){
-      delta_void = ( c - last ) / ONE - 1;
-      // On void could be the last cell of a definition
+    if( c != previous + ONE ){
+      delta_void = ( c - previous ) / ONE - 1;
+      // One void could be the last cell of a definition
       if( delta_void > 1 ){
         // Count voids that for sure are not the last cell of a definition
         // There is an exception, see the hack in make-constant
@@ -4492,22 +5080,30 @@ function memory_dump(){
     // ToDo: count heap cells, busy, free, total, etc.
 
     // voids are calls to primitives sometimes
+    // ToDo: type_primitive?
     if( type( c ) == type_void
-    &&  name( c ) != tag( "_dynrc" )
-    &&  name( c ) != tag( "_dynsz" )
-    &&  name( c ) != tag( "_dynxt" )
+    &&  name( c ) != tag( "_dynrc" ) // Not reference counter of dynamic area
+    &&  name( c ) != tag( "_dynsz" ) // Not size of dynamic area
+    &&  name( c ) != tag( "_dynxt" ) // Not next free cell of dynamic area
+    &&  name( c ) != tag_list        // Not free cell in allocate_cell()'s list
     ){
-      trace( "" + N( c ) + ": " + dump( c )
-      + " - " + inox_machine_code_cell_to_text( c ));
+      // OK, let's assume it's a primitive
+      trace( "" + C( c ) + ": " + dump( c )
+      + " - " + inox_machine_code_cell_to_text( c ) );
     }else{
-      trace( "" + N( c ) + ": " + dump( c ) );
+      trace( "" + C( c ) + ": " + dump( c ) );
     }
     count++;
-    last = c;
+    previous = c;
   }
+
+  if( dump_invalid_cell != 0 ){
+    trace( "\nWarning: " + C( dump_invalid_cell ) + " is not a valid cell" );
+  }
+
   const total_cells = count + count_voids;
   trace(
-    "Total: "
+    "\n\nTotal: "
     + N( total_cells ) + " cells, "
     + N( count )                       + " busy & "
     + N( count_voids )                 + " void, "
@@ -4516,6 +5112,7 @@ function memory_dump(){
     + N( count       * size_of_cell )  + " bytes busy & "
     + N( count_voids * size_of_cell )  + " bytes void"
   );
+
 }
 
 
@@ -4572,24 +5169,24 @@ function set_list_cell( c : Cell, obj? : Object ){
 // Global state about currently running actor
 
 // The current actor
-/**/ let  ACTOR : Cell;
-/*c  static Cell ACTOR;  c*/
+/**/ let  ACTOR : Cell = 0;
+/*c  static Cell ACTOR = 0;  c*/
 
 // The base of the data stack of the current actor
-/**/ let   ACTOR_data_stack : Cell;
-/*c  static Cell  ACTOR_data_stack;  c*/
+/**/ let   ACTOR_data_stack : Cell = 0;
+/*c  static Cell  ACTOR_data_stack = 0;  c*/
 
 // The base of the control stack of the current actor
-/**/ let  ACTOR_control_stack : Cell;
-/*c  static Cell ACTOR_control_stack;  c*/
+/**/ let  ACTOR_control_stack : Cell = 0;
+/*c  static Cell ACTOR_control_stack   = 0;  c*/
 
 // The upper limit of the data stack of the current actor
-/**/ let  ACTOR_data_stack_limit : Cell;
-/*c  static Cell ACTOR_data_stack_limit;  c*/
+/**/ let  ACTOR_data_stack_limit : Cell = 0;
+/*c  static Cell ACTOR_data_stack_limit = 0;  c*/
 
 // The upper limit of the control stack of the current actor
-/**/ let  ACTOR_control_stack_limit : Cell;
-/*c  static Cell ACTOR_control_stack_limit;  c*/
+/**/ let  ACTOR_control_stack_limit : Cell = 0;
+/*c  static Cell ACTOR_control_stack_limit = 0;  c*/
 
 // Names for classes and attributes
 const tag_actor          = tag( "actor" );
@@ -4636,9 +5233,6 @@ function make_actor( ip : Cell ) : Cell {
   // Set the class name to "actor" instead of default "stack"
   set_name( actor, tag_actor );
 
-  // ToDo: avoid allocation using a global variable?
-  let tmp = allocate_cell();
-
   // Allocate a data stack for the actor
   let dstk = stack_allocate( 100 );
 
@@ -4653,26 +5247,24 @@ function make_actor( ip : Cell ) : Cell {
 
   // Now fill the object with the first 3 slots
 
-  set( tmp, type_reference, tag_data_stack, dstk );
-  stack_push( actor, tmp );   // offset 1, /data-stack
+  set( the_tmp_cell, type_reference, tag_data_stack, dstk );
+  stack_push( actor, the_tmp_cell );   // offset 1, /data-stack
 
-  set( tmp, type_reference, tag_control_stack, cstk );
-  stack_push( actor, tmp );   // offset 2, /control-stack
+  set( the_tmp_cell, type_reference, tag_control_stack, cstk );
+  stack_push( actor, the_tmp_cell );   // offset 2, /control-stack
 
-  set( tmp, type_integer, tag_ip, ip );
-  stack_push( actor, tmp );   // offset 3, /ip
+  set( the_tmp_cell, type_integer, tag_ip, ip );
+  stack_push( actor, the_tmp_cell );   // offset 3, /ip
 
   // The 3 next slots are to save the CPU context: ip, tos, csp
-  set( tmp, type_integer, tag_ip, ip );
-  stack_push( actor, tmp );   // offset 4, /ip
+  set( the_tmp_cell, type_integer, tag_ip, ip );
+  stack_push( actor, the_tmp_cell );   // offset 4, /ip
 
-  set( tmp, type_integer, tag_tos, dstk );
-  stack_push( actor, tmp );   // offset 5, /tos
+  set( the_tmp_cell, type_integer, tag_tos, dstk );
+  stack_push( actor, the_tmp_cell );   // offset 5, /tos
 
-  set( tmp, type_integer, tag_csp, cstk );
-  stack_push( actor, tmp );   // offset 6, /csp
-
-  free_cell( tmp );
+  set( the_tmp_cell, type_integer, tag_csp, cstk );
+  stack_push( actor, the_tmp_cell );   // offset 6, /csp
 
   de&&mand_actor( actor );
 
@@ -4707,7 +5299,7 @@ function actor_restore_context( actor : Cell ){
 
 function init_root_actor() : Index {
   actor_restore_context( make_actor( 0 ) );
-  return 0;
+  return 1;
 }
 
 const init_root_actor_done = init_root_actor();
@@ -4833,6 +5425,19 @@ function build_targets(){
   let  end   = "*" + "/";
 
   for( ii = 0; ii < len; ii++ ){
+    line = ts[ ii ];
+    // Leave line untouched if it is a // comment
+    if( line.match( /^\s*\/\// ) ){
+      c_source += line + "\n";
+      continue;
+    }
+    // Also leave line untouched if it starts with *
+    if( line.match( /^\s*\* / ) ){
+      c_source += line + "\n";
+      continue;
+    }
+
+    // Else, do some replacements
     line = ts[ ii ]
 
     // Turn "let auto_" into C++ local automatic variables
@@ -5025,8 +5630,8 @@ function primitive( n : TxtC, fn : Primitive ) : Tag {
 
   blabla_de&&bug( S()
     + "Registering primitive " + n
-    + ", tag id " + N( name_id )
-    + ", definition at " + N( def )
+    + ", tag id " + C( name_id )
+    + ", definition at " + C( def )
   );
 
   // Some "defensive programming"
@@ -5065,8 +5670,8 @@ function             primitive_return(){
   // ToDo: this should be primitive 0
   debugger;
   run_de&&bug( S()
-    + "primitive, return to IP " + N( value( CSP ) )
-    + " from " + N( name( CSP ) ) + "/" + tag_to_text( name( CSP) )
+    + "primitive, return to IP " + C( value( CSP ) )
+    + " from " + C( name( CSP ) ) + "/" + tag_to_text( name( CSP) )
   );
   debugger;
   IP = eat_integer( CSP );
@@ -5492,6 +6097,37 @@ function           primitive_dups(){
 
 
 /*
+ *  overs primitive - pushes n cells from the data stack
+ *  ie : 2OVER 2 overs ;
+ */
+
+function primitive_overs(){
+  const n = pop_integer();
+  check_de&&mand( n >= 0 );
+  let ii;
+  // ToDo: test this
+  const base = TOS - ( 2 * ( n - 1 ) * ONE );
+  for( ii = 0 ; ii < n ; ii++ ){
+    copy_cell( base + ii * ONE, PUSH() );
+  }
+}
+primitive( "overs", primitive_overs );
+
+
+/*
+ *  2over primitive - pushes the third and fourth cells from TOS
+ */
+
+function primitive_2over(){
+  const tos = TOS;
+  copy_cell( tos - 3 * ONE, PUSH() );
+  copy_cell( tos - 2 * ONE, PUSH() );
+}
+primitive( "2over", primitive_2over );
+
+
+
+/*
  *  nip primitive -
  */
 
@@ -5507,30 +6143,68 @@ function          primitive_nip(){
  *  tuck primitive - pushes the second cell from the top of the stack
  */
 
-const tmp_cell = allocate_cell();
-
 primitive( "tuck", primitive_tuck );
 function           primitive_tuck(){
   const tos = TOS;
   const tos1 = tos - ONE;
-  move_cell( tos,      tmp_cell );
-  move_cell( tos1,     tos );
-  move_cell( tmp_cell, tos1 );
+  move_cell( tos,          the_tmp_cell );
+  move_cell( tos1,         tos );
+  move_cell( the_tmp_cell, tos1 );
 }
 
 
 /*
  *  swap primitive - swaps the top two cells of the data stack
+ *  ie a b -- b a
  */
 
 primitive( "swap", primitive_swap );
 function           primitive_swap(){
   const tos0 = TOS;
   const tos1 = tos0 - ONE;
-  move_cell( tos0,     tmp_cell );
-  move_cell( tos1,     tos0 );
-  move_cell( tmp_cell, tos1 );
+  move_cell( tos0,         the_tmp_cell );
+  move_cell( tos1,         tos0 );
+  move_cell( the_tmp_cell, tos1 );
 }
+
+
+/*
+ *  swaps primitive - swaps the top n cells of the data stack
+ */
+
+function primitive_swaps(){
+  const n = pop_integer();
+  check_de&&mand( n >= 0 );
+  let ii;
+  // ToDo: test this
+  for( ii = 0 ; ii < n ; ii++ ){
+    const tos0 = TOS - ii * ONE;
+    const tos1 = tos0 - ONE;
+    move_cell( tos0,         the_tmp_cell );
+    move_cell( tos1,         tos0 );
+    move_cell( the_tmp_cell, tos1 );
+  }
+}
+primitive( "swaps", primitive_swaps );
+
+
+/*
+ *  2swap primitive - swaps the top four cells of the data stack
+ *  ie a1 a2 b1 b2 -- b1 b2 a1 a2
+ */
+
+function primitive_2swap(){
+  const tos0 = TOS;
+  const tos1 = tos0 - ONE;
+  const tos2 = tos1 - ONE;
+  const tos3 = tos2 - ONE;
+  move_cell( tos0,         the_tmp_cell );
+  move_cell( tos1,         tos0 );
+  move_cell( tos2,         tos1 );
+  move_cell( tos3,         tos2 );
+  move_cell( the_tmp_cell, tos3 );
+}
+primitive( "2swap", primitive_2swap );
 
 
 /*
@@ -5557,10 +6231,10 @@ function             primitive_rotate(){
   const tos0 = TOS;
   const tos1 = tos0 - ONE;
   const tos2 = tos1 - ONE;
-  move_cell( tos0,     tmp_cell );
-  move_cell( tos1,     tos0 );
-  move_cell( tos2,     tos1 );
-  move_cell( tmp_cell, tos2 );
+  move_cell( tos0,         the_tmp_cell );
+  move_cell( tos1,         tos0 );
+  move_cell( tos2,         tos1 );
+  move_cell( the_tmp_cell, tos2 );
 }
 
 
@@ -5568,54 +6242,51 @@ function             primitive_rotate(){
  *  roll primitive - rotates n cells from the top of the stack
  */
 
-primitive( "roll", primitive_roll );
-function           primitive_roll(){
+function primitive_roll(){
   const n = pop_integer();
   check_de&&mand( n >= 0 );
   const tos = TOS;
   let ii;
   for( ii = 0 ; ii < n ; ii++ ){
-    move_cell( tos - ii * ONE, tmp_cell );
+    move_cell( tos - ii * ONE, the_tmp_cell );
     move_cell( tos - ( ii + 1 ) * ONE, tos + ii * ONE );
-    move_cell( tmp_cell, tos - ( ii + 1 ) * ONE );
+    move_cell( the_tmp_cell, tos - ( ii + 1 ) * ONE );
   }
 }
+primitive( "roll", primitive_roll );
 
 
 /*
  *  pick primitive - pushes the nth cell from the top of the stack
  */
 
-primitive( "pick", primitive_pick );
-function           primitive_pick(){
+function primitive_pick(){
   const nth = eat_integer( TOS );
+  // ToDo: should check that nth is not too big
   copy_cell( TOS - nth * ONE, TOS );
 }
+primitive( "pick", primitive_pick );
 
 
 /*
  *  data-depth primitive - pushes the depth of the data stack
  */
 
-
 const tag_depth = tag( "depth" );
 
-
-primitive( "data-depth", primitive_data_depth );
-function                 primitive_data_depth(){
-// Push the depth of the data stack.
+function primitive_data_depth(){
   const depth = ( ACTOR_data_stack - TOS ) / ONE;
   de&&mand( depth >= 0 );
   set( PUSH(), type_integer, tag_depth, depth );
 }
+primitive( "data-depth", primitive_data_depth );
 
 
 /*
  *  clear-data primitive - clears the data stack
  */
 
-primitive( "clear-data", primitive_clear_data );
-function                 primitive_clear_data(){
+function primitive_clear_data(){
   const depth = ( ACTOR_data_stack - TOS ) / ONE;
   de&&mand( depth >= 0 );
   let ii;
@@ -5623,59 +6294,50 @@ function                 primitive_clear_data(){
     clear( POP() );
   }
 }
+primitive( "clear-data", primitive_clear_data );
 
 
 /*
- *  data-dump primitive
+ *  data-dump primitive - dumps the data stack
  */
 
-primitive( "data-dump", primitive_data_dump );
-function                primitive_data_dump(){
-  let  auto_buf = S() + "DATA STACK";
-  let c;
-  let i;
-  let t;
-  let n;
+function primitive_data_dump(){
+  let auto_buf = S() + "DATA STACK";
   const depth = ( ACTOR_data_stack - TOS ) / ONE;
   de&&mand( depth >= 0 );
   let ii;
   for( ii = 0 ; ii < depth ; ++ii ){
-    c      = TOS + ii * ONE;
-    i      = info(         c );
-    t      = unpack_type(  i );
-    n      = unpack_name(  i );
+    const c = TOS + ii * ONE;
+    const i = info( c );
     auto_buf += "\n" + N( ii )
-    + " " + type_to_text( t )
-    + " " + tag_to_text(  n );
+    + " " + type_to_text( unpack_type( i ) )
+    + " " + tag_to_text(  unpack_name( i ) )
     + " " + cell_to_text( c );
   }
   trace( auto_buf );
 }
+primitive( "data-dump", primitive_data_dump );
 
 
 /*
  *  control-depth primitive - pushes the depth of the control stack
  */
 
-primitive( "control-depth", primitive_control_depth );
-function                    primitive_control_depth(){
+function primitive_control_depth(){
   const depth = ( ACTOR_control_stack - CSP ) / ONE;
   de&&mand( depth >= 0 );
-  const new_tos = PUSH();
-  init_cell( new_tos, depth, pack( type_integer, tag_depth ) );
+  set( PUSH(), type_integer, tag_depth, depth );
 }
+primitive( "control-depth", primitive_control_depth );
 
 
 /*
  *  clear-control primitive - clears the control stack
  */
 
-
 const tag_clear_control = tag( "clear-control" );
 
-
-primitive( "clear-control", primitive_clear_control );
-function                    primitive_clear_control(){
+function primitive_clear_control(){
   while( CSP > ACTOR_control_stack ){
     clear( CSP );
     CSP -= ONE;
@@ -5684,6 +6346,7 @@ function                    primitive_clear_control(){
   // Add a return to IP 0 so that return from verb exits RUN() properly
   set( CSP, type_integer, tag_clear_control, 0 );
 }
+primitive( "clear-control", primitive_clear_control );
 
 
 /*
@@ -5713,10 +6376,328 @@ function                   primitive_control_dump(){
 /*c  Text     integer_to_text( Value v   ){ return to_string( v ); } c*/
 
 
+/*
+ *  text-quote primitive - turns a string into a valid text literal
+ */
+
+function HEX( n : Value ) : Text {
+// Convert integer to hex string
+  // Typescript version:
+  /**/ return n.toString( 16 );
+  // C++ version, needs C++20:
+  /*c{
+    return std::format( "{:x}", n );
+  }*/
+}
+
+
+function text_quote( txt : TxtC ) : Text {
+  let auto_buf = S();
+  let ii = 0;
+  for( ii = 0; ii < tlen( txt ) ; ii++ ){
+    const auto_ch = tmid( txt, ii, ii + 1 );
+    if( teq( auto_ch, "\r" ) ){
+      auto_buf += "\\r";
+    }else if( teq( auto_ch, "\n" ) ){
+      auto_buf += "\\n";
+    }else if( teq( auto_ch, "\t" ) ){
+      auto_buf += "\\t";
+    }else if( teq( auto_ch, "\"" ) ){
+      auto_buf += "\\\"";
+    }else if( teq( auto_ch, "\\" ) ){
+      auto_buf += "\\\\";
+    }else if( auto_ch < " " ){
+      /**/ auto_buf += "\\x" + HEX( auto_ch.charCodeAt( 0 ) );
+      // In C++, get char code of first charactor of string
+      /*c auto_buf += "\\x" + HEX( auto_ch[ 0 ] ); c*/
+    }else{
+      auto_buf += auto_ch;
+    }
+  }
+  return "\"" + auto_buf + "\"";
+}
+
+
+function primitive_text_quote(){
+  const auto_s = cell_to_text( TOS );
+  clear( POP() );
+  push_text( text_quote( auto_s ) );
+}
+primitive( "text-quote", primitive_text_quote );
+
+
+/*c{
+
+  // C++ version of parseInt( s, base )
+
+  // ToDo: better handling of errors
+  static bool parse_int_error = false;
+
+  int parseInt( const std::string& s, int base ){
+    parse_int_error = true;
+    int result = 0;
+    for( unsigned int ii = 0 ; ii < s.length() ; ii++ ){
+      result *= base;
+      // Handle base 10
+      if( base == 10 ){
+        // Check that char is a digit
+        if( s[ ii ] < '0' || s[ ii ] > '9' ){
+          return 0;
+        }
+        result += s[ ii ] - '0';
+      // Handle base 16
+      }else if( base == 16 ){
+        // Check that char is a digit
+        if( s[ ii ] >= '0' && s[ ii ] <= '9' ){
+          result += s[ ii ] - '0';
+        }else if( s[ ii ] >= 'a' && s[ ii ] <= 'f' ){
+          result += s[ ii ] - 'a' + 10;
+        }else if( s[ ii ] >= 'A' && s[ ii ] <= 'F' ){
+          result += s[ ii ] - 'A' + 10;
+        }else{
+          return 0;
+        }
+      // Handle base 8
+      }else if( base == 8 ){
+        // Check that char is a digit
+        if( s[ ii ] >= '0' && s[ ii ] <= '7' ){
+          result += s[ ii ] - '0';
+        }else{
+          return 0;
+        }
+      // Handle base 2
+      }else if( base == 2 ){
+        // Check that char is a digit
+        if( s[ ii ] >= '0' && s[ ii ] <= '1' ){
+          result += s[ ii ] - '0';
+        }else{
+          return 0;
+        }
+      // Handle other bases
+      }else{
+        return 0;
+      }
+    }
+    parse_int_error = false;
+    return result;
+  }
+}*/
+
+
+/*
+ *  text-to-integer primitive - converts a text literal to an integer
+ */
+
+function checked_text_to_integer( txt : TxtC ) : Value {
+  // Typescript version:
+  /**/ return parseInt( txt );
+  // C++ version:
+  /*c{
+    int result = parseInt( txt, 10 );
+    if( parse_int_error ){
+      FATAL( "text-to-integer: invalid integer" );
+    }
+    return result;
+  }*/
+}
+
+
+function primitive_text_to_integer(){
+  const auto_s = cell_to_text( TOS );
+  clear( POP() );
+  push_integer( checked_text_to_integer( auto_s ) );
+}
+primitive( "text-to-integer", primitive_text_to_integer );
+
+
+/*
+ *  text-hex-to-integer primitive - converts a text literal to an integer
+ */
+
+function checked_text_hex_to_integer( txt : TxtC ) : Value {
+  // Typescript version:
+  /**/ return parseInt( txt, 16 );
+  // C++ version:
+  /*c{
+    int result = parseInt( txt, 16 );
+    if( parse_int_error ){
+      FATAL( "text-hex-to-integer: invalid integer" );
+    }
+    return result;
+  }*/
+}
+
+
+function primitive_text_hex_to_integer(){
+  const auto_t = cell_to_text( TOS );
+  clear( POP() );
+  push_integer( checked_text_hex_to_integer( auto_t ) );
+}
+primitive( "text-hex-to-integer", primitive_text_hex_to_integer );
+
+
+/*
+ *  text-octal-to-integer primitive - converts a text literal to an integer
+ */
+
+function checked_text_octal_to_integer( txt : TxtC ) : Value {
+  // Typescript version:
+  /**/ return parseInt( txt, 8 );
+  // C++ version:
+  /*c{
+    int result = parseInt( txt, 8 );
+    if( parse_int_error ){
+      FATAL( "text-octal-to-integer: invalid integer" );
+    }
+    return result;
+  }*/
+}
+
+
+function primitive_text_octal_to_integer(){
+  const auto_t = cell_to_text( TOS );
+  clear( POP() );
+  push_integer( checked_text_octal_to_integer( auto_t ) );
+}
+primitive( "text-octal-to-integer", primitive_text_octal_to_integer );
+
+
+/*
+ *  text-binary-to-integer primitive - converts a text literal to an integer
+ */
+
+function checked_text_binary_to_integer( txt : TxtC ) : Value {
+  // Typescript version:
+  /**/ return parseInt( txt, 2 );
+  // C++ version:
+  /*c{
+    int result = parseInt( txt, 2 );
+    if( parse_int_error ){
+      FATAL( "text-binary-to-integer: invalid integer" );
+    }
+    return result;
+  }*/
+}
+
+
+function primitive_text_binary_to_integer(){
+  const auto_t = cell_to_text( TOS );
+  clear( POP() );
+  push_integer( checked_text_binary_to_integer( auto_t ) );
+}
+primitive( "text-binary-to-integer", primitive_text_binary_to_integer );
+
+
+/*
+ *  integer-to-hex primitive - converts an integer to a text literal
+ */
+
+function primitive_integer_to_hex(){
+  const i = pop_integer();
+  // Typescript version:
+  /**/ push_text( i.toString( 16 ) );
+  // C++ version:
+  /*c{
+    char buf[ 32 ];
+    sprintf_s( buf, 32, "%x", i );
+    push_text( buf );
+  }*/
+}
+primitive( "integer-to-hex", primitive_integer_to_hex );
+
+
+/*
+ *  integer-to-octal primitive - converts an integer to a text literal
+ */
+
+function primitive_integer_to_octal(){
+  const i = pop_integer();
+  // Typescript version:
+  /**/ push_text( i.toString( 8 ) );
+  // C++ version:
+  /*c{
+    char buf[ 48 ];
+    sprintf_s( buf, 48, "%o", i );
+    push_text( buf );
+  }*/
+}
+primitive( "integer-to-octal", primitive_integer_to_octal );
+
+
+/*
+ *  integer-to-binary primitive - converts an integer to a text literal
+ */
+
+function primitive_integer_to_binary(){
+  const i = pop_integer();
+  // Typescript version:
+  /**/ push_text( i.toString( 2 ) );
+  // C++ version:
+  /*c{
+    char buf[ 33 ];
+    buf[ 32 ] = '\0';
+    for( int ii = 0 ; ii < 32 ; ii++ ){
+      buf[ 31 - ii ] = ( ( i >> ii ) & 0x1 ) ? '1' : '0';
+    }
+    push_text( buf );
+  }*/
+}
+
+
+/*
+ *  text-unquote primitive - turns a text literal into a string
+ */
+
+function text_unquote( txt : TxtC ) : Text {
+  let auto_buf = S();
+  let ii = 0;
+  while( ii < tlen( txt ) ){
+    const auto_ch = tmid( txt, ii, ii + 1 );
+    if( teq( auto_ch, "\\" ) ){
+      ii++;
+      if( teq( auto_ch, "r" ) ){
+        auto_buf += "\r";
+      }else if( teq( auto_ch, "n" ) ){
+        auto_buf += "\n";
+      }else if( teq( auto_ch, "t" ) ){
+        auto_buf += "\t";
+      }else if( teq( auto_ch, "\"" ) ){
+        auto_buf += "\"";
+      }else if( teq( auto_ch, "\\" ) ){
+        auto_buf += "\\";
+      }else if( teq( auto_ch, "x" ) ){
+        ii++;
+        const auto_ch1 = tmid( txt, ii, ii + 1 );
+        const auto_ch2 = tmid( txt, ii + 1, ii + 2 );
+        const auto_hex = auto_ch1 + auto_ch2;
+        const auto_dec = parseInt( auto_hex, 16 );
+        /**/ auto_buf += String.fromCharCode( auto_dec );
+        // In C++, get char code of first charactor of string
+        /*c auto_buf += char( auto_dec ); c*/
+        ii++;
+      }else{
+        bug( S() + "Invalid escape sequence, \\" + auto_ch );
+      }
+    }else{
+      auto_buf += auto_ch;
+    }
+    ii++;
+  }
+  return auto_buf;
+}
+
+
+function primitive_text_unquote(){
+  const auto_t = cell_to_text( TOS );
+  clear( POP() );
+  push_text( text_unquote( auto_t ) );
+}
+primitive( "text-unquote", primitive_text_unquote );
+
+
 /* -----------------------------------------------------------------------------
  *  Some memory integrity checks.
  */
-
 
 function is_safe_proxy( proxy : Cell ) : boolean {
   /**/ return all_proxied_objects_by_id.has( proxy )
@@ -5746,7 +6727,7 @@ function cell_looks_safe( c : Cell ) : boolean {
     if( v != 0 && v != 1 ){
       bug( S()
         + "Invalid boolean value, " + N( v )
-        + " at " + N( c )
+        + " at " + C( c )
       );
       return false;
     }
@@ -5755,8 +6736,8 @@ function cell_looks_safe( c : Cell ) : boolean {
   case type_text :
     if( !is_safe_proxy( referencee ) ){
       bug( S()
-        + "Invalid proxy for text cell, " + N( referencee )
-        + " at " + N( c)
+        + "Invalid proxy for text cell, " + C( referencee )
+        + " at " + C( c)
       );
       debugger;
       return false;
@@ -5773,8 +6754,8 @@ function cell_looks_safe( c : Cell ) : boolean {
   case type_tag :
     if( ! is_valid_tag( tag ) ){
       bug( S()
-        + "Invalid tag for cell, " + N( tag )
-        + " at " + N( c )
+        + "Invalid tag for cell, " + C( tag )
+        + " at " + C( c )
       );
       return false;
     }
@@ -5791,7 +6772,7 @@ function cell_looks_safe( c : Cell ) : boolean {
     return true;
 
   default :
-    bug( S()+ "Invalid type for cell" + N( t ) + " at " + N( c ) );
+    bug( S()+ "Invalid type for cell" + N( t ) + " at " + C( c ) );
     return false;
 
   }
@@ -5857,12 +6838,11 @@ function is_a_verb_block( c : Cell ) : boolean {
 }
 
 
-
 function block_dump( ip : Cell ) : Text {
   de&&mand( is_a_block_cell( ip ) );
   const length = block_length( ip );
   let auto_buf = S();
-  auto_buf += "Block " + N( ip ) + ", length " + N( length );
+  auto_buf += "Block " + C( ip ) + ", length " + N( length );
   // ToD: decode flags
   if( is_an_inline_block_cell( ip ) ){
     auto_buf += ", inline {}";
@@ -5878,6 +6858,17 @@ function block_dump( ip : Cell ) : Text {
 
 let cell_dump_entered = false;
 
+function tag_to_dump_text( tag : Value ) : Text {
+  if( tag == 0 ){
+    return "invalid-0-tag";
+  }else if( !is_valid_tag( tag ) ){
+    return "invalid-tag-" + C( tag );
+  }else{
+    return tag_to_text( tag );
+  }
+}
+
+
 function dump( c : Cell ) : Text {
 
   // Never dereference the cell at address 0
@@ -5887,13 +6878,14 @@ function dump( c : Cell ) : Text {
 
   // Detect recursive calls
   if( cell_dump_entered ){
-    return "Error, reentered cell_dump( " + N( c ) + " )";
-    // /*c return "Error, reentered cell_dump()"; c*/
+    dump_invalid_cell = c;
+    return "Error, reentered cell_dump( " + C( c ) + " )";
   }
   cell_dump_entered = true;
 
   const is_valid = cell_looks_safe( c );
   if( !is_valid ){
+    dump_invalid_cell = c;
     debugger;
     cell_looks_safe(  c  );
   }
@@ -5915,62 +6907,70 @@ function dump( c : Cell ) : Text {
     case type_void :
 
       if( n == tag_dynamic_ref_count ){
-        // Check integrity of dynamic area
+        // Check integrity of busy dynamic area
         if( !is_safe_area( header_to_area( c ) ) ){
-          buf += "Invalid dynamic area, ";
+          dump_invalid_cell = c;
+          buf += "Invalid busy dynamic area, ";
         }else{
           cell_dump_entered = false;
-          return "busy " + v;
+          return "busy, count: " + N( v );
         }
 
       }else if( n == tag_dynamic_next_area ){
-        // Check integrity of dynamic area
+        // Check integrity of free dynamic area
         if( !is_safe_area( header_to_area( c ) ) ){
+          dump_invalid_cell = c;
           buf += "Invalid dynamic free area, ";
         }else{
           cell_dump_entered = false;
-          return "free " + v;
+          return "free, next: " + C( v );
         }
 
       }else if( n == tag_dynamic_area_size ){
         // Check integrity of dynamic area
         if( !is_safe_area( header_to_area( c - ONE ) ) ){
+          dump_invalid_cell = c;
           buf += "Invalid dynamic area, ";
         }else{
           cell_dump_entered = false;
           if( is_busy_area( header_to_area( c - ONE ) )){
             let length = ( v - 2 * size_of_cell ) / size_of_cell;
-            // 0 length is what proxied objects use
-            if( length == 0 ){
+            // 0 length is what proxied objects use in Typescript
+            // 1 length is what proxied objects use in C++
+            if(
+              /**/ length == 0
+              /*c  length == 1 && name( c + ONE ) == tag_c_string c*/
+            ){
               const proxy_id = c + ONE;
               /**/ const obj = proxied_object_by_id( proxy_id );
               /**/ const proxy_class_name = obj.constructor.name;
               /*c  Text proxy_class_name( "c_string" ); c*/
-              buf += " - <PROXY-" + N( proxy_id ) + ">"
-              + proxy_class_name + "@" + N( c ) + ">";
+              buf += " - <PROXY-" + C( proxy_id ) + ">"
+              + proxy_class_name + C( c ) + ">";
               if( teq( proxy_class_name, "String" )
               ||  teq( proxy_class_name, "c_string" )
               ){
-                /**/ let  txt = proxy_to_text( proxy_id );
-                /*c  Text txt = proxy_to_text( proxy_id ); c*/
-                if( tlen( txt ) == 0){
+                txt = proxy_to_text( proxy_id );
+                if( tlen( txt ) == 0 ){
                   txt += "<empty>";
                   if( proxy_id != value( the_empty_text_cell ) ){
+                    dump_invalid_cell = c;
                     txt += " - ERROR: not the_empty_text_cell";
                   }
                 }
                 if( tlen( txt ) > 31 ){
                   txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
                 }
+                // ToDo: sanitize txt to remove control characters
                 buf += " " + txt;
               }
               return buf;
             }else{
-              return S()+ "length "
+              return S()+ "busy, length: "
               + N( ( v - 2 * size_of_cell ) / size_of_cell );
             }
           }else{
-            return S()+ "size " + N( v );
+            return S()+ "free, size: " + N( v );
           }
         }
 
@@ -5984,30 +6984,40 @@ function dump( c : Cell ) : Text {
       }
 
       if( n != tag_void || v != 0 ){
-        buf += tag_to_text( n );
+        if( is_valid_tag( n ) ){
+          buf += tag_to_text( n );
+        }else{
+          dump_invalid_cell = c;
+          buf += "Invalid-tag-" + C( n );
+        }
       }
       if( v == 0 ){
         // buf += ":<void>";
       }else{
-        buf += ":<void:" + N( v ) + ">";
+        buf += ":<void:" + C( v ) + ">";
       }
     break;
 
     case type_boolean :
       if( n != tag_boolean ){
-        buf += tag_to_text( n ) + ":";
+        buf += tag_to_dump_text( n ) + ":";
       }
-      buf += v ? "true" : "false";
+      if( v == 0 || v == 1 ){
+        buf += v ? "true" : "false";
+      }else{
+        dump_invalid_cell = c;
+        buf += "Invalid-boolean-" + N( v );
+      }
     break;
 
     case type_tag :
       if( n == v ){
-        buf += "/" + tag_to_text( n );
+        buf += "/" + tag_to_dump_text( n );
         if( is_a_tag_singleton( c ) ){
           buf += " - <SINGLETON>";
         }
       }else{
-        buf += tag_to_text( n ) + ":/" + tag_to_text( v );
+        buf += tag_to_dump_text( n ) + ":/" + tag_to_dump_text( v );
       }
     break;
 
@@ -6019,15 +7029,15 @@ function dump( c : Cell ) : Text {
         return block_dump_text;
       }
       if( n != tag_integer ){
-        buf += tag_to_text( n ) + ":";
+        buf += tag_to_dump_text( n ) + ":";
       }
       buf += integer_to_text( v );
     break;
 
     case type_reference :
       class_name_tag = name( v );
-      buf += tag_to_text( n )
-      + "<" + tag_to_text( class_name_tag ) + "@" + N( v ) + ">";
+      buf += tag_to_dump_text( n )
+      + "<" + tag_to_dump_text( class_name_tag ) + C( v ) + ">";
     break;
 
     case type_proxy :
@@ -6035,7 +7045,7 @@ function dump( c : Cell ) : Text {
       /**/ const proxy_class_name = obj.constructor.name;
       /**/ /*c  TxtC proxy_class_name( "c_string" ); c*/
       /**/ buf += tag_to_text( n )
-      /**/ + "<proxied-" + proxy_class_name + "@" + N( v ) + ">";
+      /**/ + "<proxied-" + proxy_class_name + C( v ) + ">";
     break;
 
     case type_text :
@@ -6045,7 +7055,7 @@ function dump( c : Cell ) : Text {
         txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
       }
       if( n != tag_text ){
-        buf += tag_to_text( n )  + ":";
+        buf += tag_to_dump_text( n )  + ":";
       }
       // ToDo: better escape
       // ToDo: C++ version
@@ -6065,7 +7075,7 @@ function dump( c : Cell ) : Text {
 
     case type_verb :
       // ToDo: add name
-      buf += tag_to_text( n );
+      buf += tag_to_dump_text( n );
       if( v != 0 ){
         buf += ":<verb:" + N( v ) + ">";
       }
@@ -6073,12 +7083,14 @@ function dump( c : Cell ) : Text {
 
     case type_flow :
       // ToDo: add name
-      buf += tag_to_text( n ) + ":<flow:" + N( v ) + ">";
+      buf += tag_to_dump_text( n ) + ":<flow:" + N( v ) + ">";
     break;
 
     default :
       de&&mand( false );
-      buf += tag_to_text( n ) + ":<invalid type " + N( t ) + ":" + N( v ) + ">";
+      dump_invalid_cell = c;
+      buf += tag_to_dump_text( n )
+      + ":<invalid type " + C( t ) + ":" + C( v ) + ">";
       breakpoint();
     break;
 
@@ -6086,13 +7098,14 @@ function dump( c : Cell ) : Text {
 
   cell_dump_entered = false;
 
-  buf += " ( " + N( t ) + "/" + N( n ) + "/" + N( v )
-  + " " + type_to_text( t ) + " @" + N( c )
-  + ( is_valid ? " )" : " - INVALID )" );
+  if( blabla_de || dump_invalid_cell != 0 ){
+    buf += "        ( " + N( t ) + "/" + N( n ) + "/" + N( v )
+    + " " + type_to_text( t ) + " " + C( c )
+    + ( is_valid ? " )" : " - INVALID )" );
+  }
   return buf;
 
 }
-
 
 
 function short_dump( c : Cell ) : Text {
@@ -6126,33 +7139,33 @@ function short_dump( c : Cell ) : Text {
 
     case type_void :
       if( n != tag_void || v != 0 ){
-        buf += tag_to_text( n );
+        buf += tag_to_dump_text( n );
       }
       if( v == 0 ){
         // buf += ":<void>";
       }else{
-        buf += ":<void:" + N( v ) + ">";
+        buf += ":<void:" + C( v ) + ">";
       }
     break;
 
     case type_boolean :
       if( n != tag_boolean ){
-        buf += tag_to_text( n ) + ":";
+        buf += tag_to_dump_text( n ) + ":";
       }
       buf += v ? "true" : "false";
     break;
 
     case type_tag :
       if( n == v ){
-        buf += "/" + tag_to_text( n );
+        buf += "/" + tag_to_dump_text( n );
       }else{
-        buf += tag_to_text( n ) + ":/" + tag_to_text( v );
+        buf += tag_to_dump_text( n ) + ":/" + tag_to_dump_text( v );
       }
     break;
 
     case type_integer :
       if( n != tag_integer ){
-        buf += tag_to_text( n ) + ":";
+        buf += tag_to_dump_text( n ) + ":";
       }
       buf += integer_to_text( v );
     break;
@@ -6160,16 +7173,16 @@ function short_dump( c : Cell ) : Text {
     case type_reference :
       // ToDo: add class
       class_name_tag = name( v );
-      buf += tag_to_text( n )
-      + "<" + tag_to_text( class_name_tag ) + ">";
+      buf += tag_to_dump_text( n )
+      + "<" + tag_to_dump_text( class_name_tag ) + ">";
     break;
 
     case type_proxy :
       /**/ const obj = proxied_object_by_id( v );
       /**/ const proxy_class_name = obj.constructor.name;
       /**/ /*c Text proxy_class_name( "c_string" ); c*/
-      /**/ buf += tag_to_text( n )
-      /**/ + "<proxied-" + proxy_class_name + "@" + N( v ) + ">";
+      /**/ buf += tag_to_dump_text( n )
+      /**/ + "<proxied-" + proxy_class_name + C( v ) + ">";
     break;
 
     case type_text :
@@ -6179,7 +7192,7 @@ function short_dump( c : Cell ) : Text {
         txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
       }
       if( n != tag_text ){
-        buf += tag_to_text( n )  + ":";
+        buf += tag_to_dump_text( n )  + ":";
       }
       // ToDo: better escape
       /**/ txt = txt
@@ -6192,21 +7205,21 @@ function short_dump( c : Cell ) : Text {
     break;
 
     case type_verb :
-      // ToDo: add name
-      buf += tag_to_text( n );
+      buf += "#" + tag_to_dump_text( n ) + "#";
       if( v != 0 ){
-        buf += ":<verb:" + N( v ) + ">";
+        buf += ":<verb:" + C( v ) + ">";
       }
     break;
 
     case type_flow :
       // ToDo: add name
-      buf += tag_to_text( n ) + ":<flow:" + N( v ) + ">";
+      buf += tag_to_dump_text( n ) + ":<flow:" + N( v ) + ">";
     break;
 
     default :
       de&&mand( false );
-      buf += tag_to_text( n ) + ":<invalid-type " + N( t ) + ":" + N( v ) + ">";
+      buf += tag_to_dump_text( n )
+      + ":<invalid-type " + C( t ) + ":" + C( v ) + ">";
       breakpoint();
     break;
 
@@ -6245,7 +7258,7 @@ function stacks_dump() : Text {
 
   if( ptr < base ){
     buf += "\nData stack underflow, top " + N( tos )
-    + ", base "       + N( base )
+    + ", base "       + C( base )
     + ", delta "      + N( tos - base )
     + ", excess pop " + N( ( tos - base ) / ONE );
     // base = ptr + 5 * ONE;
@@ -6280,9 +7293,9 @@ function stacks_dump() : Text {
   let return_base = ACTOR_control_stack;
 
   if( ptr < return_base ){
-    buf += "\nControl stack underflow, top " + N( csp )
-    + ", base "       + N( return_base )
-    + ", delta "      + N( csp - return_base )
+    buf += "\nControl stack underflow, top " + C( csp )
+    + ", base "       + C( return_base )
+    + ", delta "      + N(   csp - return_base )
     + ", excess pop " + N( ( csp - return_base ) / ONE );
     // ToDo: fatal error?
     some_dirty = true;
@@ -6290,7 +7303,6 @@ function stacks_dump() : Text {
   }
 
   nn = 0;
-  let ip = 0 ;
   while( ptr >= return_base ){
     buf += "\n"
     + N( nn ) + " -> "
@@ -6318,38 +7330,37 @@ function stacks_dump() : Text {
  *  debugger primitive - invoke host debugger, if any
  */
 
-primitive( "debugger", primitive_debugger );
-function               primitive_debugger(){
+function primitive_debugger(){
   debugger;
 }
+primitive( "debugger", primitive_debugger );
 
 
 /*
  *  debug primitive - activate lots of traces
  */
 
-primitive( "debug", primitive_debug );
-function            primitive_debug(){
+function primitive_debug(){
   debug();
 }
+primitive( "debug", primitive_debug );
 
 
 /*
  *  no-debug primitive - deactivate lots of traces
  */
 
-primitive( "no-debug", primitive_no_debug );
-function               primitive_no_debug(){
+function primitive_no_debug(){
   no_debug();
 }
+primitive( "no-debug", primitive_no_debug );
 
 
 /*
  *  log primitive -
  */
 
-primitive( "log", primitive_log );
-function          primitive_log(){
+function primitive_log(){
 
   const verb_cell = POP();
   const typ = type( verb_cell );
@@ -6372,19 +7383,44 @@ function          primitive_log(){
       const domain_cell = POP();
       const domain_id = value( domain_cell );
       if( domain_id == tag( "eval" ) ){
-        eval_de = true;
+        /**/ eval_de = true;
+        /*c{
+          #ifndef eval_de
+            eval_de = true;
+          #endif
+        }*/
       }
       if( domain_id == tag( "step" ) ){
-        step_de = true;
+        /**/ step_de = true;
+        /*c{
+          #ifndef step_de
+            step_de = true;
+          #endif
+        }*/
       }
       if( domain_id == tag( "run" ) ){
-        run_de = true;
+        /**/ run_de = true;
+        /*c{
+          #ifndef run_de
+            run_de = true;
+          #endif
+        }*/
       }
       if( domain_id == tag( "stack" ) ){
-        stack_de = true;
+        /**/ stack_de = true;
+        /*c{
+          #ifndef stack_de
+            stack_de = true;
+          #endif
+        }*/
       }
       if( domain_id == tag( "token" ) ){
-        token_de = true;
+        /**/ token_de = true;
+        /*c{
+          #ifndef token_de
+            token_de = true;
+          #endif
+        }*/
       }
       clear( domain_cell );
 
@@ -6392,25 +7428,51 @@ function          primitive_log(){
       const domain_cell = POP();
       const domain_id = value( domain_cell );
       if( domain_id == tag( "eval" ) ){
-        eval_de = false;
+        /**/ eval_de = false;
+        /*c{
+          #ifdef eval_de
+            eval_de = false;
+          #endif
+        }*/
       }
       if( domain_id == tag( "step" ) ){
-        step_de = false;
+        /**/ step_de = false;
+        /*c{
+          #ifdef step_de
+            step_de = false;
+          #endif
+        }*/
       }
       if( domain_id == tag( "run" ) ){
-        run_de = false;
+        /**/ run_de = false;
+        /*c{
+          #ifdef run_de
+            run_de = false;
+          #endif
+        }*/
       }
       if( domain_id == tag( "stack" ) ){
-        stack_de = false;
+        /**/ stack_de = false;
+        /*c{
+          #ifdef stack_de
+            stack_de = false;
+          #endif
+        }*/
       }
       if( domain_id == tag( "token" ) ){
-        token_de = false;
+        /**/ token_de = false;
+        /*c{
+          #ifdef token_de
+            token_de = false;
+          #endif
+        }*/
       }
       clear( domain_cell );
     }
   }
   clear( verb_cell );
 }
+primitive( "log", primitive_log );
 
 
 /*
@@ -6446,11 +7508,24 @@ function            primitive_is_fast(){
 
 
 /*
+ *  noop primitive - No operation - does nothing
+ */
+
+function save_ip( label : Tag ){
+  CSP += ONE;
+  set( CSP, type_integer, label, IP );
+}
+
+function primitive_noop(){
+}
+primitive( "noop", primitive_noop );
+
+
+/*
  *  assert-checker primitive - internal
  */
 
-primitive( "assert-checker", primitive_assert_checker );
-function                     primitive_assert_checker(){
+function primitive_assert_checker(){
 
 // This primitive gets called after an assertion block has been executed.
 
@@ -6468,6 +7543,7 @@ function                     primitive_assert_checker(){
   CSP -= ONE;
 
 }
+primitive( "assert-checker", primitive_assert_checker );
 
 
 const tag_assert_checker = tag( "assert-checker" );
@@ -6478,20 +7554,12 @@ let assert_checker_definition = 0;
 
 
 /*
- *  assert primitive
+ *  assert primitive - assert a condition, based on the result of a block
  */
-
-function save_ip( label : Tag ){
-  CSP += ONE;
-  set( CSP, type_integer, label, IP );
-}
-
 
 const tag_assert = tag( "assert" );
 
-
-primitive( "assert", primitive_assert );
-function             primitive_assert(){
+function  primitive_assert(){
 
 // Assert that a condition is true, based on the result of a block
 
@@ -6514,16 +7582,7 @@ function             primitive_assert(){
   IP = pop_raw_value();
 
 }
-
-
-/*
- *  noop primitive
- */
-
-primitive( "noop", primitive_noop );
-function           primitive_noop(){
-// No operation - does nothing
-}
+primitive( "assert", primitive_assert );
 
 
 /* -----------------------------------------------------------------------------
@@ -7060,7 +8119,7 @@ function            primitive_loop_until(){
  */
 
 primitive( "loop-while", primitive_loop_while );
-function            primitive_loop_while(){
+function                 primitive_loop_while(){
 
   const condition_block = pop_block();
   const body_block      = pop_block();
@@ -7489,7 +8548,7 @@ void checked_int_modulo( void ){
 void checked_int_power( void ){
   int a, b;
   check_int_parameters( &a, &b );
-  set_value( TOS, pow( a, b ) );
+  set_value( TOS, (Value) pow( a, b ) );
 }
 
 void checked_int_left_shift( void ){
@@ -8171,7 +9230,7 @@ function                      primitive_is_named(){
 function inox_machine_code_cell_to_text( c : Cell ) : Text {
 // Decompilation of a single machine code.
 
-  // Never dereference a null pointer.
+  // Never dereference a null pointer
   if( c == 0 ){
     return "No code at IP 0";
   }
@@ -8191,29 +9250,33 @@ function inox_machine_code_cell_to_text( c : Cell ) : Text {
   if( t == type_void ){
 
     if( get_primitive( n ) == no_operation ){
-      debugger;
-      return S()+ "Invalid primitive cell " + N( c )
-      + " named " + N( n ) + " (" + tag_to_text( n ) + ")";
+      return S()+ "Invalid primitive cell " + C( c )
+      + " named " + C( n )
+      + " (" + ( is_valid_tag( n ) ? tag_to_text( n ) : no_text ) + ")";
     }
 
     fun = get_primitive( n );
     name_text = tag_to_text( n );
-    return S()+ name_text + " ( cell " + N( c )
+    return S()+ name_text + " ( cell " + C( c )
     + " is primitive " + F( fun ) + " )";
 
   // If code is the integer id of a verb, an execution token, xt in Forth jargon
   }else if ( t == type_verb ){
-    name_text = tag_to_text( n );
     if( n == 0x0000 ){
       debugger;
-      return S()+ name_text + " return ( cell " + N( c )
+      return S()+ name_text + " return ( cell " + C( c )
       + " is verb return 0x0000 )";
     }
-    return S()+ name_text + " ( cell " + N( c ) + " is a verb )";
+    if( ! is_valid_tag( n ) ){
+      return S()+ "Invalid verb cell " + C( c )
+      + " named " + C( n );
+    }
+    name_text = tag_to_text( n );
+    return S()+ name_text + " ( cell " + C( c ) + " is a verb )";
 
   // If code is a literal
   }else{
-    return S()+ dump( c ) + " ( cell " + N( c ) + " is a literal )";
+    return S()+ dump( c ) + " ( cell " + C( c ) + " is a literal )";
   }
 
 }
@@ -8264,8 +9327,8 @@ function verb_to_text_definition( id : Index ) : Text {
 
   let auto_buf = S();
   auto_buf += ": " + auto_text_name + " ( definition of " + auto_text_name
-  + ", verb " + N( id )
-  + ", cell " + N( def )
+  + ", verb " + C( id )
+  + ", cell " + C( def )
   + ( flags != 0 ? ", flags" + verb_flags_dump( flags ) : "" )
   + ", length " + N( length ) + " )\n";
 
@@ -8279,7 +9342,7 @@ function verb_to_text_definition( id : Index ) : Text {
       de&&mand_eq( value( c ), 0x0 );
       de&&mand_eq( type(  c ), type_void );
     }
-    auto_buf += "( " + N( ip ) + " ) "
+    auto_buf += "( " + C( ip ) + " ) "
     + inox_machine_code_cell_to_text( c ) + "\n";
     ip++;
   }
@@ -8314,6 +9377,7 @@ function           primitive_peek(){
 
 /*
  *  poke primitive - Set the value of a cell, using a cell's address.
+ *  This is very low level, it's the Forth ! word.
  */
 
 primitive( "poke", primitive_poke );
@@ -8528,7 +9592,7 @@ primitive( "return-without-parameters", primitive_return_without_parameters );
 function primitive_return_without_parameters(){
 
   // ToDo: the limit should be the base of the control stack
-  let limit;
+  let limit = 0;
   if( check_de ){
     limit = ACTOR_control_stack;
   }
@@ -9210,7 +10274,7 @@ function                 primitive_object_get(){
     ptr = get_reference( ptr );
   }
 
-  let limit;
+  let limit = 0;
   if( check_de ){
     limit = ptr + object_length( ptr ) * ONE;
   }
@@ -9222,7 +10286,7 @@ function                 primitive_object_get(){
   while( name( ptr ) != n ){
     // ToDo: go backward? That would process the array as a stack
     ptr += ONE;
-    if( check_de ){
+    if( check_de && limit != 0 ){
       if( ptr > limit ){
         FATAL( "Object variable not found, named " + tag_to_text( n ) );
         return;
@@ -9255,7 +10319,7 @@ function                 primitive_object_set(){
     ptr = get_reference( ptr );
   }
 
-  let limit;
+  let limit = 0;
   if( check_de ){
     limit = ptr + object_length( ptr ) * ONE;
   }
@@ -9267,7 +10331,7 @@ function                 primitive_object_set(){
   while( name( ptr ) != n ){
     // ToDo: go backward?
     ptr += ONE;
-    if( check_de ){
+    if( check_de && limit != 0 ){
       if( ptr > limit ){
         FATAL( "Object variable not found, named " + tag_to_text( n ) );
         return;
@@ -9403,11 +10467,7 @@ primitive( "stack-capacity", primitive_stack_capacity );
 function                     primitive_stack_capacity(){
 // Return the capacity of the stack of an object
   let target = pop_reference();
-  if( type( target ) == type_reference ){
-    target = get_reference( target );
-  }
-  const size = area_size( value( target ) );
-  push_integer( ( size / size_of_cell ) - 1 );
+  push_integer( stack_capacity( target ) );
   set_tos_name( tag_stack_capacity );
 }
 
@@ -9436,11 +10496,9 @@ function                  primitive_stack_clear(){
 
 /**/ function swap_cell( c1 : Cell, c2 : Cell ){
 /*c void swap_cell( Cell c1, Cell c2 ) {  c*/
-  let tmp = allocate_cell();
-  move_cell( c1, tmp );
+  move_cell( c1, the_tmp_cell );
   move_cell( c2, c1 );
-  move_cell( tmp, c2 );
-  free_cell( tmp );
+  move_cell( the_tmp_cell, c2 );
 }
 
 
@@ -9557,24 +10615,25 @@ function                       primitive_data_stack_limit(){
  */
 
 const tag_control_stack_base  = tag( "control-stack-base" );
-const tag_control_stack_limit = tag( "control-stack-limit" );
 
-primitive( "control-stack-base", primitive_control_stack_base );
-function                         primitive_control_stack_base(){
+function primitive_control_stack_base(){
   push_integer( ACTOR_control_stack );
   set_tos_name( tag_control_stack_base );
 }
+primitive( "control-stack-base", primitive_control_stack_base );
 
 
 /*
  *  control-stack-limit primitive
  */
 
-primitive( "control-stack-limit", primitive_control_stack_limit );
-function                          primitive_control_stack_limit(){
+const tag_control_stack_limit = tag( "control-stack-limit" );
+
+function primitive_control_stack_limit(){
   push_integer( ACTOR_control_stack_limit );
   set_tos_name( tag_control_stack_limit );
 }
+primitive( "control-stack-limit", primitive_control_stack_limit );
 
 
 /*
@@ -10311,7 +11370,7 @@ function PUSH() : Cell {
 function POP() : Cell {
   de&&mand( TOS > ACTOR_data_stack );
   return TOS--;
-  de&&mand( ONE == 1 );
+  // de&&mand( ONE == 1 );
   // If ONE is two, ie words_per_cell is 2, then it should be:
   // const x = TOS;
   // TOS -= ONE;
@@ -10382,7 +11441,7 @@ function RUN(){
   de&&mand( !! IP );
 
   /**/ let fun = no_operation;
-  /*c  Primitive fun; c*/
+  /*c  Primitive fun = 0; c*/
   let i;
   let t;
 
@@ -10396,7 +11455,7 @@ function RUN(){
     // if( must_stop )break;
 
     // ToDo: there should be a method to break this loop
-    inner_loop: while( remaining_instructions_credit-- ){
+    while( remaining_instructions_credit-- ){
 
       // ToDo: use an exception to exit the loop,
       // together with some primitive_exit_run()
@@ -10460,7 +11519,7 @@ if( step_de )debugger;
       if( i == 0x0000 ){
         if( run_de ){
           bug( S()
-            + "run, return to " + N( IP )
+            + "run, return to " + C( IP )
             + " of " + tag_to_text( name( CSP ) )
           );
         }
@@ -10504,7 +11563,10 @@ if( step_de )debugger;
           let old_ip  = IP;
 
           if( get_primitive( i ) == no_operation ){
-            FATAL( "Run. Primitive function not found for id " + i );
+            FATAL(
+              "Run. Primitive function not found for id " + N( i )
+              + ", name " + tag_to_dump_text( verb_id )
+            );
           }else{
             fun = get_primitive( i );
             fun();
@@ -10561,7 +11623,7 @@ if( step_de )debugger;
           }
           if( IP && IP != old_ip ){
             /*de*/ bug( S()
-            /*de*/ + "run, IP change, was " + N( old_ip - ONE )
+            /*de*/ + "run, IP change, was " + C( old_ip - ONE )
             /*de*/ + ", due to "
             /*de*/ + inox_machine_code_cell_to_text( old_ip - ONE )
             /*de*/ );
@@ -10643,8 +11705,8 @@ const tag_eval = tag( "eval" );
  */
 
 // Name of current style, "inox" or "forth" typically
-/**/ let  style = "";
-/*c  Text style( "" );  c*/
+/**/ let  the_style = "";
+/*c  Text the_style( "" );  c*/
 
 
 // Typescript version uses a Map of Map objects
@@ -10704,10 +11766,8 @@ function make_style( style : TxtC ) : Cell {
   // Allocate an extensible stack
   let new_map = stack_preallocate( 100 );
   let new_tag = tag( style );
-  let tmp = allocate_cell();
-  set( tmp, type_integer, new_tag, new_map );
-  stack_push( all_aliases_by_style, tmp );
-  free_cell( tmp );
+  set( the_tmp_cell, type_integer, new_tag, new_map );
+  stack_push( all_aliases_by_style, the_tmp_cell );
   return new_map;
 }
 
@@ -10734,11 +11794,9 @@ function define_alias( style : TxtC, alias : TxtC, new_text : TxtC ){
   let alias_tag = tag( alias );
   if( !stack_contains_tag( aliases, alias_tag ) ){
     // ToDo: should reallocate stack if full
-    let tmp = allocate_cell();
-    set_text_cell( tmp, new_text );
-    set_name( tmp, alias_tag );
-    stack_push( aliases, tmp );
-    free_cell( tmp );
+    set_text_cell( the_tmp_cell, new_text );
+    set_name( the_tmp_cell, alias_tag );
+    stack_push( aliases, the_tmp_cell );
     return;
   }
   let alias_cell = stack_lookup_by_tag( aliases, alias_tag );
@@ -10780,7 +11838,7 @@ primitive( "inox-dialect", primitive_inox_dialect );
 const tag_dialect = tag( "dialect" );
 
 function primitive_dialect(){
-  push_text( style );
+  push_text( the_style );
   set_tos_name( tag_dialect );
 }
 primitive( "dialect", primitive_dialect );
@@ -10813,7 +11871,7 @@ primitive( "set-dialect", primitive_set_dialect );
 function primitive_alias(){
   const auto_new_text = pop_as_text();
   const auto_old_text = pop_as_text();
-  define_alias( style, auto_old_text, auto_new_text );
+  define_alias( the_style, auto_old_text, auto_new_text );
 }
 primitive( "alias", primitive_alias );
 
@@ -10844,7 +11902,7 @@ function primitive_import_dialect(){
     let alias_cell = stack_at( imported_dialect, ii );
     let auto_alias = tag_to_text( name( alias_cell ) );
     let auto_alias_text = cell_to_text( alias_cell );
-    define_alias( style, auto_alias, auto_alias_text );
+    define_alias( the_style, auto_alias, auto_alias_text );
     ii++;
   }
 }
@@ -11330,8 +12388,8 @@ let token_line_no = 0;
 let token_column_no = 0;
 
 // "to" when Inox style, "," when Forth style
-/**/ let  define = "";
-/*c  static Text define( "" );  c*/
+/**/ let  begin_define = "";
+/*c  static Text begin_define( "" );  c*/
 
 // "." when Inox style, ";" when Forth style
 /**/ let  end_define = "";
@@ -11400,7 +12458,7 @@ function set_style( new_style : TxtC ){
     set_comment_mono_line( "~~" );
     set_comment_multi_line( "~|", "|~" );
     // Using "to" is Logo style, it's turtles all the way down
-    define = "to";
+    begin_define = "to";
     end_define = ".";
 
   }else if( teq( new_style, "c" )
@@ -11409,7 +12467,7 @@ function set_style( new_style : TxtC ){
     set_comment_mono_line( "//" );
     set_comment_multi_line( "/*", "*/" );
     if( teq( new_style, "javascript" ) ){
-      define = "function";
+      begin_define = "function";
       end_define = "}";
     }
 
@@ -11417,29 +12475,29 @@ function set_style( new_style : TxtC ){
     set_comment_mono_line( "#" );
     // There is no standard, let's invent something
     set_comment_multi_line( "<<____", "____" );
-    define = "function";
+    begin_define = "function";
     end_define = "}";
 
   }else if( teq( new_style, "forth" ) ){
     set_comment_mono_line( "\\" );
     set_comment_multi_line( "(", ")" );
-    define = ":";
+    begin_define = ":";
     end_define = ";";
 
   }else if( teq( new_style, "lisp" ) ){
     set_comment_mono_line( ";" );
     set_comment_multi_line( "#|", "|#" );
-    define = "defn";
+    begin_define = "defn";
     end_define = ")"; // ToDo: this probably doesn't work
 
   }else if( teq( new_style, "prolog" ) ){
     set_comment_mono_line( "%" );
     set_comment_multi_line( "/*", "*/" );
-    define = "clause";
+    begin_define = "clause";
     end_define = ".";
   }
 
-  style = new_style;
+  the_style = new_style;
 
   // Don't guess the style because user made it explicit
   first_comment_seen = true;
@@ -11559,7 +12617,7 @@ primitive( "input-until", primitive_input_until );
  */
 
 function unget_token( t : Index, s : string ){
-  back_token_type = token_type_word;
+  back_token_type = t;
   back_token_text = s;
 }
 
@@ -11763,7 +12821,7 @@ function extract_line( txt : TxtC, ii : Index ) : Text {
 function ch_is_limit( ch : TxtC, next_ch : TxtC ) : boolean {
   if( teq( ch, " " ) )return true;
   if( toker_eager_mode )return false;
-  if( tneq( style, "inox" ) )return false;
+  if( tneq( the_style, "inox" ) )return false;
   if( teq( ch, ":" )
   ||  ( teq( ch, ";" ) ) // ToDo: ?
   ||  ( teq( ch, "/" ) && tneq( next_ch, "(" ) ) // /a/b/c is /a /b /c, a/b/c is a/ b/ c
@@ -12358,7 +13416,7 @@ function process_word_state(){
     let auto_word_alias = alias( toker_buf );
 
     // In Inox style the aliases can expand into multiple words
-    if( tlen( auto_word_alias ) > 0  && teq( style, "inox" ) ){
+    if( tlen( auto_word_alias ) > 0  && teq( the_style, "inox" ) ){
       // Complex case, potentially expand into multiple tokens
       let index_space = tidx( auto_word_alias, " " );
       if( index_space != -1 ){
@@ -12455,7 +13513,7 @@ function next_token(){
   toker_previous_ii    = -1;
   toker_previous_state = token_type_error;
 
-  style_is_forth = teq( style, "forth" );
+  style_is_forth = teq( the_style, "forth" );
 
   token_is_ready = false;
 
@@ -12769,12 +13827,13 @@ const tag_is_integer_text = tag( "integer-text?" );
 function is_integer( buf : Text ) : boolean {
   /**/ return ! isNaN( parseInt( buf ) );
   /*c{
-  for( int i = 0; i < buf.length(); ++i ){
-    if( ! isdigit( buf[ i ] ) ){
-      return false;
+    // ToDo: bugs when too big
+    for( unsigned int ii = 0 ; ii < buf.length() ; ++ii ){
+      if( ! isdigit( buf[ ii ] ) ){
+        return false;
+      }
     }
-  }
-  return true;
+    return true;
   /*c*/
 }
 
@@ -13023,23 +14082,21 @@ function bug_parse_levels( title : TxtC ) : boolean {
 
 function push_parse_state(){
 // Push the current parse context onto the parse stack
-  const tmp = allocate_cell();
   // set( tmp, type_integer, tag_depth, parse_depth );
   // stack_push( parse_stack, tmp );
-  set( tmp, type_integer, tag_type, parse_type );
-  stack_push( parse_stack, tmp );
-  set_text_cell( tmp, parse_name );
-  set_name( tmp, tag_name );
-  stack_push( parse_stack, tmp );
-  set( tmp, type_integer, tag_verb, parse_verb );
-  stack_push( parse_stack, tmp );
-  set( tmp, type_integer, tag_block_start, parse_block_start );
-  stack_push( parse_stack, tmp );
-  set( tmp, type_integer, tag_line_no, token_line_no );
-  stack_push( parse_stack, tmp );
-  set( tmp, type_integer, tag_column_no, token_column_no );
-  stack_push( parse_stack, tmp );
-  free_cell( tmp );
+  set( the_tmp_cell, type_integer, tag_type, parse_type );
+  stack_push( parse_stack, the_tmp_cell );
+  set_text_cell( the_tmp_cell, parse_name );
+  set_name( the_tmp_cell, tag_name );
+  stack_push( parse_stack, the_tmp_cell );
+  set( the_tmp_cell, type_integer, tag_verb, parse_verb );
+  stack_push( parse_stack, the_tmp_cell );
+  set( the_tmp_cell, type_integer, tag_block_start, parse_block_start );
+  stack_push( parse_stack, the_tmp_cell );
+  set( the_tmp_cell, type_integer, tag_line_no, token_line_no );
+  stack_push( parse_stack, the_tmp_cell );
+  set( the_tmp_cell, type_integer, tag_column_no, token_column_no );
+  stack_push( parse_stack, the_tmp_cell );
 }
 
 
@@ -13305,8 +14362,14 @@ function eval_do_text_literal( t : TxtC ){
 
 function eval_do_tag_literal( t : TxtC ){
   eval_de&&bug( S()+ "Eval. Do tag literal " + t );
-  // if( t == "void" )debugger;
   push_tag( tag( t ) );
+  eval_do_literal();
+}
+
+
+function eval_do_verb_literal( t : TxtC ){
+  eval_de&&bug( S()+ "Eval. Do verb literal " + t );
+  push_verb( tag( t ) );
   eval_do_literal();
 }
 
@@ -13368,11 +14431,9 @@ function add_machine_code( code : Tag ){
     // The opposite of "final" would be "volatile", meaning that the
     // definition may change at any time, so the value must be used
     // to look up the definition address each time the verb is used.
-    const new_cell = allocate_cell();
     // Only the name matters, for now, so 0 is ok
-    set( new_cell, type_verb, code, 0 );
-    stack_push( parse_codes, new_cell );
-    free_cell( new_cell );
+    set( the_tmp_cell, type_verb, code, 0 );
+    stack_push( parse_codes, the_tmp_cell );
   }
 
   const block_len = stack_length( parse_codes );
@@ -13402,7 +14463,7 @@ function eval_do_machine_code( tag : Name ){
     // Run now case
     eval_de&&bug( S()
       + "Eval. do_machine_code, RUN "
-      + N( tag ) + " " + tag_to_text( tag )
+      + C( tag ) + " " + tag_to_text( tag )
     );
 
     // Remember in control stack what verb is beeing entered
@@ -13425,7 +14486,7 @@ function eval_do_machine_code( tag : Name ){
 
     stack_de&&bug( S()
       + "Eval. Before immediate RUN of " + tag_to_text( tag )
-      + " at IP " + N( IP )
+      + " at IP " + C( IP )
       + "\n" + stacks_dump()
     );
 
@@ -13445,7 +14506,7 @@ function eval_do_machine_code( tag : Name ){
 
     eval_de&&bug( S()
       + "Eval. do_machine_code, compile "
-      + N( tag ) + " " + tag_to_text( tag )
+      + C( tag ) + " " + tag_to_text( tag )
       + " into definition of " + parse_new_verb_name
     );
 
@@ -13509,11 +14570,8 @@ function eval_block_begin( verb : TxtC ){
 
   // Reserve one verb for block's length, like for verb definitions
   parse_block_start = stack_length( parse_codes );
-  const tmp = allocate_cell();
-  stack_push_copy( parse_codes, tmp );
-  free_cell( tmp );
-  set_type( stack_peek( parse_codes ), type_integer );
-  set_name( stack_peek( parse_codes ), tag_block_header );
+  set( the_tmp_cell, type_integer, tag_block_header, 0 );
+  stack_push_copy( parse_codes, the_tmp_cell );
 
 }
 
@@ -13531,9 +14589,8 @@ primitive( "compile-block-begin", primitive_compile_block_begin );
 function eval_block_end(){
 
   // Add a "return" at the end of the block, a 0/0/0 actually
-  const tmp = allocate_cell();
-  stack_push_copy( parse_codes, tmp );
-  free_cell( tmp );
+  clear( the_tmp_cell );
+  stack_push_copy( parse_codes, the_tmp_cell );
 
   const block_length = stack_length( parse_codes ) - parse_block_start;
   de&&mand( block_length > 0 );
@@ -13597,39 +14654,65 @@ function operandX_( v : Text ) : Text {
  *  . ; ( ) { and } are special verbs.
  *  verbs starting with . / # > or _ are usually special.
  *  verbs ending with : / # > _ ( or { are usually special.
- *  There are exceptions.
- *  Verbs ending with ? are not special.
- *  Verbs starting and ending with the same character are not special.
- *  Single character verbs are not special.
- *  What is special about special verbs is that they cannot be redefined.
- *  They have special meanings understood by the compiler.
+ *  There are exceptions. Single character verbs are usually not special.
+ *  What is special about special verbs is that they special meanings
+ *  understood by the compiler.
  *  Note: , is a very special character, it always behaves as a space.
  */
 
 function is_special_verb( val : Text ) : boolean {
+
+  // ToDo: parsing verbs should be immediate verb, not special tokens
   if( val == "." || val == ";" )return true;
   if( val == "(" || val == ")" )return true;
   if( val == "{" || val == "}" )return true;
+
+  // Special verbs are at least 2 characters long
   if( tlen( val ) < 2 )return false;
+
   /**/ const first_ch = val[ 0 ];
   /*c  Text  first_ch( tcut( val, 1 ) ); c*/
-  /**/ const last_ch  = tlen( val ) > 1 ? val[ tlen( val ) - 1 ] : first_ch;
+  /**/ const last_ch  = val[ tlen( val ) - 1 ];
   /*c  Text  last_ch( tbut( val, -1 ) ); c*/
-  if( last_ch == "?" )return false;        // Predicates are not special
-  if( last_ch == first_ch )return false;   // xx and x...x is not special
-  if( first_ch != "." && first_ch != ":"   // Member access and naming
-  &&  last_ch  != "." && last_ch  != ":"   //   idem
-  &&  first_ch != "/" && first_ch != "#"   // Tags
-  &&  last_ch  != "/" && last_ch  != "#"   //   idem
-  &&  first_ch != ">" && first_ch != "_"   // Local & data variables
-  &&  last_ch  != ">" && last_ch  != "_"   //   idem
-  &&  last_ch  != "(" && last_ch  != "{"   // Calls and block calls
-  &&  last_ch  != first_ch
-  ){
-    return false;
-  }
-  // .x x. :xx xx: /x x/ #x x# >x x> _x x_ x( x{
-  return true;
+
+  // if( last_ch == "?" )return false;        // Predicates are not special
+  // if( last_ch == first_ch )return false;   // xx and x...x is not special
+
+  // .xxx is for member access
+  if( first_ch == "." )return true;
+
+  // :xxx is for naming
+  if( first_ch == ":" )return true;
+
+  // /xxx is for tags
+  if( first_ch == "/" )return true;
+
+  // #xxx is for tags too, also for #xxx# verb literals
+  if( first_ch == "#" )return true;
+
+  // >xxx is for local variables
+  if( first_ch == ">" )return true;
+
+  // _xxx is for data variables
+  if( first_ch == "_" )return true;
+
+  // xxx/ is for tags too
+  if( last_ch  == "/" )return true;
+
+  // xxx> is for local variables
+  if( last_ch  == ">" )return true;
+
+  // xxx: is for keywords
+  if( last_ch  == ":" )return true;
+
+  // xxx( is for calls
+  if( last_ch  == "(" )return true;
+
+  // xxx{ is for block calls
+  if( last_ch  == "{" )return true;
+
+  return false;
+
 }
 
 
@@ -13679,13 +14762,8 @@ function primitive_eval(){
   parse_stack = stack_preallocate( 100 );
   parse_enter( parse_top_level, "" );
 
-  // An existing verb named like the token's text value
+  // Maybe an existing verb named like the token's text value
   let verb_id = 0;
-
-  // Word to start a new verb definition
-  /**/ let define = "to";
-  /*c  static Text define(  "to" );  c*/
-  // That's for the Inox dialect, Forth uses shorter :
 
   // Name of verb for xxx( ... ) and xxx{ ... } calls
   /**/ let call_verb_name  = "";
@@ -13693,7 +14771,8 @@ function primitive_eval(){
 
   let done            = false;
   let is_special_form = false;
-
+  let is_int          = false;
+  let is_operator     = false;
 
   /* ---------------------------------------------------------------------------
    *  Eval loop, until error or eof
@@ -13702,13 +14781,18 @@ function primitive_eval(){
   // ToDo: stackless eval loop
   while( true ){
 
+    verb_id         = 0;
+    done            = false;
+    is_special_form = false;
+    is_int          = false;
+    is_operator     = false;
+
     stack_de&&mand_stacks_are_in_bounds();
 
     // This will update global variables token_type, token_text, etc
     next_token();
 
-    // The C++ version does not handle the "de" flag, so far
-    /*de*/ if( de && token_text == "token-debugger" )debugger;
+    if( de && token_text == "token-debugger" )debugger;
 
     // ~~ and ~~| ... |~~, skip these comments
     if( tok_type( token_type_comment )
@@ -13748,16 +14832,11 @@ function primitive_eval(){
     // to, it starts an Inox verb definition
     // ToDo: handle this better, : and to could be verbs as in Forth
     // ToDo: should be outside the loop but can change inside...
-    let is_forth = ( teq( style, "forth" ) );
-    if( is_forth ){
-      define = ":";
-    }else if( teq( style, "inox" ) ){
-      define = "to";
-    }
+    let is_forth = ( teq( the_style, "forth" ) );
 
     // "to" is detected almost only at the base level
     // ToDo: enable nested definitions?
-    if( tok_word( define ) ){
+    if( tok_word( begin_define ) ){
       // As a convenience it may terminate an unfinished previous definition
       if( parsing( parse_definition )
       &&  token_column_no == 0
@@ -13830,7 +14909,7 @@ function primitive_eval(){
 
     // to, again ? common error is to forget some ; ) or }
     if( eval_is_compiling()
-    &&  tok_word( define )
+    &&  tok_word( begin_define )
     ){
       bug( S()
         + "Parser. Nesting error, unexpected " + token_text
@@ -13883,11 +14962,16 @@ function primitive_eval(){
     if( tok( no_text ) )continue;
 
     // OK. It's a word token
-    done = false;
-    verb_id = 0;
-    is_special_form = false;
-    // ToDo: handle integer and float literals here
-    const is_int = is_integer( token_text );
+
+    if( verb_exists( token_text ) ){
+      // Existing verbs take precedence in all cases
+      verb_id = tag( token_text );
+      done = true;
+    }else{
+      // If not a verb, it may be a special form, a literal, etc
+      // ToDo: handle integer and float literals here
+      is_int = is_integer( token_text );
+    }
 
     // Sometimes it is the last character that help understand
     /**/ let  first_ch
@@ -13913,27 +14997,26 @@ function primitive_eval(){
 
     // In Forth no verb is special
     // ToDo: ; { and } are still special, they should be verbs too
-    if( is_forth
+    if( !done && is_forth
     &&  ! tok( ";" )
     &&  ! tok( "{" )
     &&  ! tok( "}" )
     &&  !is_int
     ){
       if( !verb_exists( token_text ) ){
-        parse_de&&bug( S()+ "Parser. Undefined verb: " + token_text );
+        parse_de&&bug( S()+ "Parser. Forth. Undefined verb: " + token_text );
         debugger;
       }else{
         verb_id = tag( token_text );
+        done = true;
       }
 
-    // In Inox some verbs are special, they can not be defined in the dictionary
-    }else{
+    // In Inox dialect some verbs are special
+    }else if( !done ){
 
-      is_special_form = is_special_verb( token_text );
+      is_special_form = !is_int && is_special_verb( token_text );
 
-      if( !is_special_form
-      &&  !is_int
-      ){
+      if( !is_special_form && !is_int ){
         if( !verb_exists( token_text ) ){
           parse_de&&bug( S()+ "Parser. Undefined verb: " + token_text );
           breakpoint();
@@ -13947,7 +15030,6 @@ function primitive_eval(){
     }
 
     // If existing verb, we're almost done
-    let is_operator = false;
     if( verb_id != 0 ){
 
       is_operator = !is_forth && !!is_operator_verb( verb_id );
@@ -13983,31 +15065,13 @@ function primitive_eval(){
 
       is_operator = false;
 
-      // function calls, keyword method calls and sub expressions
+      // keyword calls and sub expressions
       if( parse_depth > 0
       &&  parse_verb == 0
       ){
 
-        // If building a function call and expecting the function name
-        if( false && parsing( parse_call ) &&  teq( parse_name, no_text ) ){
-          // ToDo: never reached?
-          debugger;
-          parse_name = token_text;
-          parse_verb = verb_id;
-          continue;
-        }
-
-        // If building a block call and expecting the function name
-        if( false && parsing( parse_block ) &&  teq( parse_name, no_text ) ){
-          // ToDo: never reached?
-          debugger;
-          parse_name = token_text;
-          parse_verb = verb_id;
-          continue;
-        }
-
         // If building a keyword method call
-        if( parsing( parse_keyword ) &&  teq( last_ch, ":" ) ){
+        if( parsing( parse_keyword ) && teq( last_ch, ":" ) ){
           // ToDo: update stack, ie parse_level.name += token_text;
           parse_name += token_text;
           eval_de&&bug( S()+ "Eval. Collecting keywords:" + parse_name );
@@ -14018,9 +15082,8 @@ function primitive_eval(){
     }
 
     // If known verb, run it or add it to the new verb beeing built
-    // Unless operators and pieces of keyword calls.
-    if( verb_id != 0 && !is_operator ){
-      // This does not apply to operators and keyword calls
+    // Unless operators or xxx{
+    if( verb_id != 0 && !is_operator && !teq( last_ch, "{" ) ){
       eval_do_machine_code( verb_id );
       continue;
     }
@@ -14039,7 +15102,7 @@ function primitive_eval(){
     // xxx: piece of a keyword call
     // This is inspired by Smalltalk's syntax.
     // See https://learnxinyminutes.com/docs/smalltalk/
-    if( teq( last_ch, ":" ) ){
+    if( !done && teq( last_ch, ":" ) ){
       // first close all previous nested infix operators
       if( parsing( parse_infix ) ){
         parse_leave();
@@ -14056,7 +15119,7 @@ function primitive_eval(){
     }
 
     // ( of xxx(  or ( of ( sub expression )
-    if( teq( last_ch, "(" ) ){
+    if( !done && teq( last_ch, "(" ) ){
       // if ( of ( expr )
       if( tlen( token_text ) == 1 ){
         parse_enter( parse_subexpr, no_text );
@@ -14068,6 +15131,7 @@ function primitive_eval(){
 
     // { of xxx{ or { of { block }
     }else if( teq( last_ch, "{" ) ){
+
       // { start of a block
       if( tlen( token_text ) == 1 ){
         if( eval_is_compiling() ){
@@ -14082,12 +15146,15 @@ function primitive_eval(){
           );
           debugger;
         }
+        done = true;
+
       // if xxx{
       }else{
         if( eval_is_compiling() ){
           // parse_enter( parse_call_block, eval_token_value );
           eval_block_begin( token_text );
           parse_de&&bug( S()+ "Eval. Block call:" + parse_name );
+          done = true;
         }else{
           trace( S()
             + "Cannot compile block, not in a definition, "
@@ -14097,10 +15164,9 @@ function primitive_eval(){
           debugger;
         }
       }
-      done = true;
 
     // } end of a { block } or end of a xxx{
-    }else if( teq( last_ch, "}" ) ){
+    }else if( !done && teq( last_ch, "}" ) ){
 
       if( parsing( parse_call_block ) ||  parsing( parse_block ) ){
 
@@ -14155,7 +15221,7 @@ function primitive_eval(){
       done = true;
 
     // ) end of a ( sub expression ) or end of xxx( function call
-    }else if( teq( first_ch, ")" ) ){
+    }else if( !done && teq( first_ch, ")" ) ){
 
       if( parsing( parse_subexpr ) ||  parsing( parse_call ) ){
 
@@ -14212,8 +15278,8 @@ function primitive_eval(){
       done = true;
 
     // ; (or .) marks the end of the keyword method call, if any
-    }else if(
-      (  tok( ";" )
+    }else if( !done
+    && ( tok( ";" )
       || tok( end_define ) )
     && parsing( parse_keyword )
     // ToDo: }, ) and ] should also do that
@@ -14265,11 +15331,18 @@ function primitive_eval(){
         // ToDo: handle position, line, column of back token
       }
 
-    }else if( is_special_form ){
+    }else if( !done && is_special_form ){
       done = true;
 
-      // /xxx or #xxxx, it's a tag
-      if( teq( first_ch, "/" ) ||  teq( first_ch, "#" ) ){
+      // if #xx# it's a verb
+      if( teq( first_ch, "#" )
+      &&  teq( last_ch,  "#" )
+      &&  tlen( token_text ) > 2
+      ){
+        eval_do_verb_literal( operand_X_( token_text ) );
+
+      // /xxx or #xxx, it's a tag
+      } else if( teq( first_ch, "/" ) ||  teq( first_ch, "#" ) ){
         eval_do_tag_literal( operand_X( token_text ) );
 
       // xxx/ or xxx#, it's a tag too.
@@ -14307,7 +15380,7 @@ function primitive_eval(){
 
       // .xxxx!, it's a lookup in an object with store
       }else if( teq( first_ch, "." )
-      && teq( last_ch, "!" )
+      &&        teq( last_ch,  "!" )
       && tlen( token_text ) > 2
       ){
         eval_do_tag_literal( operand_X_( token_text ) );
@@ -14322,13 +15395,13 @@ function primitive_eval(){
 
       // _xxxx!, it's a lookup in the data stack with store
       }else if( teq( first_ch, "_" )
-      && teq( last_ch, "!" )
+      &&        teq( last_ch,  "!" )
       && tlen( token_text ) > 2
       ){
         eval_do_tag_literal( operand_X_( token_text ) );
         eval_do_machine_code( tag_set_data );
 
-      // _xxxx, it's a lookup in the data stack with fetch
+      // _xxx, it's a lookup in the data stack with fetch
       }else if( teq( first_ch, "_" ) ){
         eval_do_tag_literal( operand_X( token_text ) );
         eval_do_machine_code( tag_data );
@@ -14338,7 +15411,7 @@ function primitive_eval(){
         eval_do_tag_literal( operandX_( token_text ) );
         eval_do_machine_code( tag_rename );
 
-      // :xxxx, it's a naming operation, explicit, Forth style compatible
+      // :xxx, it's a naming operation, explicit, Forth style compatible
       }else if( teq( first_ch, ":" ) ){
         // ToDo: optimize the frequent literal /tag rename sequences
         eval_do_tag_literal( operand_X( token_text ) );
@@ -14349,9 +15422,9 @@ function primitive_eval(){
         eval_do_tag_literal( operandX_( token_text ) );
         eval_do_machine_code( tag_rename );
 
-      // {xxx}, it's a short block about a verb or a /{xxx} tag literal
+      // {xxx}, it's a short block about a verb
       }else if( teq( first_ch, "{" )
-      && teq( last_ch, "}" )
+      &&        teq( last_ch,  "}" )
       && tlen( token_text ) > 2
       ){
         const auto_verb = operand_X_( token_text );
@@ -14361,46 +15434,29 @@ function primitive_eval(){
           eval_do_tag_literal( token_text );
         }
 
+      // It's not so special after all
       }else{
         done = false;
       }
     }
 
+    // If not done with special verbs, handle integers and undefined verbs
     if( !done ){
-
-      // ( start of subexpression
-      if( tok( "(" ) ){
-          debugger; // never reached?
-          parse_enter( parse_subexpr, "" );
-
-      // if xxx(
-      }else if( teq( last_ch, "(" ) ){
-        debugger; // never reached?
-
-        parse_enter( parse_call, token_text );
-
-        // If start of xxx( ... )
-        if( tneq( first_ch, "." ) ){
-          // ToDo: update stack, ie parse_level.name = token_text;
-          parse_name = token_text;
-          done = true;
-        }
-
-      // Else, this is a literal number or a missing verb
+      if( is_int ){
+        eval_do_integer_literal( text_to_integer( token_text) );
+      }else if( teq( first_ch, "-" ) && is_integer( tcut( token_text, 1 ) ) ){
+        eval_do_integer_literal(
+          - text_to_integer( tcut( token_text, 1 ) )
+        );
       }else{
-        if( is_int ){
-          eval_do_integer_literal( text_to_integer( token_text) );
-        }else if( teq( first_ch, "-" ) && is_integer( tcut( token_text, 1 ) ) ){
-          eval_do_integer_literal(
-            - text_to_integer( tcut( token_text, 1 ) )
-          );
-        }else{
-          eval_do_text_literal( token_text );
-          eval_do_machine_code( tag_missing_verb );
-        }
+        eval_do_text_literal( token_text );
+        eval_do_machine_code( tag_missing_verb );
       }
+      done = true;
     }
   }
+
+  de&&mand( done );
 
   // Empty the parse stack
   de&&mand_eq( stack_length( parse_stack ), 6 );
@@ -14892,9 +15948,9 @@ void TODO( const char* message ){
   cerr << "TODO:" << message << endl;
 }
 
-void add_history( TxtC line ){
-  TODO( "add_history: free the history when the program exits" );
-}
+// void add_history( TxtC line ){
+//  TODO( "add_history: free the history when the program exits" );
+// }
 
 int repl(){
   while( true ){
@@ -14905,8 +15961,8 @@ int repl(){
     if( tlen( line ) == 0 ){
       break;
     }
-    add_history( line );
-    cout << evaluate( line );
+    // ToDo: ? add_history( line );
+    cout << evaluate( S() + "~~\n" + line );
   }
   return 0;
 }
@@ -14915,7 +15971,7 @@ int repl(){
 int main( int argc, char *argv[] ){
   init_globals();
   // ToDo: fill some global ENV object
-  // ToDo: push ENV object & arguments onto the data stack
+  // ToDo: ? push ENV object & arguments onto the data stack
   // Display some speed info
   auto duration_to_start = int_now();
   cout << duration_to_start << " ms"
