@@ -912,10 +912,11 @@ let the_very_first_cell = 0;
 let the_free_cell_limit = 0;
 
 // The memory is accessed differently depending on the target
-/**/ let mem8   = new ArrayBuffer( INOX_HEAP_SIZE  ); // 256 kb
-/**/ let mem32  = new Int32Array( mem8 );
-/**/ let mem32f = new Float32Array( mem8 );
-// ToDo: with AssemblyScript const mem64 = new Int64Array( mem8 );
+/**/ let mem    = new ArrayBuffer( INOX_HEAP_SIZE  ); // 256 kb
+/**/ let mem8   = new Uint8Array(   mem );
+/**/ let mem32  = new Int32Array(   mem );
+/**/ let mem32f = new Float32Array( mem );
+// ToDo: with AssemblyScript const mem64 = new Int64Array( mem );
 
 // Linked list of free byte areas, see init_areas_allocator()
 let the_first_free_area = 0;
@@ -924,6 +925,13 @@ let the_empty_text_cell = 0;
 
 // Having a tempory cell is convenient sometimes
 let the_tmp_cell = 0;
+
+// A few global variables need to be initialized soon.
+// That's mainly for debugging purposes.
+// They are documented better close to where they are used.
+let all_symbol_cells = 0;
+let all_symbol_cells_length = 0;
+let tag_list = 0; // Will become tag( "list" ) asap
 
 
 /* -----------------------------------------------------------------------------
@@ -1484,8 +1492,15 @@ function mand_neq( a : i32, b : i32 ) : boolean {
 /**/ const   size_of_info    = 4;  // type & name, packed
 //c/ #define size_of_info      4
 
-/**/ const   size_of_cell    = size_of_value + size_of_info;
+/**/ const   size_of_cell    =   size_of_value + size_of_info;
 //c/ #define size_of_cell      ( size_of_value + size_of_info )
+
+/**/ const   cell_shift     =  3;  // 2^4 = 16, ie size of cell
+//c/ #define cell_shift        3
+
+/**/ const   type_shift      = 4; // 2^4 = at most 16 different types
+//c/ #define type_shift        4
+
 
 /**/ const   words_per_cell  = size_of_cell  / size_of_word;
 //c/ #define words_per_cell    ( size_of_cell  / size_of_word )
@@ -1530,14 +1545,14 @@ let breakpoint_cell = 1;
 function set_value( c : Cell, v : Value ){
    if( de && c == breakpoint_cell )debugger;
    /**/ mem32[ c << 1 ] = v |0;
-   //c/ *cast_ptr( c << 4 ) = v;
+   //c/ *cast_ptr( c << type_shift ) = v;
 }
 
 
 function set_info( c : Cell, i : Info  ){
   if( de && c == breakpoint_cell )debugger;
   /**/ mem32[ ( c << 1 ) + 1 ] = i |0;
-  //c/ *cast_ptr( ( c << 4 ) + 4 ) = i;
+  //c/ *cast_ptr( ( c << type_shift ) + size_of_value ) = i;
 }
 
 
@@ -1547,15 +1562,16 @@ function set_info( c : Cell, i : Info  ){
 
 function value( c : Cell ) : Value {
   // return mem64[ c ] & 0xffffffff
-  /**/ return mem32[ c << 1 |0 ];
-  //c/ return *cast_ptr( c << 4 );
+  // 1 is type_shift - 3,  ie 8 bytes, 4 value, 4 info
+  /**/ return mem32[ c << 1 ] |0;
+  //c/ return *cast_ptr( c << type_shift );
 }
 
 
 function info( c : Cell ) : Info {
   // return mem64[ c ] >>> 32;
   /**/ return mem32[ (     c << 1 ) + 1 ] |0;
-  //c/ return *cast_ptr( ( c << 4 ) + 4 );
+  //c/ return *cast_ptr( ( c << type_shift ) + size_of_value );
 }
 
 
@@ -1568,8 +1584,8 @@ function reset( c : Cell ){
   // mem64[ c ] = 0;
   /**/ mem32[       c << 1       ] = 0;
   /**/ mem32[     ( c << 1 ) + 1 ] = 0;
-  //c/ *cast_ptr(   c << 4       ) = 0;
-  //c/ *cast_ptr( ( c << 4 ) + 4 ) = 0;
+  //c/ *cast_ptr(   c << cell_shift       ) = 0;
+  //c/ *cast_ptr( ( c << cell_shift ) + size_of_value ) = 0;
 }
 
 
@@ -1580,7 +1596,7 @@ function reset( c : Cell ){
 function reset_value( c : Cell ) : void {
   if( de && c == breakpoint_cell )debugger;
   /**/ mem32[     c << 1 ] = 0;
-  //c/ *cast_ptr( c << 4 ) = 0;
+  //c/ *cast_ptr( c << cell_shift ) = 0;
 }
 
 
@@ -1591,7 +1607,7 @@ function reset_value( c : Cell ) : void {
 function reset_info( c : Cell ) : void {
   if( de && c == breakpoint_cell )debugger;
   /**/ mem32[     ( c << 1 ) + 1 ] = 0;
-  //c/ *cast_ptr( ( c << 4 ) + 4 ) = 0;
+  //c/ *cast_ptr( ( c << cell_shift ) + size_of_value ) = 0;
 }
 
 
@@ -1604,8 +1620,8 @@ function init_cell( c : Cell, v : Value, i : Info ){
   // mem64[ c ] = v | ( i << 32 );
   /**/ mem32[       c << 1       ] = v |0;
   /**/ mem32[     ( c << 1 ) + 1 ] = i |0;
-  //c/ *cast_ptr(   c << 4       ) = v;
-  //c/ *cast_ptr( ( c << 4 ) + 4 ) = i;
+  //c/ *cast_ptr(   c << cell_shift                   ) = v;
+  //c/ *cast_ptr( ( c << cell_shift ) + size_of_value ) = i;
 }
 
 
@@ -1620,10 +1636,10 @@ function init_copy_cell( dst : Cell, src : Cell ){
   /**/ const src1 = src << 1;
   /**/ mem32[ dst1     ] = mem32[ src1     ] |0;
   /**/ mem32[ dst1 + 1 ] = mem32[ src1 + 1 ] |0;
-  //c/ auto dst4 = dst << 4;
-  //c/ auto src4 = src << 4;
-  //c/ *cast_ptr( dst4     ) = *cast_ptr( src4     );
-  //c/ *cast_ptr( dst4 + 4 ) = *cast_ptr( src4 + 4 );
+  //c/ auto dst4 = dst << cell_shift;
+  //c/ auto src4 = src << cell_shift;
+  //c/ *cast_ptr( dst4                 ) = *cast_ptr( src4                 );
+  //c/ *cast_ptr( dst4 + size_of_value ) = *cast_ptr( src4 + size_of_value );
 }
 
 
@@ -1635,7 +1651,7 @@ function init_copy_cell( dst : Cell, src : Cell ){
 /*!c{*/
 
 function pack( t : Type, n : Tag ) : Info { return n | t << 28;              }
-function unpack_type( i : Info )   : Type { return i >>> 28;                  }
+function unpack_type( i : Info )   : Type { return i >>> 28;                 }
 function unpack_name( i : Info )   : Tag  { return i & 0xffffff;	           }
 function type( c : Cell )          : Type { return unpack_type( info( c ) ); }
 function name( c : Cell )          : Tag  { return unpack_name( info( c ) ); }
@@ -1742,10 +1758,10 @@ function test_pack(){
 
 /* if( ! PORTABLE ){
 @inline function load32( index : u32 ) :u32 {
-  return load< u32 >( index << 4 );
+  return load< u32 >( index << 3 );
 }
 @inline function store32( index : u3, value : i32 ) :void {
-  store< InoxValue >( index << 4, value );
+  store< InoxValue >( index << 3, value );
 }
 */
 
@@ -1801,7 +1817,7 @@ function test_pack(){
 //c/ #define type_tag          2
 
 /**/ const   type_integer    = 3;
-//c/ #define type_integer     3
+//c/ #define type_integer      3
 
 /**/ const   type_verb       = 4;
 //c/ #define type_verb         4
@@ -1828,6 +1844,586 @@ function test_pack(){
 //c/ #define type_invalid 10
 
 
+/* -----------------------------------------------------------------------------
+ *  LeanString implementation.
+ *  This is a minimal implementation of dynamiccally alllocated strings.
+ *  It is for all versions, both Typescript, AssemblyScript and C++.
+ *  It initially stores the strings using allocate_cells() and then moves to
+ *  using allocate_area() as soon as possible.
+ *  Each lean string is made of a two cells header plus the bytes of
+ *  the string plus one byte set to 0 for C string compatibility when needed.
+ *  Note: using a common format for strings makes it possible to communicate
+ *  between the C++ and the AssemblyScript version with ease.
+ *  That the string representation is also C compatible makes it easy to
+ *  interface Inox with C code.
+ */
+
+// ToDo: endianness should be detected at compile time, how?
+// See https://developer.mozilla.org/en-US/docs/Glossary/Endianness
+// See https://stackoverflow.com/questions/1001307/detecting-endianness-programmatically-in-a-c-program
+
+/**/ const is_big_endian = false;
+//c/ #define is_big_endian false
+
+/**/ let in_lean_mode    = true;
+//c/ static in_lean_mode = true;
+
+/**/ type LeanString = u32;
+//c/ #define LeanString u32
+
+// ToDo: the magic number should be bigger than any expected string
+// That's because memory_dump() detects strings by looking for the magic number
+/**/ const lean_magic_number = 0x8234561;
+//c/ #define lean_magic_number 0x8234561
+
+
+// Declared here to avoid access before initialization
+let debug_next_allocate = 0;
+
+// Linked list of free cells.
+let the_first_free_cell = 0;
+
+// The basic cell allocator is needed, let's initialize it now
+const init_cells_allocator_done = init_cells_allocator();
+
+
+function lean_adjusted_cell_length( len : Length ) : Length {
+  // Add padding to adust on size of cell
+  const padded_len = ( len + size_of_cell - 1 ) & ~( size_of_cell - 1 );
+  return padded_len >> cell_shift;
+}
+
+
+function is_lean( cell : Cell ) : boolean {
+  return value( lean_header( cell ) ) == lean_magic_number;
+}
+
+
+function lean_allocate_cells( len : Index ) : Cell {
+// Allocate cells, each cell can hold size_of_cell bytes.
+  if( in_lean_mode ){
+    // Add space for the fake headers
+    len += 2;
+    const header = allocate_cells( len );
+    // Header 0 may become a reference counter, for now it is a magic number.
+    set_value( header + 0 * ONE, lean_magic_number );
+    // Header 1 is total size in bytes, including the two headers, adjusted.
+    set_value( header + 1 * ONE, len * size_of_cell );
+    const cell = header + 2 * ONE;
+    alloc_de&&mand( is_lean( cell ) );
+    return cell;
+  }else{
+    return allocate_area( len * size_of_cell );
+  }
+}
+
+
+function lean_header( cell : Cell ) : Cell {
+  return cell - 2 * ONE;
+}
+
+
+function lean_free( cell : Cell ){
+  // Clear the content of the string
+  const header = lean_header( cell );
+  const is_area = ! is_lean( cell );
+  const sz = value( header + 1 * ONE );
+  const ncells = sz >> cell_shift;
+  const limit = lean_header( cell ) + ncells;
+  let ii = header;
+  while( ii < limit ){
+    reset( ii );
+    ii += ONE;
+  }
+  // Use either the area allocator or the cell allocator
+  if( ! is_area ){
+    free_cells( header, ncells );
+  }else{
+    free_area( cell );
+  }
+}
+
+
+function lean_string_size( cell : Cell ) : Size {
+// Size of of payload is the total size minus the two headers.
+  const size = value( lean_header( cell ) + 1 * ONE ) - 2 * size_of_cell;
+  // There is at least one null byte and it needs a full cell
+  alloc_de&&mand( size >= size_of_cell );
+  return size;
+}
+
+
+function lean_byte_at( cell : Cell, index : Index ) : Value {
+  // Typescript version uses the mem8 view on the memory buffer
+  /**/ return mem8[ ( cell << cell_shift ) + index ]
+  // AssemblyScript version uses the load<u8> function
+  // C++ version uses the memory buffer directly
+  //c/ return * ( char* )  ( cell << cell_shift ) + index
+
+}
+
+
+function lean_byte_at_put( cell : Cell, index : Index, val : Value ){
+  // Typescript version uses the mem8 view on the memory buffer
+  /**/ mem8[ ( cell << cell_shift ) + index ] = val & 0xFF;
+  // AssemblyScript version uses the store<u8> function
+  // C++ version uses the memory buffer directly
+  //c/ * ( char* )  ( cell << cell_shift ) + index = val & 0xFF;
+  alloc_de&&mand_eq( lean_byte_at( cell, index ), val );
+}
+
+
+function lean_strlen( cell : Cell ) : Length {
+// Compute the length of a lean string
+  // It's the size minus the null bytes at the end
+  // ToDo: area_allocator could store the exact size
+  const size = lean_string_size( cell );
+  let len = size;
+  let ii = len - 1;
+  while( lean_byte_at( cell, ii ) == 0 ){
+    len--;
+    ii--;
+  }
+  return len;
+}
+
+
+function lean_strdup( str : TxtC ) : Cell {
+// Create a lean copy of a native string
+  /**/ const str_len = str.length;
+  //c/ auto  str_len = str.length();
+  // Add one for the null terminator
+  const needed_cells = lean_adjusted_cell_length( str_len + 1 );
+  const cell = lean_allocate_cells( needed_cells );
+  // Typescript version uses the mem8 view on the memory buffer
+  // ToDo: use a TextEncoder.encodeInto() instead
+  /*!c{*/
+    // Copy each character
+    for( let ii = 0; ii < str_len; ii++ ){
+      /**/ lean_byte_at_put( cell, ii, str.charCodeAt( ii ) );
+      //c/ lean_byte_at_put( cell, ii, str[ ii ] );
+    }
+    // Add the null terminator
+    lean_byte_at_put( cell, str_len, 0 );
+  /*}*/
+  // C++ version uses fast strcpy()
+  //c/ strcpy( (char*) ( (int) cell << cell_shift ), str.c_str() );
+  alloc_de&&mand_eq( lean_strlen( cell ), str_len );
+  return cell;
+}
+
+
+function lean_native_string( cell : Cell ) : TxtC {
+// Create a native string from a lean string
+  // Typescript version
+  /*!c{*/
+    // ToDo:: optimize this a lot, using a Javascript TextDecoder
+    const len = lean_strlen( cell );
+    let str = "";
+    for( let ii = 0; ii < len; ii++ ){
+      str += String.fromCharCode( lean_byte_at( cell, ii ) );
+    }
+    return str;
+  /*}*/
+  // C++ version is much simpler, it's already a native string
+  /*c{
+    return (char*) ( ( (int) cell ) << cell_shift );
+  }*/
+}
+
+
+function lean_streq( cell1 : Cell, cell2 : Cell ) : boolean {
+// Compare two lean strings for equality
+  // This is faster than using lean_strcmp because it avoids
+  // the overhead of the loop when the strings have different lengths
+  const len1 = lean_strlen( cell1 );
+  const len2 = lean_strlen( cell2 );
+  if( len1 != len2 ){
+    return false;
+  }
+  for( let ii = 0; ii < len1; ii++ ){
+    if( lean_byte_at( cell1, ii ) != lean_byte_at( cell2, ii ) ){
+      return false;
+    }
+  }
+  return true;
+}
+
+
+function lean_strcmp( cell1 : Cell, cell2 : Cell ) : Value {
+// Compare two lean strings
+  // Typescript version
+  /*!c{*/
+    const len1 = lean_strlen( cell1 );
+    const len2 = lean_strlen( cell2 );
+    const len = Math.min( len1, len2 );
+    for( let ii = 0; ii < len; ii++ ){
+      const byte1 = lean_byte_at( cell1, ii );
+      const byte2 = lean_byte_at( cell2, ii );
+      if( byte1 < byte2 ){
+        return -1;
+      }else if( byte1 > byte2 ){
+        return 1;
+      }
+    }
+    if( len1 < len2 ){
+      return -1;
+    }else if( len1 > len2 ){
+      return 1;
+    }
+    return 0;
+  /*}*/
+  // C++ version is much simpler, it's already a native string
+  /*c{
+    return strcmp( (char*) ( (int) cell1 << 4 ),
+                    (char*) ( (int) cell2 << 4 ) );
+  }*/
+}
+
+
+function lean_strcat( cell1 : Cell, cell2 : Cell ) : Cell {
+// Concatenate two lean strings, returns a new string
+  // Compute the length of the result
+  const len1 = lean_strlen( cell1 );
+  const len2 = lean_strlen( cell2 );
+  const len = len1 + len2 + 1;
+  const adjusted_len = lean_adjusted_cell_length( len );
+  // Allocate the result
+  const cell = lean_allocate_cells( adjusted_len );
+  // Copy the first string
+  for( let ii = 0 ; ii < len1; ii++ ){
+    /**/ lean_byte_at_put( cell, ii, lean_byte_at( cell1, ii ) );
+    //c/ lean_byte_at_put( cell, ii, cell1[ ii ] );
+  }
+  // Copy the second string
+  for( let ii = 0; ii < len2; ii++ ){
+    /**/ lean_byte_at_put( cell, len1 + ii, lean_byte_at( cell2, ii ) );
+    //c/ lean_byte_at_put( cell, len1 + ii, cell2[ ii ] );
+  }
+  alloc_de&&mand_eq( lean_strlen( cell ), len - 1 );
+  return cell;
+}
+
+
+function lean_strindex( str1 : Cell, str2 : Cell ) : Value {
+// Find the first occurence of str2 in str1
+  // Compute the length of the strings
+  const len1 = lean_strlen( str1 );
+  const len2 = lean_strlen( str2 );
+  // Loop over the first string
+  for( let ii = 0; ii < len1; ii++ ){
+    // Check if the first character matches
+    if( lean_byte_at( str1, ii ) == lean_byte_at( str2, 0 ) ){
+      // Loop over the second string
+      let jj = 1;
+      for( ; jj < len2; jj++ ){
+        // Check if the characters match
+        if( lean_byte_at( str1, ii + jj ) != lean_byte_at( str2, jj ) ){
+          break;
+        }
+      }
+      // Check if the second string was found
+      if( jj == len2 ){
+        return ii;
+      }
+    }
+  }
+  return -1;
+}
+
+
+function lean_strrindex( target : Cell, pattern : Cell ) : Value {
+// Find the last occurence of str2 in str1
+  let i = 0;
+  let j = 0;
+  let k = 0;
+  const len_target = lean_strlen( target );
+  const len_pattern = lean_strlen( pattern );
+  for( i = len_target - 1 ; lean_byte_at( target, i ) != 0 ; i-- ){
+    j = i;
+    k = len_pattern - 1;
+    while( lean_byte_at( pattern, k ) != 0
+    && lean_byte_at( target, j ) == lean_byte_at( pattern, k ) ){
+      j--;
+      k--;
+    }
+    if( k < 0 ){
+      return i - len_pattern + 1;
+    }
+  }
+  return -1;
+}
+
+
+function lean_substr( cell : Cell, start : Value, len : Value ) : Cell {
+// Extract a substring from a lean string
+  // If fast the end, return an empty string
+  if( start >= lean_strlen( cell ) ){
+    return lean_strdup( "" );
+  }
+  // Allocate the result
+  const result = lean_allocate_cells( len );
+  // Truncate the length if needed
+  if( start + len > lean_strlen( cell ) ){
+    len = lean_strlen( cell ) - start;
+  }
+  // Copy the substring
+  for( let ii = 0; ii < len; ii++ ){
+    /**/ lean_byte_at_put( result, ii, lean_byte_at( cell, start + ii ) );
+    //c/ lean_byte_at_put( result, ii, cell[ start + ii ] );
+  }
+  return result;
+}
+
+
+function lean_string_test() : Index {
+// Test the string functions
+  const str1 = lean_strdup( "Hello" );
+  const str2 = lean_strdup( "World" );
+  const str3 = lean_strcat( str1, str2 );
+  const str4 = lean_strdup( "HelloWorld" );
+  if( lean_strcmp( str3, str4 ) != 0 ){
+    FATAL( "lean_strcmp failed" );
+    return 0;
+  }
+  if( lean_strindex( str3, str1 ) != 0 ){
+    FATAL( "lean_strindex failed" );
+    return 0;
+  }
+  if( lean_strindex( str3, str2 ) != 5 ){
+    FATAL( "lean_strindex failed" );
+    return 0;
+  }
+  const str5 = lean_substr( str3, 0, 5 );
+  if( lean_strcmp( str5, str1 ) != 0 ){
+    FATAL( "lean_substr failed" );
+    return 0;
+  }
+  lean_free( str1 );
+  lean_free( str2 );
+  lean_free( str3 );
+  lean_free( str4 );
+  lean_free( str5 );
+  return 1;
+}
+
+const lean_string_test_done = lean_string_test();
+
+
+// Now we get all we need to implement the std library compatible string
+
+// Only in C++ however
+/*c{
+
+class LeanString {
+
+  public:
+
+  // Where the string is stored
+  Cell cell;
+
+  // Constructor
+  LeanString( void ){
+    cell = lean_strdup( "" );
+  }
+
+  // Constructor from a C string
+  LeanString( const char* str ){
+    cell = lean_strdup( str );
+  }
+
+  // Destructor
+  ~LeanString( void ){
+    lean_free( cell );
+  }
+
+  // Copy constructor
+  LeanString( const LeanString& str ){
+    cell = lean_strdup( str.cell );
+  }
+
+  // Assignment operator
+  LeanString& operator=( const LeanString& str ){
+    lean_free( cell );
+    cell = lean_strdup( str.cell );
+    return *this;
+  }
+
+  // Assignment operator from a C string
+  LeanString& operator=( const char* str ){
+    lean_free( cell );
+    cell = lean_strdup( str );
+    return *this;
+  }
+
+  // Concatenation operator
+  LeanString operator+( const LeanString& str ) const {
+    auto str1 = lean_strdup( str.cell );
+    auto str = lean_strcat( cell, str1 );
+    auto r = LeanString( str );
+    lean_free( str1 );
+    lean_free( str );
+    return r;
+  }
+
+  // Concatenation operator from a C string
+  LeanString operator+( const char* str ) const {
+    auto str1 = lean_strdup( str );
+    auto str = lean_strcat( cell, str1 );
+    auto r = LeanString( str );
+    lean_free( str1 );
+    lean_free( str );
+    return r;
+  }
+
+  // Concatenation operator
+  LeanString& operator+=( const LeanString& str ){
+    lean_free( cell );
+    cell = lean_strcat( cell, str.cell );
+    return *this;
+  }
+
+  // Concatenation operator from a C string
+  LeanString& operator+=( const char* str ){
+    lean_free( cell );
+    cell = lean_strcat( cell, lean_strdup( str ) );
+    return *this;
+  }
+
+  // Comparison operator
+  bool operator==( const LeanString& str ) const {
+    return lean_strceq( cell, str.cell );
+  }
+
+  // Comparison operator from a C string
+  bool operator==( const char* str ) const {
+    return lean_streq( cell, lean_strdup( str ) );
+  }
+
+
+  // Comparison operator
+  bool operator!=( const LeanString& str ) const {
+    return !lean_strceq( cell, str.cell );
+  }
+
+  // Comparison operator from a C string
+  bool operator!=( const char* str ) const {
+    return !lean_streq( cell, lean_strdup( str ) );
+  }
+
+  // Comparison operator
+  bool operator<( const LeanString& str ) const {
+    return lean_strcmp( cell, str.cell ) < 0;
+  }
+
+  // Comparison operator from a C string
+  bool operator<( const char* str ) const {
+    return lean_strcmp( cell, lean_strdup( str ) ) < 0;
+  }
+
+  // Comparison operator
+  bool operator<=( const LeanString& str ) const {
+    return lean_strcmp( cell, str.cell ) <= 0;
+  }
+
+  // Comparison operator from a C string
+  bool operator<=( const char* str ) const {
+    return lean_strcmp( cell, lean_strdup( str ) ) <= 0;
+  }
+
+  // Comparison operator
+  bool operator>( const LeanString& str ) const {
+    return lean_strcmp( cell, str.cell ) > 0;
+  }
+
+  // Comparison operator from a C string
+  bool operator>( const char* str ) const {
+    return lean_strcmp( cell, lean_strdup( str ) ) > 0;
+  }
+
+  // Comparison operator
+  bool operator>=( const LeanString& str ) const {
+    return lean_strcmp( cell, str.cell ) >= 0;
+  }
+
+  // Comparison operator from a C string
+  bool operator>=( const char* str ) const {
+    return lean_strcmp( cell, lean_strdup( str ) ) >= 0;
+  }
+
+  // Returns the length of the string
+  size_t length() const {
+    return lean_strlen( cell );
+  }
+
+  // Returns the C string
+  const char* c_str() const {
+    return cell << 4;
+  }
+
+
+}
+
+// As a result, we can redefine Text, TxtD and TxtC as follows:
+#define Text LeanString
+#define TxtD const LeanString
+#define TxtC LeanString
+
+
+// The next step is to avoid using iostreams and use printf() instead.
+// This is in order to avoid importing to much stuff from the C++ std lib.
+
+class LeanIoStream {
+  public:
+
+  FILE* fd;
+
+  LeanIoStream( FILE* fd ) : fd( fd ) {}
+
+  // Constructor
+  LeanIoStream( void ) : fd( stdout ) {}
+
+  // Destructor
+  ~LeanIoStream( void ) {}
+
+  LeanIoStream& operator<<( const char* str ){
+    fprintf( fd, "%s", str );
+    return *this;
+  }
+
+  LeanIoStream& operator<<( const LeanString& str ){
+    fprintf( fd, "%s", str.c_str() );
+    return *this;
+  }
+  LeanIoStream& operator<<( int i ){
+    fprintf( fd, "%d", i );
+    return *this;
+  }
+  LeanIoStream& operator<<( unsigned int i ){
+    fprintf( fd, "%u", i );
+    return *this;
+  }
+  LeanIoStream& operator<<( double d ){
+    fprintf( fd, "%f", d );
+    return *this;
+  }
+  LeanIoStream& operator<<( void* p ){
+    fprintf( fd, "%p", p );
+    return *this;
+  }
+  LeanIoStream& operator<<( bool b ){
+    fprintf( fd, "%s", b ? "true" : "false" );
+    return *this;
+  }
+  LeanIoStream& operator<<( const LeanIoStream& (*f)( const LeanIoStream& ) ){
+    return f( *this );
+  }
+};
+
+
+}*/
+
+
 /*
  *  Cell allocator
  */
@@ -1846,7 +2442,8 @@ function init_cells_allocator(){
       return;
     }
     the_free_cell_limit
-    = the_very_first_cell + INOX_HEAP_SIZE / size_of_cell - 1;
+    = the_very_first_cell
+    + ( INOX_HEAP_SIZE >> cell_shift ) - 1;
   }*/
 
   the_next_free_cell = the_very_first_cell;
@@ -1865,13 +2462,15 @@ function resize_memory(){
 
   // Typescript version:
   /**/  const new_size = mem32.length + INOX_HEAP_SIZE / 16;
-  /**/  const new_mem8   = new ArrayBuffer( new_size );
-  /**/  const new_mem32  = new Int32Array(   new_mem8 );
-  /**/  const new_mem32f = new Float32Array( new_mem8 );
+  /**/  const new_mem    = new ArrayBuffer( new_size );
+  /**/  const new_mem8   = new Uint8Array(   new_mem );
+  /**/  const new_mem32  = new Int32Array(   new_mem );
+  /**/  const new_mem32f = new Float32Array( new_mem );
   /**/  // Copy the old memory buffer into the new one
   /**/  // ToDo: use ArrayBuffer.transfert() when it becomes available (03/2023)
   /**/  new_mem32.set( mem32 );
   /**/  // Update the global variables
+  /**/  mem    = new_mem;
   /**/  mem8   = new_mem8;
   /**/  mem32  = new_mem32;
   /**/  mem32f = new_mem32f;
@@ -1902,10 +2501,6 @@ function resize_memory(){
     =   ( (int) new_mem )                                >> 4;
   }*/
 }
-
-
-// Forward declaration to please C++ compiler
-let tag_list = 0;
 
 
 function mand_list_cell( c : Cell ) : boolean {
@@ -1939,9 +2534,6 @@ function set_next_cell( c : Cell, nxt : Cell ) : void {
 }
 
 
-let debug_next_allocate = 0;
-
-
 function allocate_cells( n : Count ) : Cell {
 // Allocate a number of consecutive cells. See also allocate_area()
   if( de && debug_next_allocate != 0 ){
@@ -1961,8 +2553,6 @@ function allocate_cells( n : Count ) : Cell {
   return cell;
 }
 
-// Linked list of free cells.
-let the_first_free_cell = 0;
 
 function allocate_cell() : Cell {
   // Allocate a new cell or reuse a free one
@@ -2270,10 +2860,10 @@ function clear( c : Cell ){
  *  The global array of all symbol cells. Allocated using allocate_cells()
  */
 
-let all_symbol_cells = 0;
+// let all_symbol_cells = 0;  // Actually declared sooner
 
 // How many symbols are there already?
-let all_symbol_cells_length = 0;
+// let all_symbol_cells_length = 0; // Actually declared sooner
 
 // How many symbols can be stored in the array, total?
 let all_symbol_cells_capacity = 0;
@@ -2311,16 +2901,8 @@ let all_primitives_stack = 0;
  */
 
 
-function init_allocators(){
-  init_cells_allocator();
-  // Done later one: init_areas_allocator();
-}
-
-
 function init_symbols() : Index {
 // Initialize the global arrays of all symbols
-
-  init_allocators();
 
   // See tables below, from "void" to "stack", 21 symbols
   all_symbol_cells_length = 21;
@@ -2577,7 +3159,7 @@ function register_symbol( name : TxtC ) : Index {
 
   // Add the name to the arrays, as a tag and as a string
   /**/ all_symbol_texts[ all_symbol_cells_length ] = name;
-  //c/ all_symbol_texts[ all_symbol_cells_length ] = _strdup( name.data() );
+  //c/ all_symbol_texts[ all_symbol_cells_length ] = _strdup( name.c_str() );
   set(
     all_symbol_cells + all_symbol_cells_length * ONE,
     type_tag,
@@ -3418,7 +4000,7 @@ function area_size( area : Cell ) : Size {
 
 function area_capacity( area : Cell ) : Length {
 // Return the capacity, in cells. It does not include the 2 header cells
-  return ( area_size( area ) / size_of_cell ) - 2;
+  return ( area_size( area ) >> cell_shift ) - 2;
 }
 
 
@@ -3530,7 +4112,7 @@ function area_garbage_collector() : boolean {
 
     // If busy, skip it
     if( !is_free_area( cell + 2 * ONE ) ){
-      cell += area_size( cell + 2 * ONE ) / size_of_cell;
+      cell += area_size( cell + 2 * ONE ) >> cell_shift;
       continue;
     }
 
@@ -3542,7 +4124,8 @@ function area_garbage_collector() : boolean {
     // Coalesce consecutive free areas, as long as there are some
     while( true ){
 
-      const potential_next_area = cell + area_size( cell ) / size_of_cell;
+      const potential_next_area = cell
+      + ( area_size( cell ) >> cell_shift );
 
       if( potential_next_area >= the_next_free_cell
       || !is_dynamic_area( potential_next_area )
@@ -3606,7 +4189,7 @@ function allocate_area( s : Size ) : Cell {
   if( adjusted_size <= 10 * size_of_cell
     //c/ && false  // ToDo: disabled for now, it's not working in C++
   ){
-    let try_length = adjusted_size / size_of_cell;
+    let try_length = adjusted_size >> cell_shift;
     let small_free_area = all_free_lists_by_area_length[ try_length ];
     if( small_free_area ){
       all_free_lists_by_area_length[ try_length ]
@@ -3664,7 +4247,7 @@ function allocate_area( s : Size ) : Cell {
 
     // Only split if the remaining area is big enough for headers
     if( remaining_size >= 2 * size_of_cell ){
-      let remaining_area = area + ( adjusted_size / size_of_cell );
+      let remaining_area = area + ( adjusted_size >> cell_shift );
       set_area_size( remaining_area, remaining_size );
       set_area_free( remaining_area );
       set_next_area( remaining_area, next_area( area ) );
@@ -3704,7 +4287,7 @@ function allocate_area( s : Size ) : Cell {
   let extra_cells = 128;
 
   // Don't forget the cell for the refcount and size headers
-  let needed_cells = ( adjusted_size / size_of_cell ) + extra_cells + 2;
+  let needed_cells = ( adjusted_size >> cell_shift ) + extra_cells + 2;
 
   const cells = allocate_cells( needed_cells );
   alloc_de&&mand( cells + needed_cells * ONE <= the_next_free_cell );
@@ -3732,7 +4315,7 @@ function allocate_area( s : Size ) : Cell {
   // The result should be the newly added area but without the extra cells
   alloc_de&&mand_eq( allocated_area, area );
   alloc_de&&mand_eq(
-    area + ( adjusted_size / size_of_cell ),
+    area + ( adjusted_size >> cell_shift ),
     the_first_free_area
   );
   alloc_de&&mand_eq(
@@ -3811,9 +4394,9 @@ function free_area( area : Cell ){
     set_area_free( area );
     set_next_area(
       area,
-      all_free_lists_by_area_length[ size / size_of_cell ]
+      all_free_lists_by_area_length[ size >> cell_shift ]
     );
-    all_free_lists_by_area_length[ size / size_of_cell ] = area;
+    all_free_lists_by_area_length[ size >> cell_shift ] = area;
     // ToDo: this can degenerate when too many small areas are unused.
     // I should from time to time empty the free lists and add areas to the
     // global pool, the older areas first to maximize locality.
@@ -3928,7 +4511,7 @@ function is_safe_area( area : Cell ) : boolean {
   }
 
   // The whole area must be in the heap
-  if( area + size / size_of_cell > the_next_free_cell ){
+  if( area + ( size >> cell_shift ) > the_next_free_cell ){
     FATAL( S()+
       "Invalid area, out of heap, size " + N( size ) + ", " + C( area )
     );
@@ -4127,7 +4710,7 @@ function set_text_cell( c : Cell, txt : TxtC ){
   // using a map, const text_cache = new Map< text, proxy >();
   // If the text is already in the cache, increment the reference counter.
   /**/ const proxy = make_proxy( txt );
-  //c/ Index proxy = make_proxy( _strdup( txt.data() ) );
+  //c/ Index proxy = make_proxy( _strdup( txt.c_str() ) );
   set( c, type_text, tag_text, proxy );
   de&&mand( cell_looks_safe( c ) );
   de&&mand( teq( cell_to_text( c ), txt ) );
@@ -6972,7 +7555,7 @@ function dump( c : Cell ) : Text {
         }else{
           cell_dump_entered = false;
           if( is_busy_area( header_to_area( c - ONE ) )){
-            let length = ( v - 2 * size_of_cell ) / size_of_cell;
+            let length = ( v - 2 * size_of_cell ) >> cell_shift;
             // 0 length is what proxied objects use in Typescript
             // 1 length is what proxied objects use in C++
             if(
@@ -7005,7 +7588,7 @@ function dump( c : Cell ) : Text {
               return buf;
             }else{
               return S()+ "busy, length: "
-              + N( ( v - 2 * size_of_cell ) / size_of_cell );
+              + N( ( v - 2 * size_of_cell ) >> cell_shift );
             }
           }else{
             return S()+ "free, size: " + N( v );
@@ -7519,8 +8102,7 @@ primitive( "log", primitive_log );
 
 const tag_is_fast = tag( "fast?" );
 
-primitive( "fast!", primitive_set_fast );
-function            primitive_set_fast(){
+function primitive_set_fast(){
   // ToDo: per actor?
   check_de&&mand_boolean( TOS );
   const was_turbo = de;
@@ -7532,17 +8114,18 @@ function            primitive_set_fast(){
   set_value( TOS, was_turbo ? 1 : 0 );
   set_tos_name( tag_is_fast );
 }
+primitive( "fast!", primitive_set_fast );
 
 
 /*
  *  fast? primitive - Return current state for "turbo mode"
  */
 
-primitive( "fast?", primitive_is_fast );
-function            primitive_is_fast(){
+function primitive_is_fast(){
   push_boolean( de || check_de ? false : true );
   set_tos_name( tag_is_fast );
 }
+primitive( "fast?", primitive_is_fast );
 
 
 /*
@@ -7641,44 +8224,43 @@ const pack_proxy     = pack( type_proxy,      tag_proxy     );
 const pack_verb      = pack( type_verb,       tag_verb      );
 
 
-primitive( "type", primitive_type );
-function           primitive_type(){
+function primitive_type(){
 // Get type as a tag
   const tag = type_to_tag( type( TOS ) );
   clear( TOS );
   set( TOS, type_tag, tag_type, tag );
 }
+primitive( "type", primitive_type );
 
 
-primitive( "name", primitive_name );
-function           primitive_name(){
+function primitive_name(){
 // Get name as a tag
   const n = name( TOS );
   clear( TOS );
   set( TOS, type_tag, tag_name, n );
 }
+primitive( "name", primitive_name );
 
 
-primitive( "value", primitive_value );
-function            primitive_value(){
+function primitive_value(){
 // Get value as an integer
   let v = value( TOS );
   clear( TOS );
   set( TOS, type_integer, tag_value, v );
 }
+primitive( "value", primitive_value );
 
 
-primitive( "info", primitive_info );
-function           primitive_info(){
+function primitive_info(){
 // Get info as an integer, see pack-info
   let i = info( TOS );
   clear(   TOS );
   set(     TOS, type_integer, tag_info, i );
 }
+primitive( "info", primitive_info );
 
 
-primitive( "pack-info", primitive_pack_info );
-function                primitive_pack_info(){
+function primitive_pack_info(){
 // Pack type and name into an integer, see unpack-type and unpack-name
   const name_cell = POP();
   const type_cell = TOS;
@@ -7689,10 +8271,10 @@ function                primitive_pack_info(){
   clear( name_cell );
   init_cell(  TOS, info, pack( type_integer, tag_info ) );
 }
+primitive( "pack-info", primitive_pack_info );
 
 
-primitive( "unpack-type", primitive_unpack_type );
-function                  primitive_unpack_type(){
+function primitive_unpack_type(){
 // Unpack type from an integer, see pack-info
   const info    = value( TOS );
   const typ     = unpack_type( info );
@@ -7700,16 +8282,17 @@ function                  primitive_unpack_type(){
   clear( TOS );
   init_cell( TOS, typ_tag, pack( type_tag, tag_type ) );
 }
+primitive( "unpack-type", primitive_unpack_type );
 
 
-primitive( "unpack-name", primitive_unpack_name );
-function                  primitive_unpack_name(){
+function primitive_unpack_name(){
 // Unpack name from an integer, see pack-info
   const info = value( TOS );
   const name = unpack_name( info );
   clear( TOS );
   init_cell(  TOS, name, pack( type_tag, tag_name ) );
 }
+primitive( "unpack-name", primitive_unpack_name );
 
 
 /* ---------------------------------------------------------------------------
@@ -7776,13 +8359,13 @@ function cell_class_tag( c : Cell ) : Tag {
 
 const tag_class = tag( "class" );
 
-primitive( "class", primitive_inox_class );
-function            primitive_inox_class(){
+function primitive_inox_class(){
 // Get the most specific type name (as a tag) of the top of stack cell
   const class_tag = cell_class_tag( TOS );
   clear( TOS );
   set( TOS, type_tag, tag_class, class_tag );
 }
+primitive( "class", primitive_inox_class );
 
 
 /* ---------------------------------------------------------------------------
@@ -7791,8 +8374,7 @@ function            primitive_inox_class(){
 
 const tag_if = tag( "if" );
 
-primitive( "if", primitive_if );
-function         primitive_if(){
+function primitive_if(){
 // Run block if boolean is true
   const block = pop_block();
   if( pop_boolean() == 0 ){
@@ -7803,13 +8385,13 @@ function         primitive_if(){
   // Jump into block
   IP = block;
 }
+primitive( "if", primitive_if );
 
 
 const tag_if_not = tag( "if-not" );
 
 
-primitive( "if-not", primitive_if_not );
-function             primitive_if_not(){
+function primitive_if_not(){
   // Run block if boolean is true
   const block = pop_block();
   if( pop_boolean() != 0 )return;
@@ -7818,10 +8400,10 @@ function             primitive_if_not(){
   // Jump into block
   IP = block;
 }
+primitive( "if-not", primitive_if_not );
 
 
-primitive( "if-else", primitive_if_else );
-function              primitive_if_else(){
+function primitive_if_else(){
 // Run one of two blocks  ( bool then-block else-block -- block )
   const else_block = pop_block();
   const then_block = pop_block();
@@ -7834,33 +8416,34 @@ function              primitive_if_else(){
   }
   primitive_run();
 }
+primitive( "if-else", primitive_if_else );
 
 
 /*
  *  >R, R>, R@, Forth style
  */
 
-primitive( "to-control", primitive_to_control );
-function                 primitive_to_control(){
+function  primitive_to_control(){
   // >R in Forth
   CSP += ONE;
   move_cell( POP(), CSP );
 }
+primitive( "to-control", primitive_to_control );
 
 
-primitive( "from-control", primitive_from_control );
-function                   primitive_from_control(){
+function primitive_from_control(){
   // R> in Forth
   move_cell( CSP, PUSH() );
   CSP -= ONE;
 }
+primitive( "from-control", primitive_from_control );
 
 
-primitive( "fetch-control", primitive_fetch_control );
-function                    primitive_fetch_control(){
+function primitive_fetch_control(){
   // R@ in Forth
   copy_cell( CSP, PUSH() );
 }
+primitive( "fetch-control", primitive_fetch_control );
 
 
 /*
@@ -7882,8 +8465,7 @@ const tag_goto_loop_3     = tag( "goto-loop-3" );
 const tag_looo_while      = tag( "loop-while" );
 
 
-primitive( "while-1", primitive_while_1 );
-function              primitive_while_1(){
+function primitive_while_1(){
 // Low level verbs to build while( { condition } { body } )
   // : while
   //   while-1 ( save blocks in control stack )
@@ -7908,10 +8490,10 @@ function              primitive_while_1(){
   //   IP for the condition block
   // Execution continues inside while-2
 }
+primitive( "while-1", primitive_while_1 );
 
 
-primitive( "while-2", primitive_while_2 );
-function              primitive_while_2(){
+function primitive_while_2(){
   // IP is expected to point to while-3
   de&&mand_eq( name( IP ), tag_while_3 );
   const condition_block = value( CSP );
@@ -7926,10 +8508,10 @@ function              primitive_while_2(){
   //   IP for the condition block, named /while-condition in debug mode
   //   IP address of while-3, the condition block will return to it
 }
+primitive( "while-2", primitive_while_2 );
 
 
-primitive( "while-3", primitive_while_3 );
-function              primitive_while_3(){
+function primitive_while_3(){
 
   let flag = pop_boolean();
 
@@ -7956,10 +8538,10 @@ function              primitive_while_3(){
     CSP -= 3 * ONE;
   }
 }
+primitive( "while-3", primitive_while_3 );
 
 
-primitive( "until-3", primitive_until_3 );
-function              primitive_until_3(){
+function primitive_until_3(){
 // Like while loop but with the boolean reversed
   if( value( TOS ) == 0 ){
     set_value( TOS, 1 );
@@ -7968,14 +8550,14 @@ function              primitive_until_3(){
   }
   primitive_while_3();
 }
+primitive( "until-3", primitive_until_3 );
 
 
 /*
  *  loop primitive
  */
 
-primitive( "loop", primitive_loop );
-function           primitive_loop(){
+function primitive_loop(){
   const body_block = pop_block();
   // Save info for break-loop, it would skip to after loop
   CSP += ONE;
@@ -7986,6 +8568,7 @@ function           primitive_loop(){
   // Jump into boby block
   IP = body_block;
 }
+primitive( "loop", primitive_loop );
 
 
 /**/ function lookup_sentinel( csp : Cell, tag : Tag ) : Cell {
@@ -8005,8 +8588,8 @@ function           primitive_loop(){
  *  break primitive
  */
 
-primitive( "break", primitive_break );
-function            primitive_break(){
+
+function primitive_break(){
 // Like return but to exit a control structure, a non local return
   let sentinel_csp = lookup_sentinel( CSP, tag_break_sentinel );
   // ToDo: raise exception if not found
@@ -8022,26 +8605,27 @@ function            primitive_break(){
     CSP -= ONE;
   }
 }
+primitive( "break", primitive_break );
 
 
 /*
  *  sentinel primitive
  */
 
-primitive( "sentinel", primitive_sentinel );
-function               primitive_sentinel(){
+function primitive_sentinel(){
   const sentinel_name = pop_tag();
   CSP += ONE;
   set( CSP, type_integer, sentinel_name, IP );
 }
+primitive( "sentinel", primitive_sentinel );
 
 
 /*
  *  long jump primitive
  */
 
-primitive( "long-jump", primitive_long_jump );
-function                primitive_long_jump(){
+
+function primitive_long_jump(){
 // Non local return up to some sentinel set using sentinel
   const sentinel_name = pop_tag();
   const sentinel_csp = lookup_sentinel( CSP, sentinel_name );
@@ -8060,6 +8644,7 @@ function                primitive_long_jump(){
     CSP -= ONE;
   }
 }
+primitive( "long-jump", primitive_long_jump );
 
 
 /*
@@ -8075,8 +8660,7 @@ let until_checker_definition = 0;
 // = definition( tag_until_checker );
 
 
-primitive( "until-checker", primitive_until_checker );
-function                    primitive_until_checker(){
+function primitive_until_checker(){
   const flag = pop_boolean();
   if( flag == 0 ){
     const body_block = value( CSP );
@@ -8097,6 +8681,7 @@ function                    primitive_until_checker(){
     CSP -= ONE;
   }
 }
+primitive( "until-checker", primitive_until_checker );
 
 
 const tag_while_checker   = tag( "while-checker" );
@@ -8106,8 +8691,7 @@ let while_checker_definition = 0;
 // = definition( tag_while_checker );
 
 
-primitive( "while-checker", primitive_while_checker );
-function                    primitive_while_checker(){
+function primitive_while_checker(){
   const flag = pop_boolean();
   if( flag == 0 ){
     const body_block = value( CSP );
@@ -8128,13 +8712,10 @@ function                    primitive_while_checker(){
     CSP -= ONE;
   }
 }
+primitive( "while-checker", primitive_while_checker );
 
 
-
-
-primitive( "loop-until", primitive_loop_until );
-function            primitive_loop_until(){
-
+function primitive_loop_until(){
   debug();
   const condition_block = pop_block();
   const body_block      = pop_block();
@@ -8150,15 +8731,14 @@ function            primitive_loop_until(){
   set( CSP, type_integer, tag_loop_condition, condition_block );
   IP = body_block;
 }
+primitive( "loop-until", primitive_loop_until );
 
 
 /*
  *  loop-while primitive
  */
 
-primitive( "loop-while", primitive_loop_while );
-function                 primitive_loop_while(){
-
+function primitive_loop_while(){
   const condition_block = pop_block();
   const body_block      = pop_block();
   CSP += ONE;
@@ -8173,6 +8753,7 @@ function                 primitive_loop_while(){
   set( CSP, type_integer, tag_loop_condition, condition_block );
   IP = body_block;
 }
+primitive( "loop-while", primitive_loop_while );
 
 
 /* -----------------------------------------------------------------------------
@@ -9075,7 +9656,7 @@ function primitive_to_float(){
 
   if( is_a_text_cell( tos ) ){
     /**/ const f = parseFloat( cell_to_text( tos ) );
-    //c/ auto  f = atof( cell_to_text( tos ).data() );
+    //c/ auto  f = atof( cell_to_text( tos ).c_str() );
     push_float( f );
     return;
   }
@@ -10930,7 +11511,8 @@ function                  primitive_stack_enter(){
   ACTOR_data_stack = target;
   CSP += ONE;
   set( CSP, type_integer, tag_stack_limit, ACTOR_data_stack_limit );
-  ACTOR_data_stack_limit = target + area_size( target ) / size_of_cell;
+  ACTOR_data_stack_limit = target
+  + ( area_size( target ) >> cell_shift );
   CSP += ONE;
   set( CSP, type_integer, tag_stack_top, TOS );
   TOS = target + length * ONE;
@@ -11091,7 +11673,7 @@ function                 primitive_queue_pull(){
   clear( TOS );
   POP();
   const queue_length = value( queue );
-  if( queue_length + 1 >= area_size( queue ) / size_of_cell ){
+  if( queue_length + 1 >= area_size( queue ) >> cell_shift ){
     FATAL( "queue-pull, queue overflow" );
     return;
   }
@@ -11117,7 +11699,7 @@ function                     primitive_queue_capacity(){
   const queue = value( TOS );
   clear( TOS );
   POP();
-  const queue_capacity = area_size( queue ) / size_of_cell;
+  const queue_capacity = area_size( queue ) >> cell_shift;
   push_integer( queue_capacity - 1 );
   set_tos_name( tag_queue_capacity );
 }
@@ -11160,7 +11742,7 @@ function                primitive_array_put(){
   check_de&&mand_cell_type( array_cell, tag_reference );
   const array = value( array_cell );
   const array_length = value( array );
-  const array_capacity = area_size( array ) / size_of_cell;
+  const array_capacity = area_size( array ) >> cell_shift;
   if( index < 0 || index >= array_capacity ){
     FATAL( "array-put, index out of range" );
     return;
@@ -11224,7 +11806,7 @@ function                     primitive_array_capacity(){
   const array_cell = TOS;
   check_de&&mand_cell_type( array_cell, tag_reference );
   const array = value( array_cell );
-  const array_capacity = area_size( array ) / size_of_cell;
+  const array_capacity = area_size( array ) >> cell_shift;
   clear( array_cell );
   set( TOS, type_integer, tag_array_capacity, array_capacity - 1 );
 }
@@ -11246,7 +11828,7 @@ function              primitive_map_put(){
   check_de&&mand_cell_type( map_cell, tag_reference );
   const map = value( map_cell );
   const map_length = value( map );
-  const map_capacity = area_size( map ) / size_of_cell;
+  const map_capacity = area_size( map ) >> cell_shift;
   // Search for the key
   let ii = 0;
   while( ii < map_length ){
