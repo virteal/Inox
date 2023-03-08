@@ -29,14 +29,15 @@
  *  with special comments processed to produce the other targets, specially the
  *  C++ target. See build_targets() below.
  */
- //  /*as*/         to ignore the rest of the line when in AssemblyScript.
- //  /*as xxxx as*/ to include code when in AssemblyScript only.
- //  /**/           to ignore the rest of the line when in C++.
- //  //c/ xxxx   to include code when in C++ only, mono line.
- //  /*!c{*/        to switch to typescript mode.
- //  /*c{           to switch to C++ mode.
- //  /*}{           to switch from typescript to C++ mode.
- //  }*/            to switch back from C++ to typescript mode.
+ //  /**/        to ignore the rest of the line when in C++
+ //  /*a*/       to ignore the rest of the line when in AssemblyScript
+ //  //c/ xxxx   to include code when in C++ only, mono line
+ //  //a/ xxxx   to include code when in AssemblyScript only, mono line
+ //  /*!c{*/     to switch to generic code
+ //  /*c{        to switch to C++ specific code
+ //  /*}{        to switch from generic Typescript to C++ specific code
+ //  }{*/        to switch from C++ to Typescript specific code
+ //  }*/         to switch from C++ to generic code
 /*
  *  On Windows, using cl.exe, the compiler flags in debug mode are:
  *  "/DWIN32",
@@ -51,15 +52,73 @@
  */
 
 /*c{
-  #include <fstream>
-  #include <iostream>
-  #include <string>
-  #include <stdbool.h>
-  #include <stdint.h>
-  #include <math.h>
-  #include <format>
-  using namespace std;
-  using namespace string_literals;
+
+// ToDo: remove unused includes
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <math.h>
+using namespace std;
+
+// Windows is not Unix
+#ifdef _WIN32
+
+#include <windows.h>
+
+#define O_RDONLY 1
+
+int open( const char* path, int mode ){
+  // Read only mode is the only mode supported, for now
+  if( mode != O_RDONLY )return -1;
+  // Windows version to open a file in read only mode
+  HANDLE file_handle = CreateFileA(
+    path,
+    GENERIC_READ,
+    FILE_SHARE_READ,
+    NULL,
+    OPEN_EXISTING,
+    FILE_ATTRIBUTE_NORMAL,
+    NULL
+  );
+  if( file_handle == INVALID_HANDLE_VALUE )return -1;
+  return (int) file_handle;
+}
+
+
+int close( int fd ){
+  // Windows version to close a file
+  if( fd <= 0 )return 0;
+  HANDLE file_handle = (HANDLE) fd;
+  CloseHandle( file_handle );
+  return 0;
+}
+
+
+int read( int fd, void* buf, int count ){
+  DWORD read_count;
+  if( fd != 0 )return -1;
+  HANDLE stdin_handle = GetStdHandle( STD_INPUT_HANDLE );
+  if( stdin_handle == INVALID_HANDLE_VALUE )return -1;
+  ReadFile( stdin_handle, buf, count, &read_count, NULL );
+  return (int) read_count;
+}
+
+
+int write( int fd, const void* buf, int count ){
+  DWORD written_count;
+  if( fd != 1 && fd != 2 )return -1;
+  HANDLE h = GetStdHandle( fd == 1 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE );
+  if( h == INVALID_HANDLE_VALUE )return -1;
+  WriteFile( h, buf, count, &written_count, NULL );
+  return (int) written_count;
+}
+
+#else
+  #include <unistd.h>
+#endif
+
 }*/
 
 
@@ -114,9 +173,9 @@ std::chrono::milliseconds now( void ){
  */
 
 // Let's say Typescript is AssemblyScript for a while (june 7 2021)
-/**/  type u8  = number;
-/**/  type u32 = number;
-/**/  type i32 = number;
+/**/ type u8  = number;
+/**/ type u32 = number;
+/**/ type i32 = number;
 
 
 // This code is supposed to be compiled in 32 bits mode. This means that
@@ -131,7 +190,9 @@ std::chrono::milliseconds now( void ){
   #define     u8              int
   #define     u32             int
   #define     i32             int
-  #define     cast_ptr( p )   ( (int*) (p) )
+  // Macro to convert an integer into a pointer
+  // #define     cast_ptr( p )   ( (int*) (p) )
+  #define     cast_ptr( p )   ( reinterpret_cast<u32*>( p ) )
 #else
   #define USE_STDINT_H 1
   #ifdef USE_STDINT_H
@@ -147,43 +208,12 @@ std::chrono::milliseconds now( void ){
   #endif
 #endif
 
-#define     boolean        bool
+#define boolean bool
 
 }*/
 
 // ToDo: should do that when?
 // require( "assemblyscript/std/portable" );
-
-
-/* ----------------------------------------------------------------------------
- *  The three global "registers" are: IP, TOS and CSP.
- *
- *  IP is the instruction pointer, the address of the next instruction to
- *  execute.
- *
- *  TOS, Top Of the Stack, is the address of the top of the data stack.
- *
- *  CSP, Control Stack Pointer, is the address of the top of the control stack.
- *
- *  Ideally those registers should be in registers of the CPU, but in Javascript
- *  they are global variables. In C++ there could a solution to have them in
- *  registers, based on tricking the compiler. ToDo: study that.
- *
- *  Additionaly there is an ACTOR global variable that is the address of the
- *  current actor. It is used to implement multi threading.
- *
- *  All addresses points to 64 bits memory cells. The first 32 bits are the
- *  value of the cell, the second 32 bits are the type and name of the cell.
- */
-
-/**/ let IP : number = 0;
-//c/ static i32 IP;
-
-/**/ let TOS : number = 0;
-//c/ static i32 TOS;
-
-/**/ let CSP : number = 0;
-//c/ static i32 CSP;
 
 
 /* -----------------------------------------------------------------------------
@@ -248,21 +278,20 @@ std::chrono::milliseconds now( void ){
 
 // Shorthand for string, 4 vs 6 letters
 /**/ type    Text = string;
-//c/ #define Text       std::string
-//c/ #define TxtD( s )  std::string( s )
+//c/ #define Text       LeanString
+//c/ #define TxtD( s )  LeanString( s )
 
 // Like Text, but const
-/**/ type TxtC = string;
-//c/ #define TxtC       const std::string&
+/**/ type TxtC        = string;
+/**/ type ConstText   = string;
+//c/ #define TxtC       const char*
+//c/ #define ConstText  const LeanString&
 
 /**/ type            Primitive = () => void;
 //c/ typedef void ( *Primitive )( void );
 
 // any is for proxied objects only at this time
 //c/ #define any const void*
-
-/**/ const no_text = "";
-//c/ static const Text no_text ( "" );
 
 
 /* -----------------------------------------------------------------------------
@@ -390,7 +419,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_NDE
     #define de false
   #else
-    bool de = true;
+    static bool de = true;
   #endif
 }*/
 
@@ -418,7 +447,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_BLABLA_NDE
     #define blabla_de false
   #else
-    bool blabla_de = false;
+    static bool blabla_de = false;
   #endif
 }*/
 
@@ -434,7 +463,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_MEM_NDE
     #define mem_de false
   #else
-    bool mem_de = true;
+    static bool mem_de = true;
   #endif
 }*/
 
@@ -451,7 +480,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_ALLOC_NDE
     #define alloc_de false
   #else
-    bool alloc_de = true;
+    static bool alloc_de = true;
   #endif
 }*/
 
@@ -470,7 +499,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_CHECK_NDE
     #define check_de false
   #else
-    bool check_de = true;
+    static bool check_de = true;
   #endif
 }*/
 
@@ -488,7 +517,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_WARN_NDE
     #define warn_de false
   #else
-    bool warn_de = true;
+    static bool warn_de = true;
   #endif
 }*/
 
@@ -513,7 +542,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_TOKEN_NDE
     #define token_de false
   #else
-    bool token_de = false;
+    static bool token_de = false;
   #endif
 }*/
 
@@ -532,7 +561,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_PARSE_NDE
     #define parse_de false
   #else
-    bool parse_de = false;
+    static bool parse_de = false;
   #endif
 }*/
 
@@ -550,7 +579,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_EVAL_NDE
     #define eval_de false
   #else
-    bool eval_de = false;
+    static bool eval_de = false;
   #endif
 }*/
 
@@ -567,7 +596,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_RUN_NDE
     #define run_de false
   #else
-    bool run_de = false;
+    static bool run_de = false;
   #endif
 }*/
 
@@ -584,7 +613,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_STACK_NDE
     #define stack_de false
   #else
-    bool stack_de = false;
+    static bool stack_de = false;
   #endif
 }*/
 
@@ -601,7 +630,7 @@ std::chrono::milliseconds now( void ){
   #ifdef INOX_STEP_NDE
     #define step_de false
   #else
-    bool step_de = false;
+    static bool step_de = false;
   #endif
 }*/
 
@@ -755,7 +784,7 @@ const debug_level = init_debug();
  *  How to invoke the debugger from the code
  */
 
-/*c
+/*c{
 
 #ifdef _WIN32
 
@@ -782,7 +811,7 @@ const debug_level = init_debug();
 
 #endif
 
-c*/
+}*/
 
 
 /* ----------------------------------------------------------------------------
@@ -792,17 +821,20 @@ c*/
 
 // Forward declarations to please C++
 /*c{
-bool  trace( TxtC );
+bool  mand_eq( Value, Value );
+bool  trace( char* );
 void  trace_context( TxtC );
 void  FATAL( TxtC msg );
-Text  dump( Cell );
-Text  short_dump( Cell );
 bool  mand_cell_type( Cell, Index );
 bool  mand_cell_name( Cell, Tag );
 bool  mand_empty_cell( Cell );
 bool  mand_tos_is_in_bounds( void );
 bool  mand_csp_is_in_bounds( void );
+int   init_cells_allocator( void );
 Cell  allocate_cell( void );
+Cell  allocate_cells( Count );
+void  free_cell( Cell );
+void  free_cells( Cell, Count );
 int   init_areas_allocator( void );
 Cell  allocate_area( Count );
 void  free_area( Cell );
@@ -812,7 +844,6 @@ Size  area_size( Cell );
 Count area_capacity( Cell );
 void  set_next_cell( Cell, Cell );
 bool  is_valid_tag( Tag );
-Text  tag_to_text( Tag );
 bool  is_a_tag_cell( Cell );
 bool  is_a_tag_singleton( Cell );
 bool  is_a_reference_cell( Cell );
@@ -833,25 +864,16 @@ void  stack_put( Cell, Index, Cell );
 void  stack_put_copy( Cell, Index, Cell );
 Cell  stack_at( Cell, Index );
 void  stack_extend( Cell, Length );
-Text  stacks_dump( void );
 bool  cell_looks_safe( Cell );
 void  set_return_cell( Cell );
-Text  type_to_text( Index );
 Cell  PUSH( void );
 Cell  POP( void );
 void  push_integer( Value );
-void  set_text_cell( Cell, TxtC );
 Cell  make_proxy( any );
 void  set_proxy_cell( Cell, Cell );
 void  primitive_clear_control( void );
 void  primitive_clear_data( void );
-Text  cell_to_text( Cell );
-Text  type_to_text( Index );
-Text  proxy_to_text( Cell );
-Text  integer_to_text( Value );
 Cell  definition( Tag );
-Text  verb_to_text_definition( Tag );
-Text  inox_machine_code_cell_to_text( Cell );
 Tag   type_to_tag( Index );
 Index tag_to_type( Tag );
 Count block_length( Cell );
@@ -859,7 +881,6 @@ void  primitive_if( void );
 void  primitive_run( void );
 void  primitive_noop( void );
 void  set_style( TxtC );
-Text  extract_line( TxtC, Index );
 void  eval_do_literal( void );
 void  eval_do_machine_code( Tag );
 void  eval_quote_next_token( void );
@@ -935,437 +956,11 @@ let tag_list = 0; // Will become tag( "list" ) asap
 
 
 /* -----------------------------------------------------------------------------
- *  Helper functions to deal with Typescript and C++ strings in a way that is
- *  compatible with both languages (and with possible future target languages).
- *
- *  tcut(), tbut() and tmid() to extract sub parts of the text.
- *
- *  S(), N(), C(), P() and F() to concatenate text and various types of numbers.
- */
-
-/*
- *  S() - start of text concatenation operations.
- *  Note: in many cases the C++ type inference mechanism is enough to avoid
- *  the S() call but there are still a few cases where it is apparently needed.
- */
-
-/**/ function S(){ return ""; }
-//c/ Text     S(){ return TxtD( "" ); }
-
-
-/*
- *  N( n ) - convert a number to a text.
- *  If number is a cell address, it is converted to a text with the @ prefix.
- */
-
-/**/ function N( n : number ){ return "" + n; }
-/*c{
-  Text N( int n ){
-    if( n >= the_very_first_cell && n <= the_next_free_cell ){
-      return "@" + std::to_string( n );
-    }
-    return std::to_string( n );
-  }
-}*/
-
-
-/*
- *  C( c ) - convert a cell address to a text, with the @ prefix.
- *  If the cell is not in the valid range, @!!! is prepended to the number.
- */
-
-function C( c : Cell ) : Text {
-  if( c >= the_very_first_cell && c <= the_next_free_cell ){
-    return "@" + N( c - the_very_first_cell );
-  }
-  return "@!!!" + N( c );
-}
-
-
-/*
- *  F( fn ) - convert a function name/pointer to a text.
- */
-
-/**/ function F( fn : Function ){ return fn.name }
-// ToDo: C++ should search the symbol table to get the name of the function
-//c/ Text _F( const void* fn ){ return N( (int) fn ); }
-//c/ #define F( fn ) _F( (const void*) fn )
-
-
-/*
- *  P( p ) - convert a pointer to a text.
- */
-
-/**/ function P( p : any ){ return N( p ); }
-//c/ Text P( const void* p ){ return N( (int) p ); }
-
-
-/*
- *  tlen( text )
- *    Return the length of the text.
- *    UTF-8 characters are counted as one character / one byte.
- */
-
-/**/ function tlen( s : string ){ return s.length; }
-//c/ int tlen( TxtC s ){ return s.length(); }
-
-
-/*
- *  tbut( text, n )
- *    Return text minus the first n characters, minus last if n is negative.
- *    I.e. all "but" the first n characters.
- */
-
-/**/ function tbut( s : string, n : number ){ return s.slice( n ); }
-
-/*c
-
-Text tbut( TxtC s, int n ){
-  if( n >= 0 ){
-    if( (unsigned int) n >= s.length() )return no_text;
-    return s.substr( n );
-  }else{
-    int start = s.length() + n;
-    if( start < 0 )return s;
-    return s.substr( start );
-  }
-}
-
-c*/
-
-
-/*
- *  tcut( text, n )
- *    Return n first characters of text, last characters if n is negative.
- *    I.e. a "cut" of the first n characters off the whole text.
-*/
-
-/**/ function tcut( s : string, n : number ){ return s.slice( 0, n ); }
-/*c
-Text tcut( TxtC s, int n ){
-  if( n >= 0 ){
-    if( (unsigned int) n >= s.length() )return s;
-    return s.substr( 0, n );
-  }else{
-    int end = s.length() + n;
-    if( end <= 0 )return "";
-    return s.substr( 0, end );
-  }
-}
-c*/
-
-
-/*
- *  tmid( start, end )
- *     Return characters of text between start (included ) and end (excluded).
- *     If start is negative, it's counted from the end of the text.
- *     If end is negative, it's counted from the end of the text.
- *     I.e. a "mid" part of the whole text, in the middle.
- */
-
-/**/ function tmid( t : Text, start : Index, end : Index ){
-/**/   return t.slice( start, end );
-/**/ }
-
-/*c
-
-Text tmid( TxtC t, int start, int end ){
-  int len = t.length();
-  if( start < 0 ){
-    start = len + start;
-  }
-  if( end < 0 ){
-    end = len + end;
-  }
-  if( end > len ){
-    end = len;
-  }
-  if( start >= end ){
-    return "";
-  }
-  if( start < 0 ){
-    start = 0;
-  }
-  return t.substr( start, end - start );
-}
-c*/
-
-
-/*
- *  tlow( text )
- *    Return text in lower case.
- */
-
-/**/ function tlow( s : Text ){ return s.toLowerCase(); }
-
-/*c
-Text tlow( TxtC s ){
-  Text r;
-  for( unsigned int ii = 0; ii < s.length(); ii++ ){
-    // ToDo: very slow
-    auto ch = s[ ii ];
-    if( ch < 128 ){
-      r += (char) tolower( s[ ii ] );
-    }else{
-      r += ch;
-    }
-  }
-  return r;
-}
-c*/
-
-
-/*
- *  tup( text )
- *    Return text in upper case.
- *
- */
-
-/**/ function tup( s : Text ){ return s.toUpperCase(); }
-
-/*c
-Text tup( TxtC s ){
-  Text r;
-  for( unsigned int ii = 0; ii < s.length(); ii++ ){
-    // ToDo: very slow
-    auto ch = s[ ii ];
-    if( ch < 128 ){
-      r += (char) toupper( s[ ii ] );
-    }else{
-      r += ch;
-    }
-  }
-  return r;
-}
-c*/
-
-
-/*
- *  teq( text1, text2 ) - teq, text equality.
- *    Return true if two texts are the same text.
- */
-
-function teq( s1 : TxtC, s2 : TxtC ) : boolean {
-  return s1 == s2;
-}
-
-// C++ overloaded functions, depending on string representation
-
-/*c
-
-bool teq( TxtC s1, const char* s2 ) {
-  return s1 == s2;
-}
-
-bool teq( const char* s1, TxtC s2 ) {
-  return s2 == s1;
-}
-
-bool teq( TxtC s1, char s2 ) {
-  if( s1.empty() )return s2 == 0;
-  return s1.length() == 1 && s1[ 0 ] == s2;
-}
-
-bool teq( char s1, char s2 ) {
-  return s1 == s2;
-}
-
-bool teq( char s1, const char* s2 ) {
-  return s2[ 0 ] == s1 && s2[ 1 ] == 0;
-}
-
-c*/
-
-
-/*
- *  tneq( text1, text2 ) - tneq, text not equal.
- *    Return true if two texts are not the same text.
- *   I.e. the opposite of teq().
- */
-
-function tneq( s1 : TxtC, s2 : TxtC ) : boolean {
-  return s1 != s2;
-}
-
-// C++ overloaded functions, depending on string representation
-/*c
-
-bool tneq( TxtC s1, const char* s2 ) {
-  return s1 != s2;
-}
-
-bool tneq( const char* s1, TxtC s2 ) {
-  return s2 != s1;
-}
-
-bool tneq( TxtC s1, char s2 ) {
-  if( s1.empty() )return s2 != 0;
-  return s1.length() != 0 || s1[ 0 ] != s2;
-}
-
-bool tneq( char s1, char s2 ) {
-  return s1 != s2;
-}
-
-bool tneq( char s1, const char* s2 ) {
-  return s2[ 0 ] != s1 || s2[ 1 ] != 0;
-}
-
-c*/
-
-
-/*
- *  tidx() - index of substring in text, -1 if not found
- */
-
-function tidx( s : TxtC, sub : TxtC ) : Index {
-  /**/ return s.indexOf( sub );
-  //c/ return s.find( sub );
-}
-
-
-/*
- *  tidxr() - last index of substring in text, -1 if not found
- */
-
-function tidxr( s : TxtC, sub : TxtC ) : Index {
-  /**/ return s.lastIndexOf( sub );
-  //c/ return s.rfind( sub );
-}
-
-
-
-/*
- *  Some basic tests of the above functions
- */
-
-
-// Early definition of console_log, see trace() below
-/**/ const console_log = console.log;
-//c/ bool trace( TxtC );
-
-
-/**/function tbad( actual : any, expected : any ) : boolean {
-//c/ bool tbad( int actual, int expected ){
-  // Return true bad, i.e. not as expected
-  if( actual == expected )return false;
-  trace( S()
-    + "tbad: actual: " + N( actual )
-    + " vs expected: " + N( expected )
-  );
-  debugger;
-  return true;
-}
-
-
-/*c{
-bool tbad( TxtC actual, TxtC expected ){
-  if( actual == expected )return false;
-  trace( S()
-    + "tbad: actual: " + actual
-    + " vs expected: " + expected
-  );
-  debugger;
-  return true;
-}
-}*/
-
-
-function test_text() : Index {
-
-  // tidx()
-  if( tbad( tidx( "abc", "b" ), 1 ) )return 0;
-  if( tbad( tidx( "abc", "d" ), -1 ) )return 0;
-  if( tbad( tidx( "abc", "bc" ), 1 ) )return 0;
-  if( tbad( tidx( "abc", "ab" ), 0 ) )return 0;
-  if( tbad( tidx( "abc", "abc" ), 0 ) )return 0;
-  if( tbad( tidx( "abc", "abcd" ), -1 ) )return 0;
-
-  // tidxr()
-  if( tbad( tidxr( "abc", "b" ), 1 ) )return 0;
-  if( tbad( tidxr( "abc", "d" ), -1 ) )return 0;
-  if( tbad( tidxr( "abc", "bc" ), 1 ) )return 0;
-  if( tbad( tidxr( "abc", "ab" ), 0 ) )return 0;
-  if( tbad( tidxr( "abc", "abc" ), 0 ) )return 0;
-  if( tbad( tidxr( "abc", "abcd" ), -1 ) )return 0;
-  if( tbad( tidxr( "abcabc", "bc" ), 4 ) )return 0;
-
-  // tmid()
-  if( tbad( tmid( "abc", 0, 3 ), "abc" ) )return 0;
-  if( tbad( tmid( "abc", 0, 2 ), "ab" ) )return 0;
-  if( tbad( tmid( "abc", 1, 2 ), "b" ) )return 0;
-  if( tbad( tmid( "abc", 1, 1 ), "" ) )return 0;
-  if( tbad( tmid( "abc", 1, 0 ), "" ) )return 0;
-  if( tbad( tmid( "abc", 0, 0 ), "" ) )return 0;
-  if( tbad( tmid( "abc", 0, 1 ), "a" ) )return 0;
-  if( tbad( tmid( "abc", 0, 4 ), "abc" ) )return 0;
-  if( tbad( tmid( "abc", 1, 4 ), "bc" ) )return 0;
-  if( tbad( tmid( "abc", 2, 4 ), "c" ) )return 0;
-  if( tbad( tmid( "abc", 2, 1 ), "" ) )return 0;
-  if( tbad( tmid( "abc", 2, 0 ), "" ) )return 0;
-
-  // tmid(), with negative indexes
-  if( tbad( tmid( "abc", -1, 3 ), "c" ) )return 0;
-  if( tbad( tmid( "abc", -2, 3 ), "bc" ) )return 0;
-  if( tbad( tmid( "abc", -3, 3 ), "abc" ) )return 0;
-  if( tbad( tmid( "abc", -4, 3 ), "abc" ) )return 0;
-  if( tbad( tmid( "abc", -1, 2 ), "" ) )return 0;
-  if( tbad( tmid( "abc", -2, 2 ), "b" ) )return 0;
-  if( tbad( tmid( "abc", -3, 2 ), "ab" ) )return 0;
-  if( tbad( tmid( "abc", -4, 2 ), "ab" ) )return 0;
-  if( tbad( tmid( "abc", -1, 1 ), "" ) )return 0;
-  if( tbad( tmid( "abc", -2, 1 ), "" ) )return 0;
-  if( tbad( tmid( "abc", -3, 1 ), "a" ) )return 0;
-  if( tbad( tmid( "abc", -4, 1 ), "a" ) )return 0;
-  if( tbad( tmid( "abc", -1, 0 ), "" ) )return 0;
-  if( tbad( tmid( "abc", -2, 0 ), "" ) )return 0;
-  if( tbad( tmid( "abc", -2, 1 ), "" ) )return 0;
-  if( tbad( tmid( "abc", -3, 0 ), "" ) )return 0;
-  if( tbad( tmid( "abc", -4, 0 ), "" ) )return 0;
-
-  // tcut()
-  if( tbad( tcut( "abc", 3 ), "abc" ) )return 0;
-  if( tbad( tcut( "abc", 2 ), "ab" ) )return 0;
-  if( tbad( tcut( "abc", 1 ), "a" ) )return 0;
-  if( tbad( tcut( "abc", 0 ), "" ) )return 0;
-  if( tbad( tcut( "abc", -1 ), "ab" ) )return 0;
-  if( tbad( tcut( "abc", -2 ), "a" ) )return 0;
-  if( tbad( tcut( "abc", -3 ), "" ) )return 0;
-  if( tbad( tcut( "abc", -4 ), "" ) )return 0;
-
-  // tbut()
-  if( tbad( tbut( "abc", 3 ), "" ) )return 0;
-  if( tbad( tbut( "abc", 2 ), "c" ) )return 0;
-  if( tbad( tbut( "abc", 1 ), "bc" ) )return 0;
-  if( tbad( tbut( "abc", 0 ), "abc" ) )return 0;
-  if( tbad( tbut( "abc", -1 ), "c" ) )return 0;
-  if( tbad( tbut( "abc", -2 ), "bc" ) )return 0;
-  if( tbad( tbut( "abc", -3 ), "abc" ) )return 0;
-  if( tbad( tbut( "abc", -4 ), "abc" ) )return 0;
-  if( tbad( tbut( "abc", -5 ), "abc" ) )return 0;
-
-  // tlow()
-  if( tbad( tlow( "abc" ), "abc" ) )return 0;
-  if( tbad( tlow( "ABC" ), "abc" ) )return 0;
-  if( tbad( tlow( "aBc" ), "abc" ) )return 0;
-  if( tbad( tlow( "AbC" ), "abc" ) )return 0;
-
-  // tup()
-  if( tbad( tup( "abc" ), "ABC" ) )return 0;
-  if( tbad( tup( "ABC" ), "ABC" ) )return 0;
-  if( tbad( tup( "aBc" ), "ABC" ) )return 0;
-  if( tbad( tup( "AbC" ), "ABC" ) )return 0;
-
-  return 1;
-}
-
-// Hack to invoke test_text() at C++ dynamic initialization time
-const test_text_done = test_text();
-
-
-/* -----------------------------------------------------------------------------
  *  logging/tracing
  */
+
+// Faster access to console.log
+/**/ const console_log = console.log;
 
 /*
  *  Global flag to filter out all console.log until one needs them.
@@ -1373,13 +968,13 @@ const test_text_done = test_text();
  */
 
 /**/  let     bug = !can_log ? trace : console_log;
-//c/ #define bug( a_message ) ( trace( a_message ) )
+//c/ #define  bug( a_message ) ( trace( a_message ) )
 
 
 /*
  *  trace() is the default trace function. It's a no-op if can_log is false.
  *  It's a wrapper around console.log() if can_log is true.
- *  In C++, console_log() uses std::cout.
+ *  In C++, console_log() uses write()
  */
 
 /**/ function trace( msg ) : boolean {
@@ -1396,16 +991,23 @@ const test_text_done = test_text();
 /**/  }
 
 
-/*c
+/*c{
 
-bool trace( TxtC msg ){
+bool trace( char* msg ){
   if( !can_log )return true;
-  cout << msg << endl;
-  cout.flush();
+  // 1 is stdout
+  int len = strlen( msg );
+  msg[ len ] = '\n';
+  write( 1,msg, len + 1 );
   return true;
 }
 
-c*/
+// Hack to avoid a strange recursive call to trace() in C++
+bool trace_c_str( char* msg ){
+  return trace( msg );
+}
+
+}*/
 
 
 function breakpoint(){
@@ -1433,7 +1035,8 @@ function mand( condition : boolean ) : boolean {
 };
 
 
-function mand2( condition : boolean, msg : string ) : boolean {
+/**/function mand2( condition : boolean, msg : TxtC ) : boolean {
+//c/ bool    mand2( bool condition,      char* msg ){
 // Like mand() but with a message
   if( condition )return true;
   bug( msg );
@@ -1442,32 +1045,12 @@ function mand2( condition : boolean, msg : string ) : boolean {
   return false;
 }
 
-
-function mand_eq( a : i32, b : i32 ) : boolean {
-  // Check that two values are equal
-  if( a == b )return true;
-  if( is_valid_tag( a ) || is_valid_tag( b ) ){
-    if( is_valid_tag( a ) && is_valid_tag( b ) ){
-      trace(
-        S()+ "bad eq " + tag_to_text( a ) + " / " + tag_to_text( b )
-      );
-    }else if( is_valid_tag( a ) ){
-      trace( S()+ "bad eq " + tag_to_text( a ) + " / " + N( b ) );
-    }else{
-      trace( S()+ "bad eq " + N( a ) + " / " + tag_to_text( b ) );
-    }
-  }
-  mand2( false, S()+ "bad eq " + N( a ) + " / " + N( b ) );
-  return false;
+// Hack to avoid a strange recursion
+/*c{
+bool mand2_c_str( bool condition, char* msg ){
+  return mand2( condition, msg );
 }
-
-
-function mand_neq( a : i32, b : i32 ) : boolean {
-  if( a != b )return true;
-  breakpoint();
-  mand2( false, S()+ "bad neq " + N( a ) + " / " + N( b ) );
-  return false;
-}
+}*/
 
 
 /* -----------------------------------------------------------------------------
@@ -1489,20 +1072,16 @@ function mand_neq( a : i32, b : i32 ) : boolean {
 /**/ const   size_of_value   = 4;  // 4 bytes, 32 bits
 //c/ #define size_of_value     4
 
-/**/ const   size_of_info    = 4;  // type & name, packed
-//c/ #define size_of_info      4
+/**/ const   size_of_cell    =   2 * size_of_value;
+//c/ #define size_of_cell      ( 2 * size_of_value )
 
-/**/ const   size_of_cell    =   size_of_value + size_of_info;
-//c/ #define size_of_cell      ( size_of_value + size_of_info )
+// Cell addresses to byte pointers and vice versa, aligned on cell boundaries
+/**/ function to_cell( a_ptr : number  ) : Cell   {  return a_ptr    >> 3;  }
+//c/ #define  to_cell( a_ptr )         ( (Cell)   ( ( (u32) a_ptr )  >> 3 ) )
+/**/ function to_ptr(  a_cell  : Cell  ) : number {  return a_cell   << 3;  }
+//c/ #define  to_ptr( a_cell )         ( (char*)  ( ( (u32) a_cell ) << 3 ) )
 
-/**/ const   cell_shift     =  3;  // 2^4 = 16, ie size of cell
-//c/ #define cell_shift        3
-
-/**/ const   type_shift      = 4; // 2^4 = at most 16 different types
-//c/ #define type_shift        4
-
-
-/**/ const   words_per_cell  = size_of_cell  / size_of_word;
+/**/ const   words_per_cell  =   size_of_cell  / size_of_word;
 //c/ #define words_per_cell    ( size_of_cell  / size_of_word )
 
 /**/ const   ONE             = words_per_cell;
@@ -1545,14 +1124,14 @@ let breakpoint_cell = 1;
 function set_value( c : Cell, v : Value ){
    if( de && c == breakpoint_cell )debugger;
    /**/ mem32[ c << 1 ] = v |0;
-   //c/ *cast_ptr( c << type_shift ) = v;
+   //c/ *cast_ptr( to_ptr( c ) ) = v;
 }
 
 
 function set_info( c : Cell, i : Info  ){
   if( de && c == breakpoint_cell )debugger;
   /**/ mem32[ ( c << 1 ) + 1 ] = i |0;
-  //c/ *cast_ptr( ( c << type_shift ) + size_of_value ) = i;
+  //c/ *cast_ptr( to_ptr( c ) + size_of_value ) = i;
 }
 
 
@@ -1562,16 +1141,15 @@ function set_info( c : Cell, i : Info  ){
 
 function value( c : Cell ) : Value {
   // return mem64[ c ] & 0xffffffff
-  // 1 is type_shift - 3,  ie 8 bytes, 4 value, 4 info
   /**/ return mem32[ c << 1 ] |0;
-  //c/ return *cast_ptr( c << type_shift );
+  //c/ return *cast_ptr( to_ptr( c ) );
 }
 
 
 function info( c : Cell ) : Info {
   // return mem64[ c ] >>> 32;
   /**/ return mem32[ (     c << 1 ) + 1 ] |0;
-  //c/ return *cast_ptr( ( c << type_shift ) + size_of_value );
+  //c/ return *cast_ptr( to_ptr( c ) + size_of_value );
 }
 
 
@@ -1584,8 +1162,8 @@ function reset( c : Cell ){
   // mem64[ c ] = 0;
   /**/ mem32[       c << 1       ] = 0;
   /**/ mem32[     ( c << 1 ) + 1 ] = 0;
-  //c/ *cast_ptr(   c << cell_shift       ) = 0;
-  //c/ *cast_ptr( ( c << cell_shift ) + size_of_value ) = 0;
+  //c/ *cast_ptr( to_ptr( c )                 ) = 0;
+  //c/ *cast_ptr( to_ptr( c ) + size_of_value ) = 0;
 }
 
 
@@ -1596,7 +1174,7 @@ function reset( c : Cell ){
 function reset_value( c : Cell ) : void {
   if( de && c == breakpoint_cell )debugger;
   /**/ mem32[     c << 1 ] = 0;
-  //c/ *cast_ptr( c << cell_shift ) = 0;
+  //c/ *cast_ptr( to_ptr( c ) ) = 0;
 }
 
 
@@ -1607,7 +1185,7 @@ function reset_value( c : Cell ) : void {
 function reset_info( c : Cell ) : void {
   if( de && c == breakpoint_cell )debugger;
   /**/ mem32[     ( c << 1 ) + 1 ] = 0;
-  //c/ *cast_ptr( ( c << cell_shift ) + size_of_value ) = 0;
+  //c/ *cast_ptr( ( to_ptr( c ) ) + size_of_value ) = 0;
 }
 
 
@@ -1618,10 +1196,10 @@ function reset_info( c : Cell ) : void {
 function init_cell( c : Cell, v : Value, i : Info ){
   if( de && c == breakpoint_cell )debugger;
   // mem64[ c ] = v | ( i << 32 );
-  /**/ mem32[       c << 1       ] = v |0;
-  /**/ mem32[     ( c << 1 ) + 1 ] = i |0;
-  //c/ *cast_ptr(   c << cell_shift                   ) = v;
-  //c/ *cast_ptr( ( c << cell_shift ) + size_of_value ) = i;
+  /**/ mem32[       c << 1       ]              = v |0;
+  /**/ mem32[     ( c << 1 ) + 1 ]              = i |0;
+  //c/ *cast_ptr( to_ptr( c )                 ) = v;
+  //c/ *cast_ptr( to_ptr( c ) + size_of_value ) = i;
 }
 
 
@@ -1636,8 +1214,8 @@ function init_copy_cell( dst : Cell, src : Cell ){
   /**/ const src1 = src << 1;
   /**/ mem32[ dst1     ] = mem32[ src1     ] |0;
   /**/ mem32[ dst1 + 1 ] = mem32[ src1 + 1 ] |0;
-  //c/ auto dst4 = dst << cell_shift;
-  //c/ auto src4 = src << cell_shift;
+  //c/ auto dst4 = to_ptr( dst );
+  //c/ auto src4 = to_ptr( src );
   //c/ *cast_ptr( dst4                 ) = *cast_ptr( src4                 );
   //c/ *cast_ptr( dst4 + size_of_value ) = *cast_ptr( src4 + size_of_value );
 }
@@ -1840,8 +1418,12 @@ function test_pack(){
 /**/ const   type_list       = 10;
 //c/ #define type_list         10
 
-/**/ const   type_invalid = 11;
-//c/ #define type_invalid 10
+// ToDo: study ranges, see https://accu.org/conf-docs/PDFs_2009/AndreiAlexandrescu_iterators-must-go.pdf
+/**/ const   type_range      = 11;
+//c/ #define type_range        11
+
+/**/ const   type_invalid    = 12;
+//c/ #define type_invalid      12
 
 
 /* -----------------------------------------------------------------------------
@@ -1849,11 +1431,15 @@ function test_pack(){
  *  This is a minimal implementation of dynamiccally alllocated strings.
  *  It is for all versions, both Typescript, AssemblyScript and C++.
  *  It initially stores the strings using allocate_cells() and then moves to
- *  using allocate_area() as soon as possible.
+ *  using allocate_area() as soon as possible during bootstrap.
+ *
  *  Each lean string is made of a two cells header plus the bytes of
  *  the string plus one byte set to 0 for C string compatibility when needed.
+ *  That's a total of 3 cells for a string of 0 to 7 bytes and then
+ *  another cell for each consecutive 8 bytes.
+ *
  *  Note: using a common format for strings makes it possible to communicate
- *  between the C++ and the AssemblyScript version with ease.
+ *  between the C++, Typescript and the AssemblyScript version with ease.
  *  That the string representation is also C compatible makes it easy to
  *  interface Inox with C code.
  */
@@ -1866,10 +1452,7 @@ function test_pack(){
 //c/ #define is_big_endian false
 
 /**/ let in_lean_mode    = true;
-//c/ static in_lean_mode = true;
-
-/**/ type LeanString = u32;
-//c/ #define LeanString u32
+//c/ static bool in_lean_mode = true;
 
 // ToDo: the magic number should be bigger than any expected string
 // That's because memory_dump() detects strings by looking for the magic number
@@ -1887,34 +1470,10 @@ let the_first_free_cell = 0;
 const init_cells_allocator_done = init_cells_allocator();
 
 
-function lean_adjusted_cell_length( len : Length ) : Length {
-  // Add padding to adust on size of cell
+function lean_aligned_cell_length( len : Length ) : Length {
+  // Add padding to align on size of cell
   const padded_len = ( len + size_of_cell - 1 ) & ~( size_of_cell - 1 );
-  return padded_len >> cell_shift;
-}
-
-
-function is_lean( cell : Cell ) : boolean {
-  return value( lean_header( cell ) ) == lean_magic_number;
-}
-
-
-function lean_allocate_cells( len : Index ) : Cell {
-// Allocate cells, each cell can hold size_of_cell bytes.
-  if( in_lean_mode ){
-    // Add space for the fake headers
-    len += 2;
-    const header = allocate_cells( len );
-    // Header 0 may become a reference counter, for now it is a magic number.
-    set_value( header + 0 * ONE, lean_magic_number );
-    // Header 1 is total size in bytes, including the two headers, adjusted.
-    set_value( header + 1 * ONE, len * size_of_cell );
-    const cell = header + 2 * ONE;
-    alloc_de&&mand( is_lean( cell ) );
-    return cell;
-  }else{
-    return allocate_area( len * size_of_cell );
-  }
+  return to_cell( padded_len );
 }
 
 
@@ -1923,12 +1482,36 @@ function lean_header( cell : Cell ) : Cell {
 }
 
 
+function is_lean( cell : Cell ) : boolean {
+  return value( lean_header( cell ) ) == lean_magic_number;
+}
+
+
+function lean_allocate_cells( ncells : Index ) : Cell {
+// Allocate cells, each cell can hold size_of_cell bytes, ie 8.
+  if( in_lean_mode ){
+    // Add space for the fake headers
+    ncells += 2;
+    const header = allocate_cells( ncells );
+    // Header 0 may become a reference counter, for now it is a magic number
+    set_value( header + 0 * ONE, lean_magic_number );
+    // Header 1 is total size in bytes, including the two headers, aligned
+    set_value( header + 1 * ONE, ncells * size_of_cell );
+    const cell = header + 2 * ONE;
+    alloc_de&&mand( is_lean( cell ) );
+    return cell;
+  }else{
+    return allocate_area( ncells );
+  }
+}
+
+
 function lean_free( cell : Cell ){
   // Clear the content of the string
   const header = lean_header( cell );
   const is_area = ! is_lean( cell );
   const sz = value( header + 1 * ONE );
-  const ncells = sz >> cell_shift;
+  const ncells = to_cell( sz );
   const limit = lean_header( cell ) + ncells;
   let ii = header;
   while( ii < limit ){
@@ -1944,42 +1527,48 @@ function lean_free( cell : Cell ){
 }
 
 
-function lean_string_size( cell : Cell ) : Size {
-// Size of of payload is the total size minus the two headers.
-  const size = value( lean_header( cell ) + 1 * ONE ) - 2 * size_of_cell;
-  // There is at least one null byte and it needs a full cell
-  alloc_de&&mand( size >= size_of_cell );
-  return size;
-}
-
-
 function lean_byte_at( cell : Cell, index : Index ) : Value {
   // Typescript version uses the mem8 view on the memory buffer
-  /**/ return mem8[ ( cell << cell_shift ) + index ]
+  /**/ return mem8[ to_ptr( cell ) + index ]
   // AssemblyScript version uses the load<u8> function
+  //a/ return load<u8>( to_ptr( cell ) + index );
   // C++ version uses the memory buffer directly
-  //c/ return * ( char* )  ( cell << cell_shift ) + index
-
+  // ToDo: on ESP32 some memory regions are not byte adressable,
+  // hence the bytes should be extracted from 32 bits words
+  //c/ return *(char*)  ( to_ptr( cell ) + index );
 }
 
 
 function lean_byte_at_put( cell : Cell, index : Index, val : Value ){
   // Typescript version uses the mem8 view on the memory buffer
-  /**/ mem8[ ( cell << cell_shift ) + index ] = val & 0xFF;
+  /**/ mem8[ to_ptr( cell ) + index ] = val & 0xFF;
   // AssemblyScript version uses the store<u8> function
+  //a/ store<u8>( to_ptr( cell ) + index, val & 0xFF );
   // C++ version uses the memory buffer directly
-  //c/ * ( char* )  ( cell << cell_shift ) + index = val & 0xFF;
+  // On ESP32, some memory regions are not byte adressable,
+  // hence the bytes should be inserted into 32 bits words
+  //c/ *(char*) ( to_ptr( cell ) + index ) = val & 0xFF;
   alloc_de&&mand_eq( lean_byte_at( cell, index ), val );
+}
+
+
+function lean_byte_at_from( d : Cell, d_i : Index, s : Cell, s_i : Index ){
+  // Typescript version uses the mem8 view on the memory buffer
+  /**/ mem8[      to_ptr( d ) + d_i ] = mem8[      to_ptr( s ) + s_i ];
+  // AssemblyScript version uses the store<u8> function
+  //a/ store<u8>( to_ptr( d ) + d_i,    load<u8>(  to_ptr( s ) + s_i ) );
+  // C++ version uses char pointers directly
+  //c/ *(char*) ( to_ptr( d ) + d_i ) = *(char*) ( to_ptr( s ) + s_i );
 }
 
 
 function lean_strlen( cell : Cell ) : Length {
 // Compute the length of a lean string
-  // It's the size minus the null bytes at the end
-  // ToDo: area_allocator could store the exact size
-  const size = lean_string_size( cell );
+  // ToDo: area_allocator could store the exact size instead of aligned
+  const size =  value( lean_header( cell ) + 1 * ONE ) - 2 * size_of_cell;
   let len = size;
   let ii = len - 1;
+  // It's the size minus the null bytes at the end
   while( lean_byte_at( cell, ii ) == 0 ){
     len--;
     ii--;
@@ -1988,33 +1577,32 @@ function lean_strlen( cell : Cell ) : Length {
 }
 
 
-function lean_strdup( str : TxtC ) : Cell {
+function lean_strdup_from_c_str( str : TxtC ) : Cell {
 // Create a lean copy of a native string
   /**/ const str_len = str.length;
-  //c/ auto  str_len = str.length();
+  //c/ auto  str_len = strlen( str );
   // Add one for the null terminator
-  const needed_cells = lean_adjusted_cell_length( str_len + 1 );
+  const needed_cells = lean_aligned_cell_length( str_len + 1 );
   const cell = lean_allocate_cells( needed_cells );
   // Typescript version uses the mem8 view on the memory buffer
   // ToDo: use a TextEncoder.encodeInto() instead
   /*!c{*/
     // Copy each character
     for( let ii = 0; ii < str_len; ii++ ){
-      /**/ lean_byte_at_put( cell, ii, str.charCodeAt( ii ) );
-      //c/ lean_byte_at_put( cell, ii, str[ ii ] );
+      lean_byte_at_put( cell, ii, str.charCodeAt( ii ) );
     }
     // Add the null terminator
     lean_byte_at_put( cell, str_len, 0 );
   /*}*/
-  // C++ version uses fast strcpy()
-  //c/ strcpy( (char*) ( (int) cell << cell_shift ), str.c_str() );
+  // C++ version uses fast memcpy(), including the final null terminator
+  //c/ memcpy( (char*) ( (int) to_ptr( cell ) ), str, str_len + 1 );
   alloc_de&&mand_eq( lean_strlen( cell ), str_len );
   return cell;
 }
 
 
 function lean_native_string( cell : Cell ) : TxtC {
-// Create a native string from a lean string
+// Create a native string from a lean string. Shared representations.
   // Typescript version
   /*!c{*/
     // ToDo:: optimize this a lot, using a Javascript TextDecoder
@@ -2027,7 +1615,7 @@ function lean_native_string( cell : Cell ) : TxtC {
   /*}*/
   // C++ version is much simpler, it's already a native string
   /*c{
-    return (char*) ( ( (int) cell ) << cell_shift );
+    return (char*) to_ptr( cell );
   }*/
 }
 
@@ -2041,13 +1629,28 @@ function lean_streq( cell1 : Cell, cell2 : Cell ) : boolean {
   if( len1 != len2 ){
     return false;
   }
-  for( let ii = 0; ii < len1; ii++ ){
+  // ToDo: I could avoid checking that last padding null bytes
+  let ii = 0;
+  for( ii = 0 ; ii < len1 ; ii++ ){
     if( lean_byte_at( cell1, ii ) != lean_byte_at( cell2, ii ) ){
       return false;
     }
   }
   return true;
 }
+
+
+/*c{
+bool lean_streq_with_c_str( Cell cell1, TxtC str ){
+// Compare a lean string with a native string
+  const len1 = lean_strlen( cell1 );
+  const len2 = strlen( str );
+  if( len1 != len2 ){
+    return false;
+  }
+  return strncmp( (char*) to_ptr( cell1 ), str, len1 ) == 0;
+}
+}*/
 
 
 function lean_strcmp( cell1 : Cell, cell2 : Cell ) : Value {
@@ -2074,10 +1677,7 @@ function lean_strcmp( cell1 : Cell, cell2 : Cell ) : Value {
     return 0;
   /*}*/
   // C++ version is much simpler, it's already a native string
-  /*c{
-    return strcmp( (char*) ( (int) cell1 << 4 ),
-                    (char*) ( (int) cell2 << 4 ) );
-  }*/
+  //c/ return strcmp( (char*) to_ptr( cell1 ), (char*) to_ptr( cell2 ) );
 }
 
 
@@ -2086,20 +1686,35 @@ function lean_strcat( cell1 : Cell, cell2 : Cell ) : Cell {
   // Compute the length of the result
   const len1 = lean_strlen( cell1 );
   const len2 = lean_strlen( cell2 );
+  // Add one for the final null terminator
   const len = len1 + len2 + 1;
-  const adjusted_len = lean_adjusted_cell_length( len );
-  // Allocate the result
-  const cell = lean_allocate_cells( adjusted_len );
-  // Copy the first string
-  for( let ii = 0 ; ii < len1; ii++ ){
-    /**/ lean_byte_at_put( cell, ii, lean_byte_at( cell1, ii ) );
-    //c/ lean_byte_at_put( cell, ii, cell1[ ii ] );
-  }
-  // Copy the second string
-  for( let ii = 0; ii < len2; ii++ ){
-    /**/ lean_byte_at_put( cell, len1 + ii, lean_byte_at( cell2, ii ) );
-    //c/ lean_byte_at_put( cell, len1 + ii, cell2[ ii ] );
-  }
+  const ncells = lean_aligned_cell_length( len );
+  // Allocate the needed cells
+  const cell = lean_allocate_cells( ncells );
+  // C++ version uses fast memcpy(), including the final null terminator
+  /*c{
+    memcpy(
+      (char*) to_ptr( cell ),
+      (char*) to_ptr( cell1 ),
+      len1
+    );
+    memcpy(
+      (char*) to_ptr( cell ) + len1,
+      (char*) to_ptr( cell2 ),
+      len2 + 1
+    );
+  }*/
+  // Other versions copy each character
+  /*!c{*/
+    // Copy the first string
+    for( let ii = 0 ; ii < len1; ii++ ){
+      lean_byte_at_from( cell, ii, cell1, ii );
+    }
+    // Copy the second string, including the final null terminator
+    for( let ii = 0; ii <= len2; ii++ ){
+      lean_byte_at_from( cell, len1 + ii, cell2, ii );
+    }
+  /*}*/
   alloc_de&&mand_eq( lean_strlen( cell ), len - 1 );
   return cell;
 }
@@ -2107,16 +1722,18 @@ function lean_strcat( cell1 : Cell, cell2 : Cell ) : Cell {
 
 function lean_strindex( str1 : Cell, str2 : Cell ) : Value {
 // Find the first occurence of str2 in str1
+  // ToDo: fast C++ version
   // Compute the length of the strings
   const len1 = lean_strlen( str1 );
   const len2 = lean_strlen( str2 );
   // Loop over the first string
-  for( let ii = 0; ii < len1; ii++ ){
+  let ii = 0;
+  let jj = 0;
+  for( ii = 0 ; ii < len1 ; ii++ ){
     // Check if the first character matches
     if( lean_byte_at( str1, ii ) == lean_byte_at( str2, 0 ) ){
       // Loop over the second string
-      let jj = 1;
-      for( ; jj < len2; jj++ ){
+      for( jj = 1 ; jj < len2; jj++ ){
         // Check if the characters match
         if( lean_byte_at( str1, ii + jj ) != lean_byte_at( str2, jj ) ){
           break;
@@ -2134,54 +1751,69 @@ function lean_strindex( str1 : Cell, str2 : Cell ) : Value {
 
 function lean_strrindex( target : Cell, pattern : Cell ) : Value {
 // Find the last occurence of str2 in str1
-  let i = 0;
-  let j = 0;
-  let k = 0;
+  // ToDo: fast C++ version
+  let ii = 0;
+  let jj = 0;
+  let kk = 0;
   const len_target = lean_strlen( target );
   const len_pattern = lean_strlen( pattern );
-  for( i = len_target - 1 ; lean_byte_at( target, i ) != 0 ; i-- ){
-    j = i;
-    k = len_pattern - 1;
-    while( lean_byte_at( pattern, k ) != 0
-    && lean_byte_at( target, j ) == lean_byte_at( pattern, k ) ){
-      j--;
-      k--;
+  for( ii = len_target - 1 ; lean_byte_at( target, ii ) != 0 ; ii-- ){
+    jj = ii;
+    kk = len_pattern - 1;
+    while( lean_byte_at( pattern, kk ) != 0
+    && lean_byte_at( target, jj ) == lean_byte_at( pattern, kk )
+    ){
+      jj--;
+      kk--;
     }
-    if( k < 0 ){
-      return i - len_pattern + 1;
+    if( kk < 0 ){
+      return ii - len_pattern + 1;
     }
   }
   return -1;
 }
 
 
-function lean_substr( cell : Cell, start : Value, len : Value ) : Cell {
+function lean_substr( str : Cell, start : Value, len : Value ) : Cell {
 // Extract a substring from a lean string
-  // If fast the end, return an empty string
-  if( start >= lean_strlen( cell ) ){
-    return lean_strdup( "" );
+
+  // If past the end, return an empty string
+  const str_len = lean_strlen( str );
+  if( start >= str_len ){
+    return lean_strdup_from_c_str( "" );
   }
-  // Allocate the result
-  const result = lean_allocate_cells( len );
+
   // Truncate the length if needed
-  if( start + len > lean_strlen( cell ) ){
-    len = lean_strlen( cell ) - start;
+  if( start + len > str_len ){
+    len = str_len - start;
   }
+
+  // ToDo: if big enough, share the string
+  // This requires to detect that cstr points to a substring.
+  // It also means that .c_str() must turn the substring into
+  // a full string, null terminated, ie stop sharing.
+  // This is worth the trouble once lean mode is stable.
+
+  // Allocate the result
+  const ncells = lean_aligned_cell_length( len + 1 );
+  const cell = lean_allocate_cells( ncells );
+
   // Copy the substring
-  for( let ii = 0; ii < len; ii++ ){
-    /**/ lean_byte_at_put( result, ii, lean_byte_at( cell, start + ii ) );
-    //c/ lean_byte_at_put( result, ii, cell[ start + ii ] );
+  // ToDo: fast C++ version
+  let ii = 0;
+  for( ii = 0 ; ii < len ; ii++ ){
+    lean_byte_at_from( cell, ii, str, start + ii );
   }
-  return result;
+  return cell;
 }
 
 
 function lean_string_test() : Index {
 // Test the string functions
-  const str1 = lean_strdup( "Hello" );
-  const str2 = lean_strdup( "World" );
+  const str1 = lean_strdup_from_c_str( "Hello" );
+  const str2 = lean_strdup_from_c_str( "World" );
   const str3 = lean_strcat( str1, str2 );
-  const str4 = lean_strdup( "HelloWorld" );
+  const str4 = lean_strdup_from_c_str( "HelloWorld" );
   if( lean_strcmp( str3, str4 ) != 0 ){
     FATAL( "lean_strcmp failed" );
     return 0;
@@ -2215,220 +1847,730 @@ const lean_string_test_done = lean_string_test();
 // Only in C++ however
 /*c{
 
+// #define to_cstr( cell ) ( (char*) to_ptr( cell ) )
+# define to_cstr( cell ) ( reinterpret_cast<char*>( to_ptr( cell ) ) )
+
+
 class LeanString {
 
   public:
 
-  // Where the string is stored
-  Cell cell;
+  // Where the C string is stored, null terminated
+  char* cstr;
 
   // Constructor
   LeanString( void ){
-    cell = lean_strdup( "" );
+    cstr = to_cstr( lean_strdup_from_c_str( "" ) );
   }
 
   // Constructor from a C string
-  LeanString( const char* str ){
-    cell = lean_strdup( str );
+  LeanString( TxtC str ){
+    cstr = to_cstr( lean_strdup_from_c_str( str ) );
+  }
+
+  // Constructor from a C string literal
+  template< std::size_t N >
+  LeanString( const char (&str)[N] ){
+    cstr = to_cstr( lean_strdup_from_c_str( str ) );
   }
 
   // Destructor
   ~LeanString( void ){
-    lean_free( cell );
+    lean_free( to_cell( cstr ) );
   }
 
   // Copy constructor
   LeanString( const LeanString& str ){
-    cell = lean_strdup( str.cell );
+    cstr = to_cstr( lean_strdup_from_c_str( str.cstr ) );
+  }
+
+  TxtC c_str( void ) const {
+    return cstr;
+  }
+
+  char* mut_c_str( void ) const {
+    return cstr;
+  }
+
+  operator const char*( void ) const {
+    return c_str();
   }
 
   // Assignment operator
   LeanString& operator=( const LeanString& str ){
-    lean_free( cell );
-    cell = lean_strdup( str.cell );
+    lean_free( to_cell( cstr ) );
+    cstr = to_cstr( lean_strdup_from_c_str( str.cstr ) );
     return *this;
   }
 
   // Assignment operator from a C string
-  LeanString& operator=( const char* str ){
-    lean_free( cell );
-    cell = lean_strdup( str );
+  LeanString& operator=( TxtC str ){
+    lean_free( to_cell( cstr ) );
+    cstr = to_cstr( lean_strdup_from_c_str( str ) );
     return *this;
   }
 
   // Concatenation operator
   LeanString operator+( const LeanString& str ) const {
-    auto str1 = lean_strdup( str.cell );
-    auto str = lean_strcat( cell, str1 );
-    auto r = LeanString( str );
+    // ToDo: optimize this
+    auto str1 = lean_strdup_from_c_str( str.cstr );
+    auto str2 = lean_strcat( to_cell( cstr ), str1 );
+    auto r = LeanString( to_cstr( str2 ) );
     lean_free( str1 );
-    lean_free( str );
+    lean_free( str2 );
     return r;
   }
 
   // Concatenation operator from a C string
-  LeanString operator+( const char* str ) const {
-    auto str1 = lean_strdup( str );
-    auto str = lean_strcat( cell, str1 );
-    auto r = LeanString( str );
+  LeanString operator+( TxtC str ) const {
+    // ToDo: optimize this
+    auto str1 = lean_strdup_from_c_str( str );
+    auto str2 = lean_strcat( to_cell( cstr ), str1 );
+    auto r = LeanString( to_cstr( str2 ) );
     lean_free( str1 );
-    lean_free( str );
+    lean_free( str2 );
     return r;
   }
 
   // Concatenation operator
   LeanString& operator+=( const LeanString& str ){
-    lean_free( cell );
-    cell = lean_strcat( cell, str.cell );
+    auto old_cell = to_cell( cstr );
+    cstr = to_cstr( lean_strcat( old_cell, to_cell( str.cstr ) ) );
+    lean_free( old_cell );
     return *this;
   }
 
   // Concatenation operator from a C string
-  LeanString& operator+=( const char* str ){
-    lean_free( cell );
-    cell = lean_strcat( cell, lean_strdup( str ) );
+  LeanString& operator+=( TxtC str ){
+    auto old_cell = to_cell( cstr );
+    auto str1 = lean_strdup_from_c_str( str );
+    cstr = to_cstr( lean_strcat( old_cell, str1 ) );
+    lean_free( old_cell );
+    lean_free( str1 );
+    return *this;
+  }
+
+  // Concatenation operator from a char
+  LeanString& operator+=( char c ){
+    // ToDo: optimize this
+    auto old_cell = to_cell( cstr );
+    char buf[ 2 ] = { c, '\0' };
+    auto str1 = lean_strdup_from_c_str( buf );
+    cstr = to_cstr( lean_strcat( old_cell, str1 ) );
+    lean_free( old_cell );
+    lean_free( str1 );
     return *this;
   }
 
   // Comparison operator
   bool operator==( const LeanString& str ) const {
-    return lean_strceq( cell, str.cell );
+    return lean_streq( to_cell( cstr ), to_cell( str.cstr ) );
   }
 
   // Comparison operator from a C string
-  bool operator==( const char* str ) const {
-    return lean_streq( cell, lean_strdup( str ) );
+  bool operator==( TxtC str ) const {
+    auto r = lean_streq_with_c_str( to_cell( cstr ), str );
+    return r;
   }
-
 
   // Comparison operator
   bool operator!=( const LeanString& str ) const {
-    return !lean_strceq( cell, str.cell );
+    return !lean_streq( to_cell( cstr ), to_cell( str.cstr ) );
   }
 
   // Comparison operator from a C string
-  bool operator!=( const char* str ) const {
-    return !lean_streq( cell, lean_strdup( str ) );
-  }
-
-  // Comparison operator
-  bool operator<( const LeanString& str ) const {
-    return lean_strcmp( cell, str.cell ) < 0;
-  }
-
-  // Comparison operator from a C string
-  bool operator<( const char* str ) const {
-    return lean_strcmp( cell, lean_strdup( str ) ) < 0;
-  }
-
-  // Comparison operator
-  bool operator<=( const LeanString& str ) const {
-    return lean_strcmp( cell, str.cell ) <= 0;
-  }
-
-  // Comparison operator from a C string
-  bool operator<=( const char* str ) const {
-    return lean_strcmp( cell, lean_strdup( str ) ) <= 0;
-  }
-
-  // Comparison operator
-  bool operator>( const LeanString& str ) const {
-    return lean_strcmp( cell, str.cell ) > 0;
-  }
-
-  // Comparison operator from a C string
-  bool operator>( const char* str ) const {
-    return lean_strcmp( cell, lean_strdup( str ) ) > 0;
-  }
-
-  // Comparison operator
-  bool operator>=( const LeanString& str ) const {
-    return lean_strcmp( cell, str.cell ) >= 0;
-  }
-
-  // Comparison operator from a C string
-  bool operator>=( const char* str ) const {
-    return lean_strcmp( cell, lean_strdup( str ) ) >= 0;
+  bool operator!=( TxtC str ) const {
+    auto r = !lean_streq_with_c_str( to_cell( cstr ), str );
+    return r;
   }
 
   // Returns the length of the string
   size_t length() const {
-    return lean_strlen( cell );
+    return lean_strlen( to_cell( cstr ) );
   }
 
-  // Returns the C string
-  const char* c_str() const {
-    return cell << 4;
+  // Return a substring
+  LeanString substr( size_t pos, size_t len ) const {
+    // ToDo: optimize this
+    auto r = LeanString( to_cstr( lean_substr( to_cell( cstr ), pos, len ) ) );
+    return r;
   }
 
+  // Return char at position or 0 if out of bounds
+  char at( size_t pos ) const {
+    if( pos >= length() ) return 0;
+    return cstr[ pos ];
+  }
 
+  // [] operator
+  char operator[]( size_t pos ) const {
+    return at( pos );
+  }
+
+  // True if the string is empty
+  bool empty() const {
+    return cstr[ 0 ] == '\0';
+  }
+
+  // Find a substring
+  int find( const LeanString& str ) const {
+    return lean_strindex( to_cell( cstr ), to_cell( str.cstr ) );
+  }
+
+  // Find a substring, from the end
+  int rfind( const LeanString& str ) const {
+    return lean_strrindex( to_cell( cstr ), to_cell( str.cstr ) );
+  }
+
+}; // ToDO: why do I need this semicolon here?
+
+// Overloaded binary + operator for "xxx" + LeanString
+LeanString operator+( TxtC str1, const LeanString& str2 ){
+  Text r = str1;
+  r += str2;
+  return r;
 }
 
-// As a result, we can redefine Text, TxtD and TxtC as follows:
-#define Text LeanString
-#define TxtD const LeanString
-#define TxtC LeanString
+
+// Now that LeanString is defined, some needed overloaded functions are possible
+
+bool mand2( bool b1, const Text& msg ){
+  return mand2_c_str( b1, msg.mut_c_str() );
+}
 
 
-// The next step is to avoid using iostreams and use printf() instead.
-// This is in order to avoid importing to much stuff from the C++ std lib.
+int lean_strcmp( const LeanString& str1, TxtC str2 ){
+  return strcmp( str1.c_str(), str2 );
+}
 
-class LeanIoStream {
-  public:
 
-  FILE* fd;
+bool trace( const LeanString& str ){
+  trace_c_str( str.mut_c_str() );
+  return true;
+}
 
-  LeanIoStream( FILE* fd ) : fd( fd ) {}
 
-  // Constructor
-  LeanIoStream( void ) : fd( stdout ) {}
+// Now that LeanString is defined, some needed forward declarations are possible
+Text  dump( Cell );
+Text  short_dump( Cell );
+Text  stacks_dump( void );
+void  set_text_cell( Cell, ConstText );
+Text  cell_to_text( Cell );
+Text  tag_to_text( Tag );
+Text  type_to_text( Index );
+Text  proxy_to_text( Cell );
+Text  integer_to_text( Value );
+Text  verb_to_text_definition( Tag );
+Text  type_to_text( Index );
+Text  inox_machine_code_cell_to_text( Cell );
+Text  extract_line( TxtC, Index );
+}*/
 
-  // Destructor
-  ~LeanIoStream( void ) {}
+/*
+ *  There is some special handling of the empty string.
+ */
 
-  LeanIoStream& operator<<( const char* str ){
-    fprintf( fd, "%s", str );
-    return *this;
+/**/ const no_text = "";
+//c/ static const Text no_text;
+
+
+/* -----------------------------------------------------------------------------
+ *  Helper functions to deal with Typescript and C++ strings in a way that is
+ *  compatible with both languages (and with possible future target languages).
+ *
+ *  tcut(), tbut() and tmid() to extract sub parts of the text.
+ *
+ *  S(), N(), C(), P() and F() to concatenate text and various types of numbers.
+ */
+
+/*
+ *  S() - start of text concatenation operations.
+ *  Note: in many cases the C++ type inference mechanism is enough to avoid
+ *  the S() call but there are still a few cases where it is apparently needed.
+ */
+
+/**/ function S(){ return ""; }
+//c/ Text     S(){ return TxtD( "" ); }
+
+
+/*
+ *  N( n ) - convert a number to a text.
+ *  If number is a cell address, it is converted to a text with the @ prefix.
+ */
+
+/**/ function N( n : number ){ return "" + n; }
+/*c{
+  Text N( int n ){
+    char buf[ 32 ];
+    if( n >= the_very_first_cell && n <= the_next_free_cell ){
+      sprintf_s( buf, sizeof( buf ), "@%d", n );
+    }else{
+      sprintf_s( buf, sizeof( buf ), "%d", n );
+    }
+    auto r = Text( buf );
+    return r;
   }
+}*/
 
-  LeanIoStream& operator<<( const LeanString& str ){
-    fprintf( fd, "%s", str.c_str() );
-    return *this;
-  }
-  LeanIoStream& operator<<( int i ){
-    fprintf( fd, "%d", i );
-    return *this;
-  }
-  LeanIoStream& operator<<( unsigned int i ){
-    fprintf( fd, "%u", i );
-    return *this;
-  }
-  LeanIoStream& operator<<( double d ){
-    fprintf( fd, "%f", d );
-    return *this;
-  }
-  LeanIoStream& operator<<( void* p ){
-    fprintf( fd, "%p", p );
-    return *this;
-  }
-  LeanIoStream& operator<<( bool b ){
-    fprintf( fd, "%s", b ? "true" : "false" );
-    return *this;
-  }
-  LeanIoStream& operator<<( const LeanIoStream& (*f)( const LeanIoStream& ) ){
-    return f( *this );
-  }
-};
 
+/*
+ *  C( c ) - convert a cell address to a text, with the @ prefix.
+ *  If the cell is not in the valid range, @!!! is prepended to the number.
+ */
+
+function C( c : Cell ) : Text {
+  if( c >= the_very_first_cell && c <= the_next_free_cell ){
+    return N( c - the_very_first_cell );
+  }
+  return S()+ "@!!!" + N( c );
+}
+
+
+/*
+ *  F( fn ) - convert a function name/pointer to a text.
+ */
+
+/**/ function F( fn : Function ){ return fn.name }
+// ToDo: C++ should search the symbol table to get the name of the function
+//c/ Text _F( const void* fn ){ return N( (int) fn ); }
+//c/ #define F( fn ) _F( (const void*) fn )
+
+
+/*
+ *  P( p ) - convert a pointer to a text.
+ */
+
+/**/ function P( p : any ){ return N( p ); }
+//c/ Text P( const void* p ){ return N( (int) p ); }
+
+
+/*
+ *  tlen( text )
+ *    Return the length of the text.
+ *    UTF-8 characters are counted as one character / one byte.
+ */
+
+/**/ function tlen( s : Text ){ return s.length; }
+//c/ int tlen( const Text& s ){ return s.length(); }
+//c/ int tlen( TxtC s ){ return strlen( s ); }
+
+
+/*
+ *  tbut( text, n )
+ *    Return text minus the first n characters, minus last if n is negative.
+ *    I.e. all "but" the first n characters.
+ */
+
+/**/ function tbut( s : Text, n : number ){ return s.slice( n ); }
+
+/*c{
+
+Text tbut( const Text& s, int n ){
+  if( n >= 0 ){
+    if( (unsigned int) n >= s.length() )return no_text;
+    return s.substr( n, s.length() );
+  }else{
+    int start = s.length() + n;
+    if( start < 0 )return s;
+    return s.substr( start, s.length() );
+  }
+}
 
 }*/
 
 
 /*
+ *  tcut( text, n )
+ *    Return n first characters of text, last characters if n is negative.
+ *    I.e. a "cut" of the first n characters off the whole text.
+*/
+
+/**/ function tcut( s : Text, n : number ){ return s.slice( 0, n ); }
+/*c{
+Text tcut( const Text& s, int n ){
+  if( n >= 0 ){
+    if( (unsigned int) n >= s.length() )return s;
+    return s.substr( 0, n );
+  }else{
+    int end = s.length() + n;
+    if( end <= 0 )return "";
+    return s.substr( 0, end );
+  }
+}
+}*/
+
+
+/*
+ *  tmid( start, end )
+ *     Return characters of text between start (included ) and end (excluded).
+ *     If start is negative, it's counted from the end of the text.
+ *     If end is negative, it's counted from the end of the text.
+ *     I.e. a "mid" part of the whole text, in the middle.
+ */
+
+/**/ function tmid( t : Text, start : Index, end : Index ){
+/**/   return t.slice( start, end );
+/**/ }
+
+/*c{
+
+Text tmid( const Text& t, int start, int end ){
+  int len = t.length();
+  if( start < 0 ){
+    start = len + start;
+  }
+  if( end < 0 ){
+    end = len + end;
+  }
+  if( end > len ){
+    end = len;
+  }
+  if( start >= end ){
+    return "";
+  }
+  if( start < 0 ){
+    start = 0;
+  }
+  return t.substr( start, end - start );
+}
+}*/
+
+
+/*
+ *  tlow( text )
+ *    Return text in lower case.
+ */
+
+/**/ function tlow( s : Text ){ return s.toLowerCase(); }
+
+/*c{
+Text tlow( const Text& s ){
+  Text r;
+  for( unsigned int ii = 0; ii < s.length(); ii++ ){
+    // ToDo: very slow
+    auto ch = s.at( ii );
+    if( ch < 128 ){
+      r += (char) tolower( ch );
+    }else{
+      r += ch;
+    }
+  }
+  return r;
+}
+}*/
+
+
+/*
+ *  tup( text )
+ *    Return text in upper case.
+ *
+ */
+
+/**/ function tup( s : Text ){ return s.toUpperCase(); }
+
+/*c{
+Text tup( const Text& s ){
+  Text r;
+  for( unsigned int ii = 0; ii < s.length(); ii++ ){
+    // ToDo: very slow
+    auto ch = s.at( ii );
+    if( ch < 128 ){
+      r += (char) toupper( ch );
+    }else{
+      r += ch;
+    }
+  }
+  return r;
+}
+}*/
+
+
+/*
+ *  teq( text1, text2 ) - teq, text equality.
+ *    Return true if two texts are the same text.
+ */
+
+/*!c{*/
+function teq( s1 : Text, s2 : Text ) : boolean {
+  return s1 == s2;
+}
+/*}*/
+
+// C++ overloaded functions, depending on string representation
+
+/*c{
+
+bool teq( const Text& s1, const Text& s2 ) {
+  return s1 == s2;
+}
+
+
+bool teq( const Text& s1, const char* s2 ) {
+  return s1 == s2;
+}
+
+
+bool teq( const char* s1, const Text& s2 ) {
+  return s2 == s1;
+}
+
+
+bool teq( const Text& s1, char s2 ) {
+  if( s1.empty() )return s2 == 0;
+  return s1.length() == 1 && s1.c_str()[ 0 ] == s2;
+}
+
+
+bool teq( const char* s1, const char* s2 ) {
+  return strcmp( s1, s2 ) == 0;
+}
+
+
+bool teq( char s1, char s2 ) {
+  return s1 == s2;
+}
+
+
+bool teq( char s1, const char* s2 ) {
+  return s2[ 0 ] == s1 && s2[ 1 ] == 0;
+}
+
+}*/
+
+
+/*
+ *  tneq( text1, text2 ) - tneq, text not equal.
+ *    Return true if two texts are not the same text.
+ *   I.e. the opposite of teq().
+ */
+
+/*!c{*/
+function tneq( s1 : Text, s2 : Text ) : boolean {
+  return s1 != s2;
+}
+/*}*/
+
+// C++ overloaded functions, depending on string representation
+/*c{
+
+bool tneq( const Text& s1, const Text& s2 ) {
+  return s1 != s2;
+}
+
+
+bool tneq( const Text& s1, const char* s2 ) {
+  return strcmp( s1.c_str(), s2 ) != 0;
+}
+
+
+bool tneq( const char* s1, const Text& s2 ) {
+  return s2 != s1;
+}
+
+
+bool tneq( const char* s1, const char* s2 ) {
+  return strcmp( s1, s2 ) != 0;
+}
+
+
+bool tneq( const char* s1, char s2 ) {
+  return s1[ 0 ] != s2 || s1[ 1 ] != 0;
+}
+
+
+bool tneq( char s1, char s2 ) {
+  return s1 != s2;
+}
+
+
+bool tneq( char s1, const char* s2 ) {
+  return s2[ 0 ] != s1 || s2[ 1 ] != 0;
+}
+
+}*/
+
+
+/*
+ *  tidx() - index of substring in text, -1 if not found
+ */
+
+function tidx( s : Text, sub : Text ) : Index {
+  /**/ return s.indexOf( sub );
+  //c/ return s.find( sub );
+}
+
+
+/*
+ *  tidxr() - last index of substring in text, -1 if not found
+ */
+
+function tidxr( s : Text, sub : Text ) : Index {
+  /**/ return s.lastIndexOf( sub );
+  //c/ return s.rfind( sub );
+}
+
+
+/*
+ *  Some basic tests of the above functions
+ */
+
+
+/**/function tbad( actual : any, expected : any ) : boolean {
+//c/ bool tbad( int actual, int expected ){
+  // Return true bad, i.e. not as expected
+  if( actual == expected )return false;
+  trace( S()
+    + "tbad: actual: " + N( actual )
+    + " vs expected: " + N( expected )
+  );
+  debugger;
+  return true;
+}
+
+
+/*c{
+bool tbad( Text actual, Text expected ){
+  if( actual == expected )return false;
+  trace( S()
+    + "tbad: actual: " + actual
+    + " vs expected: " + expected
+  );
+  debugger;
+  return true;
+}
+}*/
+
+
+function test_text() : Index {
+
+  // tidx()
+  if( tbad( tidx( "abc", "b" ),     1 ) )return 0;
+  if( tbad( tidx( "abc", "d" ),    -1 ) )return 0;
+  if( tbad( tidx( "abc", "bc" ),    1 ) )return 0;
+  if( tbad( tidx( "abc", "ab" ),    0 ) )return 0;
+  if( tbad( tidx( "abc", "abc" ),   0 ) )return 0;
+  if( tbad( tidx( "abc", "abcd" ), -1 ) )return 0;
+
+  // tidxr()
+  if( tbad( tidxr( "abc", "b" ),     1 ) )return 0;
+  if( tbad( tidxr( "abc", "d" ),    -1 ) )return 0;
+  if( tbad( tidxr( "abc", "bc" ),    1 ) )return 0;
+  if( tbad( tidxr( "abc", "ab" ),    0 ) )return 0;
+  if( tbad( tidxr( "abc", "abc" ),   0 ) )return 0;
+  if( tbad( tidxr( "abc", "abcd" ), -1 ) )return 0;
+  if( tbad( tidxr( "abcabc", "bc" ), 4 ) )return 0;
+
+  // tmid()
+  if( tbad( tmid( "abc", 0, 3 ), "abc" ) )return 0;
+  if( tbad( tmid( "abc", 0, 2 ), "ab"  ) )return 0;
+  if( tbad( tmid( "abc", 1, 2 ), "b"   ) )return 0;
+  if( tbad( tmid( "abc", 1, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", 1, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", 0, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", 0, 1 ), "a"   ) )return 0;
+  if( tbad( tmid( "abc", 0, 4 ), "abc" ) )return 0;
+  if( tbad( tmid( "abc", 1, 4 ), "bc"  ) )return 0;
+  if( tbad( tmid( "abc", 2, 4 ), "c"   ) )return 0;
+  if( tbad( tmid( "abc", 2, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", 2, 0 ), ""    ) )return 0;
+
+  // tmid(), with negative indexes
+  if( tbad( tmid( "abc", -1, 3 ), "c"   ) )return 0;
+  if( tbad( tmid( "abc", -2, 3 ), "bc"  ) )return 0;
+  if( tbad( tmid( "abc", -3, 3 ), "abc" ) )return 0;
+  if( tbad( tmid( "abc", -4, 3 ), "abc" ) )return 0;
+  if( tbad( tmid( "abc", -1, 2 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -2, 2 ), "b"   ) )return 0;
+  if( tbad( tmid( "abc", -3, 2 ), "ab"  ) )return 0;
+  if( tbad( tmid( "abc", -4, 2 ), "ab"  ) )return 0;
+  if( tbad( tmid( "abc", -1, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -2, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -3, 1 ), "a"   ) )return 0;
+  if( tbad( tmid( "abc", -4, 1 ), "a"   ) )return 0;
+  if( tbad( tmid( "abc", -1, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -2, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -2, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -3, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -4, 0 ), ""    ) )return 0;
+
+  // tcut()
+  if( tbad( tcut( "abc",  3 ), "abc" ) )return 0;
+  if( tbad( tcut( "abc",  2 ), "ab"  ) )return 0;
+  if( tbad( tcut( "abc",  1 ), "a"   ) )return 0;
+  if( tbad( tcut( "abc",  0 ), ""    ) )return 0;
+  if( tbad( tcut( "abc", -1 ), "ab"  ) )return 0;
+  if( tbad( tcut( "abc", -2 ), "a"   ) )return 0;
+  if( tbad( tcut( "abc", -3 ), ""    ) )return 0;
+  if( tbad( tcut( "abc", -4 ), ""    ) )return 0;
+
+  // tbut()
+  if( tbad( tbut( "abc",  3 ), ""    ) )return 0;
+  if( tbad( tbut( "abc",  2 ), "c"   ) )return 0;
+  if( tbad( tbut( "abc",  1 ), "bc"  ) )return 0;
+  if( tbad( tbut( "abc",  0 ), "abc" ) )return 0;
+  if( tbad( tbut( "abc", -1 ), "c"   ) )return 0;
+  if( tbad( tbut( "abc", -2 ), "bc"  ) )return 0;
+  if( tbad( tbut( "abc", -3 ), "abc" ) )return 0;
+  if( tbad( tbut( "abc", -4 ), "abc" ) )return 0;
+  if( tbad( tbut( "abc", -5 ), "abc" ) )return 0;
+
+  // tlow()
+  if( tbad( tlow( "abc" ), "abc" ) )return 0;
+  if( tbad( tlow( "ABC" ), "abc" ) )return 0;
+  if( tbad( tlow( "aBc" ), "abc" ) )return 0;
+  if( tbad( tlow( "AbC" ), "abc" ) )return 0;
+
+  // tup()
+  if( tbad( tup( "abc" ), "ABC" ) )return 0;
+  if( tbad( tup( "ABC" ), "ABC" ) )return 0;
+  if( tbad( tup( "aBc" ), "ABC" ) )return 0;
+  if( tbad( tup( "AbC" ), "ABC" ) )return 0;
+
+  return 1;
+}
+
+// Hack to invoke test_text() at C++ dynamic initialization time
+const test_text_done = test_text();
+
+
+/* -----------------------------------------------------------------------------
+ *  Some more assertion checker, defined now because they use the LeanString
+ *  type that is not defined where the other assertions checkers are.
+ */
+
+
+function mand_eq( a : i32, b : i32 ) : boolean {
+  // Check that two values are equal
+  if( a == b )return true;
+  if( is_valid_tag( a ) || is_valid_tag( b ) ){
+    if( is_valid_tag( a ) && is_valid_tag( b ) ){
+      trace(
+        S()+ "bad eq " + tag_to_text( a ) + " / " + tag_to_text( b )
+      );
+    }else if( is_valid_tag( a ) ){
+      trace( S()+ "bad eq " + tag_to_text( a ) + " / " + N( b ) );
+    }else{
+      trace( S()+ "bad eq " + N( a ) + " / " + tag_to_text( b ) );
+    }
+  }
+  mand2( false, S()+ "bad eq " + N( a ) + " / " + N( b ) );
+  return false;
+}
+
+
+function mand_neq( a : i32, b : i32 ) : boolean {
+  if( a != b )return true;
+  breakpoint();
+  mand2( false, S()+ "bad neq " + N( a ) + " / " + N( b ) );
+  return false;
+}
+
+
+/* -----------------------------------------------------------------------------
  *  Cell allocator
  */
 
-function init_cells_allocator(){
+function init_cells_allocator() : Index {
 
   // Typescript version, using ArrayBuffers:
   /**/ the_very_first_cell = 0;
@@ -2436,14 +2578,12 @@ function init_cells_allocator(){
 
   // C++ version, using calloc() chuncks:
   /*c{
-    the_very_first_cell = ( (int) calloc( INOX_HEAP_SIZE, 1 ) >> 4 );
+    the_very_first_cell = to_cell( (int) calloc( INOX_HEAP_SIZE, 1 ) );
     if( the_very_first_cell == 0 ){
       FATAL( "Out of memory, first calloc() failed" );
-      return;
+      return 0;
     }
-    the_free_cell_limit
-    = the_very_first_cell
-    + ( INOX_HEAP_SIZE >> cell_shift ) - 1;
+    the_free_cell_limit = the_very_first_cell + to_cell( INOX_HEAP_SIZE ) - 1;
   }*/
 
   the_next_free_cell = the_very_first_cell;
@@ -2453,7 +2593,7 @@ function init_cells_allocator(){
   /**/ allocate_cells( 16 );
 
   the_tmp_cell = allocate_cell();
-
+  return 1;
 }
 
 
@@ -2490,22 +2630,21 @@ function resize_memory(){
       FATAL( "Out of memory for cells" );
       return;
     }
-    if( new_mem < (void*) ( the_free_cell_limit << 4 ) ){
+    if( (int) new_mem < (int) to_ptr( the_free_cell_limit ) ){
       FATAL( "Out of memory, new alloc is too low" );
       return;
     }
     // Set the new limit (including space for sentinel) & the new next free cell
     the_free_cell_limit
-    = ( ( ( (int) new_mem ) + ( INOX_HEAP_SIZE / 16  ) ) >> 4 ) - 1;
-    the_next_free_cell
-    =   ( (int) new_mem )                                >> 4;
+    = to_cell( ( (int) new_mem ) + to_cell( INOX_HEAP_SIZE / 16 ) ) - 1;
+    the_next_free_cell = to_cell( (int) new_mem );
   }*/
 }
 
 
 function mand_list_cell( c : Cell ) : boolean {
 // Check that a cell is a list cell
-  /*de*/ mand_eq( name( c ), tag_list );
+  mand_eq( name( c ), tag_list );
   return true;
 }
 
@@ -2767,7 +2906,7 @@ function clear( c : Cell ){
       if( type(  c ) == type_tag
       &&  value( c ) == c
       ){
-        FATAL( "clear_cell() on " + dump( c ) );
+        FATAL( S()+ "clear_cell() on " + dump( c ) );
         return;
       }
     }
@@ -2870,7 +3009,7 @@ let all_symbol_cells_capacity = 0;
 
 
 // The global array of all symbol texts, an array of strings
-// In typescript, those are strings, in C++, it's std::string
+// In typescript, those are strings, in C++, it's LearnString objects
 /**/ let all_symbol_texts : Array< string >;
 //c/ Text* all_symbol_texts = 0;
 
@@ -3087,7 +3226,7 @@ function tag_to_text( t : Tag ) : Text {
 // Return the string value of a tag
   de&&mand( is_valid_tag( t ) );
   if( ! is_valid_tag( t ) ){
-    return "invalid-tag-" + C( t );
+    return S()+ "invalid-tag-" + C( t );
   }
   return all_symbol_texts[ t ];
 }
@@ -3101,7 +3240,7 @@ function symbol_to_text( c : Cell ) : Text {
 }
 
 
-function symbol_lookup( name : TxtC ) : Index {
+function symbol_lookup( name : Text ) : Index {
 // Return the entry number of a symbol, or 0 if not found
   // Starting from the end
   let ii = all_symbol_cells_length;
@@ -3115,7 +3254,7 @@ function symbol_lookup( name : TxtC ) : Index {
 }
 
 
-function register_symbol( name : TxtC ) : Index {
+function register_symbol( name : Text ) : Index {
 // Register a symbol and return its entry number
 
   const index = symbol_lookup( name );
@@ -3291,7 +3430,7 @@ function definition_exists( t : Tag ) : boolean {
  *
  *  The implementation of names varies depending on the target.
  *  In Javascript, there is a shadow array of string values.
- *  In C++, there is a shadow array of pointers to std::string objects.
+ *  In C++, there is a shadow array of pointers to LeanString objects.
  */
 
 function stack_allocate( l : Length ) : Cell {
@@ -3561,7 +3700,7 @@ function stack_split_dump( s : Cell, nth : Index ) : Text {
 }
 
 
-function stack_lookup_by_name( s : Cell, n : TxtC ) : Cell {
+function stack_lookup_by_name( s : Cell, n : ConstText ) : Cell {
 // Lookup a cell in a stack by name
   const l = stack_length( s );
   // Starting from the end of the stack, look for the name
@@ -3593,7 +3732,7 @@ function stack_lookup_by_tag( s : Cell, tag : Tag ) : Cell {
 }
 
 
-function stack_update_by_name( s : Cell, n : TxtC ){
+function stack_update_by_name( s : Cell, n : ConstText ){
 // Update a cell using the tos cell, by name.
   const l = stack_length( s );
   // Starting from the end of the stack, look for the name
@@ -3667,13 +3806,13 @@ function stack_contains_cell( s : Cell, c : Cell ) : boolean {
 }
 
 
-function stack_contains_name( s : Cell, n : string ) : boolean {
+function stack_contains_name( s : Cell, n : Text ) : boolean {
 // Check if a stack contains a cell by name
   const l = stack_length( s );
   let ii;
   for( ii = 0 ; ii < l ; ii++ ){
     const c = stack_at( s, ii );
-    if( n == tag_to_text( name( c ) ) ){
+    if( teq( n, tag_to_text( name( c ) ) ) ){
       return true;
     }
   }
@@ -3851,7 +3990,12 @@ function cell_integer( c : Cell ) : Value {
  */
 
 function set_float_cell( c : Cell, v : Float ){
-  set( c, type_float, tag_float, v );
+  /**/ set( c, type_float, tag_float, v );
+  // For TypeScript, use mem32f
+  //a/ set( c, type_float, tag_float, 0 );
+  //a/ mem32f[ ( c << 1 ) ] = v;
+  //c/ set( c, type_float, tag_float, 0 );
+  //c/ *( ( Float * ) ( c << 4 ) ) = v;
 }
 
 
@@ -3860,9 +4004,12 @@ function is_a_float_cell( c : Cell ) : boolean {
 }
 
 
-function cell_float( c : Cell ) : Value {
+function cell_float( c : Cell ) : Float {
   de&&mand_eq( type( c ), type_float );
-  return value( c );
+  /**/ return value( c );
+  // For TypeScript, use mem32f
+  //a/ return mem32f[ ( c << 1 ) ];
+  //c/ return *( ( Float * ) ( c << 4 ) );
 }
 
 
@@ -4000,7 +4147,7 @@ function area_size( area : Cell ) : Size {
 
 function area_capacity( area : Cell ) : Length {
 // Return the capacity, in cells. It does not include the 2 header cells
-  return ( area_size( area ) >> cell_shift ) - 2;
+  return to_cell( area_size( area ) ) - 2;
 }
 
 
@@ -4025,10 +4172,10 @@ function adjusted_bytes_size( s : Size ) : Size {
 // All budy lists are empty at first, index is number of cells in area
 /**/  const all_free_lists_by_area_length : Array< Cell >
 /**/  = [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ];
-/*c
+/*c{
 u32 all_free_lists_by_area_length[ 10 ]
 = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-c*/
+}*/
 
 
 /* -----------------------------------------------------------------------------
@@ -4112,7 +4259,7 @@ function area_garbage_collector() : boolean {
 
     // If busy, skip it
     if( !is_free_area( cell + 2 * ONE ) ){
-      cell += area_size( cell + 2 * ONE ) >> cell_shift;
+      cell += to_cell( area_size( cell + 2 * ONE ) );
       continue;
     }
 
@@ -4124,8 +4271,8 @@ function area_garbage_collector() : boolean {
     // Coalesce consecutive free areas, as long as there are some
     while( true ){
 
-      const potential_next_area = cell
-      + ( area_size( cell ) >> cell_shift );
+      // ToDo: if size were not aligned, it should be aligned here
+      const potential_next_area = cell + to_cell( area_size( cell ) );
 
       if( potential_next_area >= the_next_free_cell
       || !is_dynamic_area( potential_next_area )
@@ -4167,15 +4314,15 @@ function area_garbage_collector_all(){
 function allocate_area( s : Size ) : Cell {
 // Allocate a byte area, return its address, or 0 if not enough memory
 
-  /*de*/ if( de ){
-  /*de*/   if( s > 1000 ){
-  /*de*/     if( s != INOX_HEAP_SIZE / 2 ){
-  /*de*/       bug( S()+ "Large memory allocation, " + N( s ) );
-  /*de*/       debugger;
-  /*de*/     }
-  /*de*/   }
-  /*de*/   // alloc_de&&mand( size != 0 );
-  /*de*/ }
+  /**/ if( de ){
+  /**/   if( s > 1000 ){
+  /**/     if( s != INOX_HEAP_SIZE / 2 ){
+  /**/       bug( S()+ "Large memory allocation, " + N( s ) );
+  /**/       debugger;
+  /**/     }
+  /**/   }
+  /**/   // alloc_de&&mand( size != 0 );
+  /**/ }
 
   // Was something broken?
   alloc_de&&mand(
@@ -4189,7 +4336,7 @@ function allocate_area( s : Size ) : Cell {
   if( adjusted_size <= 10 * size_of_cell
     //c/ && false  // ToDo: disabled for now, it's not working in C++
   ){
-    let try_length = adjusted_size >> cell_shift;
+    let try_length = to_cell( adjusted_size );
     let small_free_area = all_free_lists_by_area_length[ try_length ];
     if( small_free_area ){
       all_free_lists_by_area_length[ try_length ]
@@ -4247,7 +4394,7 @@ function allocate_area( s : Size ) : Cell {
 
     // Only split if the remaining area is big enough for headers
     if( remaining_size >= 2 * size_of_cell ){
-      let remaining_area = area + ( adjusted_size >> cell_shift );
+      let remaining_area = area + to_cell( adjusted_size);
       set_area_size( remaining_area, remaining_size );
       set_area_free( remaining_area );
       set_next_area( remaining_area, next_area( area ) );
@@ -4287,7 +4434,7 @@ function allocate_area( s : Size ) : Cell {
   let extra_cells = 128;
 
   // Don't forget the cell for the refcount and size headers
-  let needed_cells = ( adjusted_size >> cell_shift ) + extra_cells + 2;
+  let needed_cells = to_cell( adjusted_size ) + extra_cells + 2;
 
   const cells = allocate_cells( needed_cells );
   alloc_de&&mand( cells + needed_cells * ONE <= the_next_free_cell );
@@ -4315,7 +4462,7 @@ function allocate_area( s : Size ) : Cell {
   // The result should be the newly added area but without the extra cells
   alloc_de&&mand_eq( allocated_area, area );
   alloc_de&&mand_eq(
-    area + ( adjusted_size >> cell_shift ),
+    area + to_cell( adjusted_size ),
     the_first_free_area
   );
   alloc_de&&mand_eq(
@@ -4394,9 +4541,9 @@ function free_area( area : Cell ){
     set_area_free( area );
     set_next_area(
       area,
-      all_free_lists_by_area_length[ size >> cell_shift ]
+      all_free_lists_by_area_length[ to_cell( size ) ]
     );
-    all_free_lists_by_area_length[ size >> cell_shift ] = area;
+    all_free_lists_by_area_length[ to_cell( size ) ] = area;
     // ToDo: this can degenerate when too many small areas are unused.
     // I should from time to time empty the free lists and add areas to the
     // global pool, the older areas first to maximize locality.
@@ -4511,7 +4658,7 @@ function is_safe_area( area : Cell ) : boolean {
   }
 
   // The whole area must be in the heap
-  if( area + ( size >> cell_shift ) > the_next_free_cell ){
+  if( area + to_cell( size ) > the_next_free_cell ){
     FATAL( S()+
       "Invalid area, out of heap, size " + N( size ) + ", " + C( area )
     );
@@ -4519,7 +4666,7 @@ function is_safe_area( area : Cell ) : boolean {
   }
 
   // When one of the 4 most significant bits is set, that's a type id probably
-  if( size >= ( 1 << 29 ) ){
+  if( size >= ( 1 << 28 ) ){
     const type = unpack_type( size );
     FATAL( S()+ "Invalid counter for area? " + N( type ) + " " + C( area ) );
     return false;
@@ -4612,7 +4759,7 @@ function cell_reference( c : Cell ) : Value {
 function make_proxy( object : any ) : Index {
   // In Typescript there is map between the id and the object
   /**/ const proxy = allocate_area( 0 );
-  // In C++, the cell holds a char* to a strdup() of the C++ std::string
+  // In C++, the cell holds a char* to a strdup() of the LeanString object
   //c/ Cell  proxy = allocate_area( 1 );
   alloc_de&&mand( is_safe_area( proxy ) );
   /**/ all_proxied_objects_by_id.set( proxy, object );
@@ -4688,7 +4835,7 @@ function proxy_to_text( area : Cell ) : Text {
   /*}{
     de&&mand_cell_name( area, tag_c_string );
     return TxtD( (const char*) value( area ) );
-  /*c*/
+  }*/
 }
 
 
@@ -4700,7 +4847,7 @@ function proxy_to_text( area : Cell ) : Text {
  *  ToDo: use such a local strdup() even in Typescript?
  */
 
-function set_text_cell( c : Cell, txt : TxtC ){
+function set_text_cell( c : Cell, txt : ConstText ){
   if( tlen( txt ) == 0 ){
     alloc_de&&mand( is_safe_area( value( the_empty_text_cell ) ) );
     copy_cell( the_empty_text_cell, c );
@@ -5293,7 +5440,7 @@ function check_types() : Index {
   is_reference_type_array[     0x9 ] = true;
   de&&mand_eq( type_list,      0xA );
   is_reference_type_array[     0xA ] = true;
-  de&&mand_eq( type_invalid,   0xB );
+  de&&mand_eq( type_invalid,   0xC );
   return 1;
 }
 
@@ -5309,6 +5456,39 @@ function is_a_reference_type( t : Index ) : boolean {
 function needs_clear( c : Cell ) : boolean {
   return is_a_reference_type( type( c ) );
 }
+
+
+/* ----------------------------------------------------------------------------
+ *  The three global "registers" are: IP, TOS and CSP.
+ *
+ *  IP is the instruction pointer, the address of the next instruction to
+ *  execute.
+ *
+ *  TOS, Top Of the Stack, is the address of the top of the data stack.
+ *
+ *  CSP, Control Stack Pointer, is the address of the top of the control stack.
+ *
+ *  Ideally those registers should be in registers of the CPU, but in Javascript
+ *  they are global variables. In C++ there could a solution to have them in
+ *  registers, based on tricking the compiler. ToDo: study that.
+ *
+ *  Additionaly there is an ACTOR global variable that is the address of the
+ *  current actor. It is used to implement multi threading.
+ *
+ *  All addresses points to 64 bits memory cells. The first 32 bits are the
+ *  value of the cell, the second 32 bits are the type and name of the cell.
+ *  Cells addresses are 32 bits integers whose value must be multiplied by
+ *  the size of a cell in order to get a byte address.
+ */
+
+/**/ let IP : number = 0;
+//c/ static i32 IP;
+
+/**/ let TOS : number = 0;
+//c/ static i32 TOS;
+
+/**/ let CSP : number = 0;
+//c/ static i32 CSP;
 
 
 /* ----------------------------------------------------------------------------
@@ -5623,7 +5803,8 @@ function push_false(){
 
 
 function push_proxy( proxy : Index ){
-  set_proxy_cell( PUSH(), proxy );
+  PUSH();
+  set_proxy_cell( TOS, proxy );
 }
 
 
@@ -5929,6 +6110,11 @@ const init_root_actor_done = init_root_actor();
  */
 
 function FATAL( message : TxtC ){
+  // Simplified version during bootstrap
+  if( in_lean_mode ){
+    trace( S()+ "\nFATAL: " + message + "\n" );
+    return;
+  }
   // Display error and stacks. Clear stack & get back to eval loop
   trace( S()+ "\nFATAL: " + message + "\n" + stacks_dump() );
   debugger;
@@ -5957,8 +6143,8 @@ function primitive_exists( n : Tag ) : boolean {
 }
 
 
-/*
- *  C code generation
+/* -----------------------------------------------------------------------
+ *  Source code generation
  *  The idea is to generate a valid C code file that includes everything
  *  needed to run an Inox program or to integrate Inox as a C library.
  */
@@ -6021,130 +6207,173 @@ function build_c_function_declaration( ts : Text ){
   // "void name( type1 arg1, type2 arg2, ... ) {"
   // Handle the case of no arguments
   new_s = new_s.replace( /\(\s*\)/, "( void )" );
-  return new_s; //  + " // ts " + ts;
+  return new_s;
 }
 
 
 function build_targets(){
 // Build the C++ and AssemblyScript targets
 
+  // Starting from this very file itself
   const source = require( "fs" ).readFileSync( "lib/inox.ts", "utf8" );
 
+  // In C++, primitive declarations are postponed
   let all_primitive_declarations = "";
 
+  // Split the source code into lines
   let ts = source.split( "\n" );
+
+  // A very inefficient string builder, fast enough for this purpose
   let  c_source = "";
 
   let ii = 0;
   let line = "";
   let len = ts.length;
-  // len = 20000;
+
+  // Hack to avoid interferences with comments in this function itself
   let  begin = "/" + "*";
   let  end   = "*" + "/";
 
-  for( ii = 0; ii < len; ii++ ){
+  let last_ii       = -1;
+  let blank_lines   = 0;
+  let comment_lines = 0;
+  let nchanges      = 0;
+
+  // For each line
+  for( ii = 0 ; ii < len ; ii++ ){
+
     line = ts[ ii ];
-    // Leave line untouched if it is a // comment
-    if( line.match( /^\s*\/\/ / ) ){
+
+    // Skip empty lines
+    if( line.match( /^\s*$/ ) ){
+      blank_lines = blank_lines + 1;
       c_source += line + "\n";
       continue;
     }
-    // Also leave line untouched if it starts with *
-    if( line.match( /^\s*\* / ) ){
+
+    // Leave the line untouched if it is a true // comment
+    if( line.match( /^\s*\/\/ / ) ){
+      // This does not match the //x comments, a space is needed
       c_source += line + "\n";
+      blank_lines = blank_lines + 1;
       continue;
+    }
+
+    // Leave line untouched if it starts with *, ie inside multiline comments
+    if( line.match( /^\s*\* / ) ){
+      // Together with // comments, this avoids interferences with comments
+      c_source += line + "\n";
+      comment_lines = comment_lines + 1;
+      continue;
+    }
+
+    // Leave line untouched if it is a true /* comment
+    if( line.match( /^\s*\/\* / ) ){
+      c_source += line + "\n";
+      comment_lines = comment_lines + 1;
+      continue;
+    }
+
+    // Leave line untouched if it is the end of a /* comment
+    if( line.match( /^\s*\*\/ / ) ){
+      c_source += line + "\n";
+      comment_lines = comment_lines + 1;
+      continue;
+    }
+
+    function replace( regex, replacement ){
+      // At most one change per line
+      if( ii == last_ii )return;
+      const new_line = line.replace( regex, replacement );
+      if( new_line != line ){
+        nchanges = nchanges + 1;
+        line = new_line;
+        last_ii = ii;
+        // console.log( "Line " + line + "\n becomes " + new_line );
+        // debugger;
+      }
     }
 
     // Else, do some replacements
-    line = ts[ ii ]
 
     // Turn "let auto_" into C++ local automatic variables
-    .replace( /^(\s+)let +auto_/, "$1 auto auto_"  )
+    // This takes advantage of C++ type inference
+    replace( /^(\s+)let +auto_/, "$1 auto auto_"  );
 
-    // Turn "const auto_" into C++ local automatic variables
-    .replace( /^(\s+)const +auto_/, "$1 auto auto_"  )
+    // Idem for "const auto_", turned into C++ local automatic variables
+    replace( /^(\s+)const +auto_/, "$1 auto auto_"  );
 
-    // Turn "let" into C++ local variables
-    .replace( /^(\s+)let /,      "$1 i32 "  )
+    // Turn " let" into C++ i32 local variables
+    replace( /^(\s+)let /,      "$1 i32 "  );
 
-    // Turn "const" into C++ local variables
-    .replace( /^(\s+)const /,    "$1 i32 "  )
+    // Idem with " const", turned into i32 C++ local variables
+    replace( /^(\s+)const /,    "$1 i32 "  );
 
-    // Turn global "let" and "const" into C++ global static variables
-    .replace( /^let /,           "static i32 "  )
-    .replace( /^const /,         "static i32 "  )
+    // Turn global "let" and "const" into C++ global static i32 variables
+    replace( /^let /,           "static i32 "  );
+    replace( /^const /,         "static i32 "  );
 
-    // /* /, rest of line is removed
-    .replace( /^\s*\/\*\*\/(.*)$/, " //ts $1 " )
+    // / * * /, rest of line is removed, it's Typescript only code
+    replace( /^\s*\/\*\*\/(.*)$/, " //ts/ $1 " );
 
     // //c/ lines are C++ lines
-    .replace( /^(\s*)\/\/c\/ (.*)$/, "$1$2  //c/ line" )
+    replace( /^(\s*)\/\/c\/ (.*)$/, "$1$2  //c/ line" );
 
-    // _*c & c*_ are removed when they are alone on a line
-    .replace( /^\/\*c$/, " // c code begin" )
-    .replace( /^c\*\/$/, " // c code end"   )
+    // C++ one liners, ie //c/ xxxxx
+    // replace( /^\s*\/\*c (.+?) c\*\//, "$1  //c/ line" );
 
-    // C++ one liners
-    .replace(
-      /^\s*\/\*c (.+?) c\*\//,      "$1 // c line"
-    )
+    // start of not C++ version, ie / *!c{* /
+    replace( begin + "!c{" + end,   " " + begin + "!c{" );
 
-    // start of not c version
-    .replace(
-      begin + "!c{" + end,   " /" + "* ts begin {"
-    )
+    // start of C++ version, ie /*c{
+    replace( begin + "c{", " " + begin + "c{" + end );
 
-    // start of C++ version
-    .replace(
-      begin + "c{",      " // c begin {"
-    )
+    // end of C++, start of Typescript, ie / *}{* /
+    replace( begin + "}{" + end, "n//" + begin + "}{" + end );
 
-   // end of ts, start of c
-    .replace(
-      begin + "}{",      " } ts end, c begin { *" + "/" )
+    // end of Typescript, start of C++, ie /*}{
+    replace( begin + "}{", " //" + begin + "}{" + end );
 
-    // end of c
-    .replace(
-      "}" + end,       " // } c end"
-    )
+    // end of ts, ie /*}
+    replace( begin + "}", end + " //" + "}" );
 
-    //
-    .replace(
-      begin + "}",       end + " // ts end }"
-    )
+    // end of C++, ie }* /
+    replace( "}" + end, " //}" );
+
+    // End of Typescript, ie / *}* /
+    // replace( begin + "}" + end, " // ts end }" );
 
     // Collect all primitives
-    .replace( /^\s*primitive\(\s+"(\S+)",\s+(\w+)\s*\);$/,
+    replace( /^\s*primitive\(\s+"(\S+)",\s+(\w+)\s*\);$/,
       function( match, p1, p2, p3 ){
         all_primitive_declarations += "\n" + match;
         return "// postponed: " + match;
       }
-    )
-    .replace( /^\s*operator_primitive\(\s+".+",\s+(\w+)\s*\);$/,
+    );
+    replace( /^\s*operator_primitive\(\s+".+",\s+(\w+)\s*\);$/,
       function( match, p1, p2, p3 ){
         all_primitive_declarations += "\n" + match;
         return "// postponed: " + match;
       }
-    )
-    .replace( /^\s*immediate_primitive\(\s+"(\S+)",\s+(\w+)\s*\);$/,
+    );
+    replace( /^\s*immediate_primitive\(\s+"(\S+)",\s+(\w+)\s*\);$/,
     function( match, p1, p2, p3 ){
       all_primitive_declarations += "\n" + match;
       return "// postponed: " + match;
-    } )
+    } );
 
-    // Also collect the other "postponed" initializations
-    .replace( /^\s*\/\*P\*\/.*$/,
+    // Also collect the other "postponed" initializations, / *P* / marked
+    replace( /^\s*\/\*P\*\/.*$/,
     function( match, p1, p2, p3 ){
       all_primitive_declarations += "\n" + match;
       return "// postponed: " + match;
-    } )
+    } );
 
     // Generate the void xx( void ) C++ declarations for primitives
-    .replace( /^function +(primitive_\w+)\(\)\{$/, "void $1( void ){ // ts $_" )
+    replace( /^function +(primitive_\w+)\(\)\{$/, "void $1( void ){ // ts $_" );
 
     // Generate the C++ declarations for other functions
-    .replace( /^(function +\w+\(.*\).*\{)$/, build_c_function_declaration )
-    ;
+    replace( /^(function +\w+\(.*\).*\{)$/, build_c_function_declaration );
 
     c_source += line + "\n";
   }
@@ -6155,7 +6384,16 @@ function build_targets(){
     all_primitive_declarations
   );
 
+  // Done, write the C++ source code
   require( "fs" ).writeFileSync( "builds/inox.cpp", c_source, "utf8" );
+
+  console.log(
+    "\nC++ source code generated,\n  "
+    + len + " total lines, including\n  "
+    + comment_lines + " comment lines,\n  "
+    + blank_lines + " blank lines,\n  "
+    + nchanges + " changes.\n"
+   );
 
   // Now build the AssemblyScript version, much simpler
 
@@ -6163,18 +6401,19 @@ function build_targets(){
   for( ii = 0; ii < ts.length; ii++ ){
     line = ts[ ii ]
 
-    // _ts_, rest of line is removed
-    .replace( /\/\*ts\*\/(.*$)/, "//ts $1 " )
+    // / *ts* /, rest of line is removed
+    .replace( /\/\*ts\*\/(.*$)/, "// ts $1 " )
 
-    // _as_, rest of line is kept as code
-    .replace( /\/\*as\*\/(.*$)/, "$1 //as" );
+    // //a/, rest of line is kept as code
+    .replace( /\/\/a\/ (.*$)/, "$1 //as" );
 
     as_source += line + "\n";
   }
 
+  // Done, write the AssemblyScript source code
   require( "fs" ).writeFileSync( "builds/inox.as.ts", as_source, "utf8" );
 
-  // ToDo: build the Java version
+  // ToDo: build the Java version!
 
   // ToDo: what other versions?
 
@@ -6184,24 +6423,8 @@ function build_targets(){
 
 
 /* ----------------------------------------------------------------------------
- *
+ *  Primitive builders
  */
-
-/*
- *  a-primitive? primitive - true if TOS tag is also the name of a primitive
- */
-
-
-const tag_is_a_primitive = tag( "a-primitive?" );
-
-
-primitive( "a-primitive?", primitive_is_a_primitive );
-function                   primitive_is_a_primitive(){
-  let name = eat_tag( TOS );
-  let is_a_primitive = primitive_exists( name );
-  set( TOS, type_boolean, tag_is_a_primitive, is_a_primitive ? 1 : 0 );
-}
-
 
 /*
  *  Every block terminates with a void cell that means "return"
@@ -6284,9 +6507,29 @@ function operator_primitive( n : TxtC, fn : Primitive ){
   set_verb_operator_flag( tag( n ) );
 }
 
+/* ----------------------------------------------------------------------------
+ *  Let's define some primitives
+ */
 
-primitive( "return", primitive_return );
-function             primitive_return(){
+/*
+ *  a-primitive? primitive - true if TOS tag is also the name of a primitive
+ */
+
+const tag_is_a_primitive = tag( "a-primitive?" );
+
+function primitive_is_a_primitive(){
+  let tag_name = eat_tag( TOS );
+  let is_a_primitive = primitive_exists( tag_name );
+  set( TOS, type_boolean, tag_is_a_primitive, is_a_primitive ? 1 : 0 );
+}
+primitive( "a-primitive?", primitive_is_a_primitive );
+
+
+/*
+ *  return primitive - jump to return address
+ */
+
+function primitive_return(){
 // primitive "return" is jump to return address. Eqv R> IP!
   // ToDo: this should be primitive 0
   debugger;
@@ -6316,6 +6559,7 @@ function             primitive_return(){
   // would help. I may reconsider this when/if such garbage collection is
   // introduced in AssemblyScript or WebAssembly runtime itself.
 }
+primitive( "return", primitive_return );
 
 
 // Special case for primitive return, it gets two ids, 0 and normal.
@@ -6336,54 +6580,52 @@ function trace_context( msg : TxtC ){
 
 
 /*
- *  actor primitive
+ *  actor primitive - push a reference to the current actor
  */
 
 /**/ function set_tos_name( n : Tag ){ set_name( TOS, n ); }
 //c/ #define  set_tos_name( n       )  set_name( TOS, n )
 
 
-primitive( "actor", primitive_actor );
-function            primitive_actor(){
+function primitive_actor(){
 // Push a reference to the current actor
   push_integer( ACTOR ); // ToDo: push_reference()?
   set_tos_name( tag_actor );
 }
+primitive( "actor", primitive_actor );
 
 
 /*
- *  switch-actor primitive
+ *  switch-actor primitive - non preemptive thread switch
  */
 
-primitive( "switch-actor", primitive_switch_actor );
-function                   primitive_switch_actor(){
-// Switch to another actor
+function primitive_switch_actor(){
   actor_restore_context( pop_reference() );
 }
+primitive( "switch-actor", primitive_switch_actor );
 
 
 /*
- *  make-actor primitive
+ *  make-actor primitive - create a new actor with an initial IP
  */
 
 
-primitive( "make-actor", primitive_make_actor );
-function                 primitive_make_actor(){
-// Make a new actor with an initial ip
+function primitive_make_actor(){
   // ToDo: it gets a copy of the data stack?
   const actor = make_actor( pop_integer() );
   set( PUSH(), type_reference, tag_actor, actor );
 };
+primitive( "make-actor", primitive_make_actor );
 
 
 /*
- *  breakpoint primitive
+ *  breakpoint primitive - to break into the debugger
  */
 
-primitive( "breakpoint", primitive_breakpoint );
 function primitive_breakpoint(){
   breakpoint();
 }
+primitive( "breakpoint", primitive_breakpoint );
 
 
 /*
@@ -6394,45 +6636,43 @@ primitive( "memory-dump", memory_dump );
 
 
 /*
- *  cast primitive
+ *  cast primitive - change the type of a value, unsafe
  */
 
-primitive( "cast", primitive_cast );
-function           primitive_cast(){
-// Change the type of a value. That's unsafe.
+function primitive_cast(){
   // ToDo: use tag for type
   // ToDo: check that the type is valid
   const type = pop_raw_value();
-  check_de&&mand( type < type_invalid );
+  check_de&&mand( type > 0 && type < type_invalid );
   set_type( TOS, type );
 }
+primitive( "cast", primitive_cast );
 
 
 /*
- *  rename primitive
+ *  rename primitive - change the name of the NOS value
  */
 
-primitive( "rename",  primitive_rename );
-function              primitive_rename(){
-// Change the name of a value. ~~ value name -- renamed_value
+function primitive_rename(){
   const name = pop_raw_value();
   set_tos_name( name );
 }
+primitive( "rename",  primitive_rename );
 
 
+// It is needed during code compilation
 const tag_rename = tag( "rename" );
 
 
 /*
- *  goto primitive
+ *  goto primitive - jump to some absolue IP position, a branch
  */
 
-primitive( "goto", primitive_goto );
-function           primitive_goto(){
-// Primitive is "jump" to some relative position, a branch
+function primitive_goto(){
   // ToDo: conditional jumps
   IP += pop_integer();
 }
+primitive( "goto", primitive_goto );
 
 
 /* ----------------------------------------------------------------------------
@@ -6441,7 +6681,7 @@ function           primitive_goto(){
 
 
 /*
- *  a-void? primitive
+ *  a-void? primitive - true if TOS is a void type of cell
  */
 
 function is_a_void_cell( c : Cell ) : boolean {
@@ -6450,12 +6690,12 @@ function is_a_void_cell( c : Cell ) : boolean {
 
 const tag_is_a_void = tag( "a-void?" );
 
-primitive( "a-void?", primitive_is_a_void );
-function              primitive_is_a_void(){
+function  primitive_is_a_void(){
   const it_is = is_a_void_cell( TOS );
   if( !it_is ){ clear( TOS ); }
   set( TOS, type_boolean, tag_is_a_void, it_is ? 1 : 0 );
 }
+primitive( "a-void?", primitive_is_a_void );
 
 
 /*
@@ -6466,15 +6706,14 @@ function is_a_tag_cell( c : Cell ) : boolean {
   return type( c ) == type_tag;
 }
 
-
 const tag_is_a_tag = tag( "a-tag?" );
 
-primitive( "a-tag?", primitive_is_a_tag );
-function             primitive_is_a_tag(){
+function primitive_is_a_tag(){
   const it_is = is_a_tag_cell( TOS );
   if( !it_is ){ clear( TOS ); }
   set( TOS, type_boolean, tag_is_a_tag, it_is ? 1 : 0 );
 }
+primitive( "a-tag?", primitive_is_a_tag );
 
 
 /*
@@ -6485,15 +6724,14 @@ function is_a_boolean_cell( c : Cell ) : boolean {
   return type( c ) == type_boolean;
 }
 
-
 const tag_is_a_boolean = tag( "a-boolean?" );
 
-primitive( "a-boolean?", primitive_is_a_boolean );
-function                 primitive_is_a_boolean(){
+function primitive_is_a_boolean(){
   const it_is = is_a_boolean_cell( TOS );
   if( !it_is ){ clear( TOS ); }
   set( TOS, type_boolean, tag_is_a_boolean, it_is ? 1 : 0 );
 }
+primitive( "a-boolean?", primitive_is_a_boolean );
 
 
 /*
@@ -6502,12 +6740,12 @@ function                 primitive_is_a_boolean(){
 
 const tag_is_an_integer = tag( "an-integer?" );
 
-primitive( "an-integer?", primitive_is_an_integer );
-function                  primitive_is_an_integer(){
+function primitive_is_an_integer(){
   const it_is = is_an_integer_cell( TOS );
   if( !it_is ){ clear( TOS ); }
   set( TOS, type_boolean, tag_is_an_integer, it_is ? 1 : 0 );
 }
+primitive( "an-integer?", primitive_is_an_integer );
 
 
 /*
@@ -6518,15 +6756,14 @@ function is_a_text_cell( c : Cell ) : boolean {
   return type( c ) == type_text;
 }
 
-
 const tag_is_a_text = tag( "a-text?" );
 
-primitive( "a-text?", primitive_is_a_text );
-function              primitive_is_a_text(){
+function primitive_is_a_text(){
   const it_is = is_a_text_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_text, it_is ? 1 : 0 );
 }
+primitive( "a-text?", primitive_is_a_text );
 
 
 /*
@@ -6537,15 +6774,14 @@ function is_a_reference_cell( c : Cell ) : boolean {
   return type( c ) == type_reference;
 }
 
-
 const tag_is_a_reference = tag( "a-reference?" );
 
-primitive( "a-reference?", primitive_is_a_reference );
-function                   primitive_is_a_reference(){
+function primitive_is_a_reference(){
   const it_is = is_a_reference_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_reference, it_is ? 1 : 0 );
 }
+primitive( "a-reference?", primitive_is_a_reference );
 
 
 /*
@@ -6558,13 +6794,12 @@ function is_a_verb_cell( c : Cell ) : boolean {
   return type( c ) == type_verb;
 }
 
-
-primitive( "a-verb?", primitive_is_a_verb );
-function              primitive_is_a_verb(){
+function primitive_is_a_verb(){
   const it_is = is_a_verb_cell( TOS );
   if( !it_is ){ clear( TOS ); }
   set( TOS, type_boolean, tag_is_a_verb, it_is ? 1 : 0 );
 }
+primitive( "a-verb?", primitive_is_a_verb );
 
 
 /*
@@ -6575,15 +6810,14 @@ function is_a_proxy_cell( c : Cell ) : boolean {
   return type( c ) == type_proxy;
 }
 
-
 const tag_is_a_proxy = tag( "a-proxy?" );
 
-primitive( "a-proxy?", primitive_is_a_proxy );
-function               primitive_is_a_proxy(){
+function primitive_is_a_proxy(){
   const it_is = is_a_proxy_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_proxy, it_is ? 1 : 0 );
 }
+primitive( "a-proxy?", primitive_is_a_proxy );
 
 
 /*
@@ -6594,15 +6828,14 @@ function is_a_flow_cell( c : Cell ) : boolean {
   return type( c ) == type_flow;
 }
 
-
 const tag_is_a_flow = tag( "a-flow?" );
 
-primitive( "a-flow?", primitive_is_a_flow );
-function              primitive_is_a_flow(){
+function primitive_is_a_flow(){
   const it_is = is_a_flow_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_flow, it_is ? 1 : 0 );
 }
+primitive( "a-flow?", primitive_is_a_flow );
 
 
 /*
@@ -6615,13 +6848,12 @@ function is_a_list_cell( c : Cell ) : boolean {
 
 const tag_is_a_list = tag( "a-list?" );
 
-primitive( "a-list?", primitive_is_a_list );
-function              primitive_is_a_list(){
+function primitive_is_a_list(){
   const it_is = is_a_list_cell( TOS );
   clear( TOS );
   set( TOS, type_boolean, tag_is_a_list, it_is ? 1 : 0 );
 }
-
+primitive( "a-list?", primitive_is_a_list );
 
 
 /* -----------------------------------------------------------------------------
@@ -6630,31 +6862,30 @@ function              primitive_is_a_list(){
 
 
 /*
- *  push primitive
+ *  push primitive - push the void on the data stack
  */
 
-primitive( "push", primitive_push );
-function           primitive_push(){
+function primitive_push(){
   PUSH();
 }
+primitive( "push", primitive_push );
 
 
 /*
- *  pop primitive
+ *  drop primitive
  */
 
-primitive( "drop", primitive_drop );
-function           primitive_drop(){
+function primitive_drop(){
   clear( POP() );
 };
+primitive( "drop", primitive_drop );
 
 
 /*
  *  drops primitive - drops n cells from the data stack
  */
 
-primitive( "drops", primitive_drops );
-function            primitive_drops(){
+function primitive_drops(){
   const n = pop_integer();
   check_de&&mand( n >= 0 );
   let ii;
@@ -6663,50 +6894,50 @@ function            primitive_drops(){
     clear( POP() );
   }
 }
+primitive( "drops", primitive_drops );
 
 
 /*
  *  dup primitive - duplicates the top of the data stack
  */
 
-primitive( "dup", primitive_dup );
-function          primitive_dup(){
+function primitive_dup(){
   const tos = TOS;
   copy_cell( tos, PUSH() );
 }
+primitive( "dup", primitive_dup );
 
 
 /*
  *  2dup primitive - duplicates the top two cells of the data stack
  */
 
-primitive( "2dup", primitive_2dup );
-function           primitive_2dup(){
+function primitive_2dup(){
   const tos = TOS;
   copy_cell( tos - ONE, PUSH() );
   copy_cell( tos,       PUSH() );
 }
+primitive( "2dup", primitive_2dup );
 
 
 /*
  *  ?dup primitive - duplicates the top of the data stack if it is not zero
  */
 
-primitive( "?dup", primitive_dup_if );
-function           primitive_dup_if(){
+function primitive_dup_if(){
   // This is the Forth style of truth, anything non zero
   if( value( TOS ) ){
     copy_cell( TOS, PUSH() );
   }
 }
+primitive( "?dup", primitive_dup_if );
 
 
 /*
  *  dups primitive - duplicates n cells from the data stack
  */
 
-primitive( "dups", primitive_dups );
-function           primitive_dups(){
+function primitive_dups(){
   const n = pop_integer();
   check_de&&mand( n >= 0 );
   let ii;
@@ -6715,6 +6946,7 @@ function           primitive_dups(){
     copy_cell( TOS, PUSH() );
   }
 }
+primitive( "dups", primitive_dups );
 
 
 /*
@@ -6752,26 +6984,26 @@ primitive( "2over", primitive_2over );
  *  nip primitive -
  */
 
-primitive( "nip", primitive_nip );
-function          primitive_nip(){
+function primitive_nip(){
   const old_tos = POP();
   reset_cell_value( TOS );
   move_cell( old_tos, TOS );
 }
+primitive( "nip", primitive_nip );
 
 
 /*
  *  tuck primitive - pushes the second cell from the top of the stack
  */
 
-primitive( "tuck", primitive_tuck );
-function           primitive_tuck(){
+function primitive_tuck(){
   const tos = TOS;
   const tos1 = tos - ONE;
   move_cell( tos,          the_tmp_cell );
   move_cell( tos1,         tos );
   move_cell( the_tmp_cell, tos1 );
 }
+primitive( "tuck", primitive_tuck );
 
 
 /*
@@ -6779,14 +7011,14 @@ function           primitive_tuck(){
  *  ie a b -- b a
  */
 
-primitive( "swap", primitive_swap );
-function           primitive_swap(){
+function primitive_swap(){
   const tos0 = TOS;
   const tos1 = tos0 - ONE;
   move_cell( tos0,         the_tmp_cell );
   move_cell( tos1,         tos0 );
   move_cell( the_tmp_cell, tos1 );
 }
+primitive( "swap", primitive_swap );
 
 
 /*
@@ -6832,8 +7064,7 @@ primitive( "2swap", primitive_2swap );
  *  over primitive - pushes the second cell from the top of the stack
  */
 
-primitive( "over", primitive_over );
-function           primitive_over(){
+function primitive_over(){
   const src = TOS - ONE;
   // WARNING, this bugs the C++ compiler: copy_cell( POS - 1, PUSH() );
   // Probably because it does not understand that PUSH() changes TOS and
@@ -6841,14 +7072,14 @@ function           primitive_over(){
   // free to evaluate the arguments in the order it wants.
   copy_cell( src, PUSH() );
 }
+primitive( "over", primitive_over );
 
 
 /*
  *  rotate primitive - rotates the top three cells of the data stack
  */
 
-primitive( "rotate", primitive_rotate );
-function             primitive_rotate(){
+function primitive_rotate(){
   const tos0 = TOS;
   const tos1 = tos0 - ONE;
   const tos2 = tos1 - ONE;
@@ -6857,6 +7088,7 @@ function             primitive_rotate(){
   move_cell( tos2,         tos1 );
   move_cell( the_tmp_cell, tos2 );
 }
+primitive( "rotate", primitive_rotate );
 
 
 /*
@@ -6974,7 +7206,6 @@ primitive( "clear-control", primitive_clear_control );
  *  control-dump primitive - dumps the control stack
  */
 
-primitive( "control-dump", primitive_control_dump );
 function                   primitive_control_dump(){
   const depth = ( CSP - ACTOR_control_stack ) / ONE;
   let   auto_buf = S() + "Control stack:";
@@ -6991,10 +7222,17 @@ function                   primitive_control_dump(){
   }
   trace( auto_buf );
 }
+primitive( "control-dump", primitive_control_dump );
 
 
 /**/ function integer_to_text( v : Value ){ return "" + v; }
-//c/ Text     integer_to_text( Value v   ){ return to_string( v ); }
+/*c{
+  Text integer_to_text( Value v ){
+    char buf[ 32 ];
+    snprintf( buf, sizeof( buf ), "%i", v );
+    return Text( buf );
+  }
+}*/
 
 
 /*
@@ -7005,9 +7243,11 @@ function HEX( n : Value ) : Text {
 // Convert integer to hex string
   // Typescript version:
   /**/ return n.toString( 16 );
-  // C++ version, needs C++20:
+  // C++ version
   /*c{
-    return std::format( "{:x}", n );
+    char buf[ 32 ];
+    sprintf_s( buf, sizeof( buf ), "%x", n );
+    return Text( buf );
   }*/
 }
 
@@ -7027,10 +7267,13 @@ function text_quote( txt : TxtC ) : Text {
       auto_buf += "\\\"";
     }else if( teq( auto_ch, "\\" ) ){
       auto_buf += "\\\\";
-    }else if( auto_ch < " " ){
+    }else if(
+      /**/ auto_ch         < " "
+      //c/ auto_ch.at( 0 ) < ' '
+     ){
       /**/ auto_buf += "\\x" + HEX( auto_ch.charCodeAt( 0 ) );
       // In C++, get char code of first charactor of string
-      //c/ auto_buf += "\\x" + HEX( auto_ch[ 0 ] );
+      //c/ auto_buf += "\\x" + HEX( auto_ch.at( 0 ) );
     }else{
       auto_buf += auto_ch;
     }
@@ -7054,7 +7297,7 @@ primitive( "text-quote", primitive_text_quote );
   // ToDo: better handling of errors
   static bool parse_int_error = false;
 
-  int parseInt( const std::string& s, int base ){
+  int parseInt( const Text& s, int base ){
     parse_int_error = true;
     int result = 0;
     for( unsigned int ii = 0 ; ii < s.length() ; ii++ ){
@@ -7123,6 +7366,12 @@ function checked_text_to_integer( txt : TxtC ) : Value {
 }
 
 
+/*
+ *  text-to-integer primitive - converts a text literal into an integer
+ *  ToDo: should not FATAL on error
+ */
+
+
 function primitive_text_to_integer(){
   const auto_s = cell_to_text( TOS );
   clear( POP() );
@@ -7133,6 +7382,7 @@ primitive( "text-to-integer", primitive_text_to_integer );
 
 /*
  *  text-hex-to-integer primitive - converts a text literal to an integer
+ *  ToDo: should not FATAL on error
  */
 
 function checked_text_hex_to_integer( txt : TxtC ) : Value {
@@ -7159,6 +7409,7 @@ primitive( "text-hex-to-integer", primitive_text_hex_to_integer );
 
 /*
  *  text-octal-to-integer primitive - converts a text literal to an integer
+ *  ToDo: should not FATAL on error
  */
 
 function checked_text_octal_to_integer( txt : TxtC ) : Value {
@@ -7185,6 +7436,7 @@ primitive( "text-octal-to-integer", primitive_text_octal_to_integer );
 
 /*
  *  text-binary-to-integer primitive - converts a text literal to an integer
+ *  ToDo: should not FATAL on error
  */
 
 function checked_text_binary_to_integer( txt : TxtC ) : Value {
@@ -7210,7 +7462,7 @@ primitive( "text-binary-to-integer", primitive_text_binary_to_integer );
 
 
 /*
- *  integer-to-hex primitive - converts an integer to a text literal
+ *  integer-to-hex primitive - converts an integer to an hexadecimal text
  */
 
 function primitive_integer_to_hex(){
@@ -7220,7 +7472,7 @@ function primitive_integer_to_hex(){
   // C++ version:
   /*c{
     char buf[ 32 ];
-    sprintf_s( buf, 32, "%x", i );
+    sprintf_s( buf, sizeof( buf ), "%x", i );
     push_text( buf );
   }*/
 }
@@ -7228,7 +7480,7 @@ primitive( "integer-to-hex", primitive_integer_to_hex );
 
 
 /*
- *  integer-to-octal primitive - converts an integer to a text literal
+ *  integer-to-octal primitive - converts an integer to an octal text
  */
 
 function primitive_integer_to_octal(){
@@ -7238,7 +7490,7 @@ function primitive_integer_to_octal(){
   // C++ version:
   /*c{
     char buf[ 48 ];
-    sprintf_s( buf, 48, "%o", i );
+    sprintf_s( buf, sizeof( buf ), "%o", i );
     push_text( buf );
   }*/
 }
@@ -7246,7 +7498,7 @@ primitive( "integer-to-octal", primitive_integer_to_octal );
 
 
 /*
- *  integer-to-binary primitive - converts an integer to a text literal
+ *  integer-to-binary primitive - converts an integer to a binary text
  */
 
 function primitive_integer_to_binary(){
@@ -7266,7 +7518,7 @@ function primitive_integer_to_binary(){
 
 
 /*
- *  text-unquote primitive - turns a text literal into a string
+ *  text-unquote primitive - turns a JSON text into a text
  */
 
 function text_unquote( txt : TxtC ) : Text {
@@ -7414,7 +7666,8 @@ function cell_to_text( c : Cell ) : Text {
   }else if( t == type_tag ){
     return tag_to_text( v );
   }else if( t == type_boolean ){
-    return v ? "true" : no_text;
+    /**/ return v ? "true" : no_text;
+    //c/ return v ? Text( "true" ) : no_text;
   }else if( t == type_integer ){
     return integer_to_text( v );
   }else if( t == type_verb ){
@@ -7555,7 +7808,7 @@ function dump( c : Cell ) : Text {
         }else{
           cell_dump_entered = false;
           if( is_busy_area( header_to_area( c - ONE ) )){
-            let length = ( v - 2 * size_of_cell ) >> cell_shift;
+            let length = to_cell( v ) - 2;
             // 0 length is what proxied objects use in Typescript
             // 1 length is what proxied objects use in C++
             if(
@@ -7588,7 +7841,7 @@ function dump( c : Cell ) : Text {
               return buf;
             }else{
               return S()+ "busy, length: "
-              + N( ( v - 2 * size_of_cell ) >> cell_shift );
+              + N( to_cell( v ) - 2  );
             }
           }else{
             return S()+ "free, size: " + N( v );
@@ -8097,7 +8350,7 @@ primitive( "log", primitive_log );
 
 
 /*
- *  fast! primitive - Switch to "turbo mode", return previous state
+ *  fast! primitive - Switch to "fast mode", return previous state
  */
 
 const tag_is_fast = tag( "fast?" );
@@ -8118,7 +8371,7 @@ primitive( "fast!", primitive_set_fast );
 
 
 /*
- *  fast? primitive - Return current state for "turbo mode"
+ *  fast? primitive - Return current state for "fast mode"
  */
 
 function primitive_is_fast(){
@@ -8356,11 +8609,13 @@ function cell_class_tag( c : Cell ) : Tag {
   return type_to_tag( type( c ) );
 }
 
+/*
+ *  class primitive - Get the most specific type name (as a tag)
+ */
 
 const tag_class = tag( "class" );
 
 function primitive_inox_class(){
-// Get the most specific type name (as a tag) of the top of stack cell
   const class_tag = cell_class_tag( TOS );
   clear( TOS );
   set( TOS, type_tag, tag_class, class_tag );
@@ -8389,7 +8644,6 @@ primitive( "if", primitive_if );
 
 
 const tag_if_not = tag( "if-not" );
-
 
 function primitive_if_not(){
   // Run block if boolean is true
@@ -8571,8 +8825,7 @@ function primitive_loop(){
 primitive( "loop", primitive_loop );
 
 
-/**/ function lookup_sentinel( csp : Cell, tag : Tag ) : Cell {
-//c/ Cell     lookup_sentinel( Cell  csp , Tag   tag  )        {
+function lookup_sentinel( csp : Cell, tag : Tag ) : Cell {
   let next_csp = csp - ONE;
   // Drop anything until sentinel
   while( next_csp >= ACTOR_control_stack ){
@@ -8650,7 +8903,6 @@ primitive( "long-jump", primitive_long_jump );
 /*
  *  loop-until primitive
  */
-
 
 const tag_loop_until    = tag( "loop-until" );
 const tag_until_checker = tag( "until-checker" );
@@ -9208,7 +9460,7 @@ operator_primitive( "AND",   checked_int_and );
 operator_primitive( "OR",    checked_int_or );
 operator_primitive( "XOR",   checked_int_xor );
 
-c*/
+}*/
 
 
 /*
@@ -9246,7 +9498,7 @@ function unary_math_operator( n : Text, fun : Function ) : void {
  *  ? operator
  */
 
-const tag_is_thruthy = tag( "thruthy?" );
+const tag_is_truthy = tag( "truthy?" );
 
 function primitive_is_truthy(){
 
@@ -9305,7 +9557,7 @@ function primitive_is_truthy(){
 
   }
   set_type( TOS, type_boolean );
-  set_tos_name( tag_is_thruthy );
+  set_tos_name( tag_is_truthy );
 }
 primitive( "truthy?", primitive_is_truthy );
 
@@ -9566,7 +9818,7 @@ operator_primitive(   ">0?",   checked_int_is_greater_than_0 );
 operator_primitive(   ">=0?",  checked_int_is_greater_or_equal_to_0 );
 
 
-/*}*/
+}*/
 
 
 /*
@@ -9608,7 +9860,7 @@ operator_primitive( "negative", checked_int_negative );
 operator_primitive( "sign",     checked_int_sign     );
 operator_primitive( "abs",      checked_int_abs      );
 
-/*}*/
+}*/
 
 /* -------------------------------------------------------------------------
  *  Floating point arithmetic, 32 bits
@@ -9636,7 +9888,12 @@ function push_float( f : Float ){
   // C++ version:
   //c/ *( float* ) ( ( void* ) ( c << 4 ) ) = f;
   set_type( c, type_float );
+  set_name( c, tag_float );
 }
+
+/*
+ *  to-float primitive - convert something into a float
+ */
 
 function primitive_to_float(){
 
@@ -9656,14 +9913,14 @@ function primitive_to_float(){
 
   if( is_a_text_cell( tos ) ){
     /**/ const f = parseFloat( cell_to_text( tos ) );
-    //c/ auto  f = atof( cell_to_text( tos ).c_str() );
+    //c/ auto  f = (Float) atof( cell_to_text( tos ).c_str() );
     push_float( f );
     return;
   }
 
   const auto_txt = cell_to_text( tos );
   /**/ const f = parseFloat( auto_txt );
-  //c/ auto  f = atof( auto_txt.data() );
+  //c/ auto  f = (Float) atof( auto_txt.c_str() );
   push_float( f );
 
 }
@@ -9700,7 +9957,12 @@ primitive( "float-to-integer", primitive_float_to_integer );
 function primitive_float_to_text(){
   const auto_f = pop_float();
   /**/ const auto_t = auto_f.toString();
-  //c/ auto  auto_t = std::to_string( auto_f );
+  /*c{
+    // ToDo: that's a lot of stack memory
+    // Using a static buffer would be better but not thread safe
+    char auto_t[ 100 ];
+    sprintf_s( auto_t, sizeof( auto_t ), "%f", auto_f );
+  }*/
   push_text( auto_t );
 }
 
@@ -10280,7 +10542,7 @@ function verb_to_text_definition( id : Index ) : Text {
   auto_buf += ": " + auto_text_name + " ( definition of " + auto_text_name
   + ", verb " + C( id )
   + ", cell " + C( def )
-  + ( flags != 0 ? ", flags" + verb_flags_dump( flags ) : "" )
+  + ( flags != 0 ? ( S()+ ", flags" + verb_flags_dump( flags ) ) : no_text )
   + ", length " + N( length ) + " )\n";
 
   let ip = 0;
@@ -10799,14 +11061,14 @@ primitive( "size-of-cell", primitive_size_of_cell );
 /**/   tag   : Tag,
 /**/   nth   : Index
 /**/ ) : Cell {
-/*c
+/*c{
 Cell cell_lookup(
   Cell start,
   Cell end,
   Tag  tag,
   Index nth
 ) {
-c*/
+}*/
   let found = 0;
   let ptr = start;
   if( start < end ){
@@ -11511,8 +11773,7 @@ function                  primitive_stack_enter(){
   ACTOR_data_stack = target;
   CSP += ONE;
   set( CSP, type_integer, tag_stack_limit, ACTOR_data_stack_limit );
-  ACTOR_data_stack_limit = target
-  + ( area_size( target ) >> cell_shift );
+  ACTOR_data_stack_limit = target + to_cell( area_size( target ) );
   CSP += ONE;
   set( CSP, type_integer, tag_stack_top, TOS );
   TOS = target + length * ONE;
@@ -11673,7 +11934,7 @@ function                 primitive_queue_pull(){
   clear( TOS );
   POP();
   const queue_length = value( queue );
-  if( queue_length + 1 >= area_size( queue ) >> cell_shift ){
+  if( queue_length + 1 >= to_cell( area_size( queue ) ) ){
     FATAL( "queue-pull, queue overflow" );
     return;
   }
@@ -11699,7 +11960,7 @@ function                     primitive_queue_capacity(){
   const queue = value( TOS );
   clear( TOS );
   POP();
-  const queue_capacity = area_size( queue ) >> cell_shift;
+  const queue_capacity = to_cell( area_size( queue ) );
   push_integer( queue_capacity - 1 );
   set_tos_name( tag_queue_capacity );
 }
@@ -11742,7 +12003,7 @@ function                primitive_array_put(){
   check_de&&mand_cell_type( array_cell, tag_reference );
   const array = value( array_cell );
   const array_length = value( array );
-  const array_capacity = area_size( array ) >> cell_shift;
+  const array_capacity = to_cell( area_size( array ) );
   if( index < 0 || index >= array_capacity ){
     FATAL( "array-put, index out of range" );
     return;
@@ -11806,7 +12067,7 @@ function                     primitive_array_capacity(){
   const array_cell = TOS;
   check_de&&mand_cell_type( array_cell, tag_reference );
   const array = value( array_cell );
-  const array_capacity = area_size( array ) >> cell_shift;
+  const array_capacity = to_cell( area_size( array ) );
   clear( array_cell );
   set( TOS, type_integer, tag_array_capacity, array_capacity - 1 );
 }
@@ -11828,7 +12089,7 @@ function              primitive_map_put(){
   check_de&&mand_cell_type( map_cell, tag_reference );
   const map = value( map_cell );
   const map_length = value( map );
-  const map_capacity = area_size( map ) >> cell_shift;
+  const map_capacity = to_cell( area_size( map ) );
   // Search for the key
   let ii = 0;
   while( ii < map_length ){
@@ -12366,9 +12627,7 @@ function init_inox_execution_context(){
 
 init_inox_execution_context();
 
-
-/*}{
-c*/
+/*}*/
 
 
 function mand_stacks_are_in_bounds() : boolean {
@@ -12560,22 +12819,22 @@ if( step_de )debugger;
                 + N( ( CSP - old_csp ) / ONE )
               );
             }
-            /*de*/ de&&bug( S()
-            /*de*/  + "Due to " + F( fun )
-            /*de*/  + ", " + inox_machine_code_cell_to_text( old_ip )
-            /*de*/ );
+            de&&bug( S()
+              + "Due to " + F( fun )
+              + ", " + inox_machine_code_cell_to_text( old_ip )
+            );
             debugger;
             // CSP = old_csp;
           }
           if( IP && IP != old_ip ){
-            /*de*/ bug( S()
-            /*de*/ + "run, IP change, was " + C( old_ip - ONE )
-            /*de*/ + ", due to "
-            /*de*/ + inox_machine_code_cell_to_text( old_ip - ONE )
-            /*de*/ );
+            bug( S()
+              + "run, IP change, was " + C( old_ip - ONE )
+              + ", due to "
+              + inox_machine_code_cell_to_text( old_ip - ONE )
+            );
           }
           if( IP == 0 ){
-            /*de*/ bug( S()+ "run, IP 0 due to " + F( fun ) );
+            bug( S()+ "run, IP 0 due to " + F( fun ) );
             // break loop;  // That's not supposed to be a way to exit the loop
           }
 
@@ -13093,10 +13352,10 @@ const tag_run = tag( "run" );
 
 function primitive_run(){
   const block = pop_block();
-  /*de*/ if( de && block < 2000 ){
-  /*de*/   FATAL( "Not a block at " + block );
-  /*de*/   return;
-  /*de*/ }
+  /**/ if( de && block < 2000 ){
+  /**/   FATAL( "Not a block at " + block );
+  /**/   return;
+  /**/ }
   // Push return address onto control stack
   save_ip( tag_run );
   // Jump into definition
@@ -13264,7 +13523,7 @@ function token_tag_to_type( t : Tag ) : Index {
 
 abstract class TextStreamIterator {
   // Get next text to tokenize. REPL would readline() on stdin typically
-  abstract next() : string;
+  abstract next() : Text;
 }
 
 /*c*/
@@ -13272,7 +13531,7 @@ abstract class TextStreamIterator {
 
 // When REPL, source code comes from some readline() function
 /**/ let toker_stream  : TextStreamIterator;
-//c/ static std::istream* toker_stream = 0;
+//c/ static int toker_stream = 0;
 
 // Source that is beeing tokenized
 /**/ let  toker_text = "";
@@ -13457,7 +13716,7 @@ function tokenizer_set_literate_style( is_it : boolean ){
 
 
 /**/ function tokenizer_set_stream( s : TextStreamIterator ){
-//c/ void     tokenizer_set_stream( std::istream* s ) {
+//c/ void     tokenizer_set_stream( int s ) {
   toker_stream = s;
 }
 
@@ -13562,7 +13821,7 @@ primitive( "input-until", primitive_input_until );
  *  pushback-token primitive - push back a token in source code stream
  */
 
-function unget_token( t : Index, s : string ){
+function unget_token( t : Index, s : Text ){
   back_token_type = t;
   back_token_text = s;
 }
@@ -13800,7 +14059,8 @@ function refill_next_ch( ii : Index ){
     if( ( ii + jj ) >= toker_text_length ){
       next_ch += " ";
     }else{
-      next_ch += toker_text[ ii + jj ];
+      /**/ next_ch += toker_text[ ii + jj ];
+      //c/ next_ch += tmid( toker_text, ii + jj, 1 );
       // Treat lf like a space
       if( ch_is_eol( tmid( next_ch, jj, 1 ) ) ){
         next_ch = tcut( next_ch, jj ) + " ";
@@ -13880,20 +14140,213 @@ let toker_is_limit = false;
 let toker_previous_state = 0;
 
 
+/* -----------------------------------------------------------------------------
+ *  An efficient getline() function.
+ *  It uses file descriptors instead of FILE*.
+ *  It is synchronous however, blocking the whole process.
+ *  It is not thread safe.
+ *  There is no dynamic memory involved and that comes with a limit to the
+ *  line length, MAX_LINE_LENGTH, which is 2048, as per POSIX minimum.
+ *  ToDo: make it thread safe.
+ *  ToDo: make it asynchronous.
+ *  ToDo: have a dynamic buffer when asked.
+ *  ToDo: configure the max length.
+ *  ToDo: configure the new line delimiter.
+ *  This is implemented in C++ to avoid using the C runtime.
+ *  ToDo: a TypeScript version that would also be compatible with
+ *  AssemblyScript
+ */
+
+/*c{
+
+#ifdef _WIN32
+  #include <Windows.h>
+#else
+  #include <unistd.h>
+#endif
+
+// The buffer. 2048 is the minimum to be POSIX compliant
+#define MAX_LINE_LENGTH 2048
+
+// The buffer, static. ToDo: not thread safe
+// +2 is for potential \n and \0 at the end
+static char getline_buf[ MAX_LINE_LENGTH + 2 ];
+
+// How many chars are still available in the buffer
+static int getline_buf_length = 0;
+
+// Where is the first available char in the buffer
+static char* getline_buf_ptr = NULL;
+
+// What file descriptor is the buffer for
+static int getline_fd = -1;
+
+static bool getline_is_tty = false;
+
+// A saved char, needed when nulls are inserted after newlines
+static int getline_safe_char = -1;
+
+void fast_getline_close( int fd ){
+// Should be called by the entity that opened the fd
+  // Ignore if not about the current file descriptor
+  if( fd >= 0 && fd != getline_fd )return;
+  getline_buf_length = 0;
+  getline_buf_ptr = getline_buf;
+  *getline_buf = 0;
+  getline_fd = -1;
+  getline_safe_char = 0;
+}
+
+
+void fast_getline_open( int fd ){
+// Should be called by the entity that opened the fd
+  // Close the current file descriptor, if any
+  fast_getline_close( getline_fd );
+  getline_fd = fd;
+  if( getline_fd < 0 )return;
+  // Is it a TTY?
+
+}
+
+
+char* fast_getline_remainder(){
+// Return whatever remains in the buffer, with \n and \0
+  if( getline_buf_length <= 0 )return NULL;
+  // Add a \n
+  getline_buf[ getline_buf_length ] = '\n';
+  // Add a \0
+  getline_buf[ getline_buf_length + 1 ] = 0;
+  char* result = getline_buf_ptr;
+  getline_buf_length = 0;
+  getline_buf_ptr = getline_buf;
+  return result;
+}
+
+
+char* fast_getline( int fd ){
+
+  // The result
+  char* result = NULL;
+
+  // If not the same fd, flush the buffer
+  if( fd != getline_fd ){
+    fast_getline_close( getline_fd );
+    fast_getline_open( fd );
+  }
+
+  // If invalid fd, return null
+  if( fd < 0 ){
+    return NULL;
+  }
+
+  // Remember the fd
+  getline_fd = fd;
+
+  // Restore the saved char if needed
+  if( getline_safe_char >= 0 ){
+    *getline_buf_ptr = getline_safe_char & 0xff;
+    getline_safe_char = -1;
+  }
+
+  // Look for the first newline
+  char* nl = strchr( getline_buf_ptr, '\n' );
+  result = getline_buf_ptr;
+
+  // Found it, return the line
+  if( nl ){
+    // Update the length
+    getline_buf_length -= nl - getline_buf_ptr;
+    // Change next char into a null but save it first
+    getline_buf_ptr = nl + 1;
+    getline_safe_char = *getline_buf_ptr;
+    *getline_buf_ptr = 0;
+    return result;
+  }
+
+  // No newline, refill the buffer
+
+  // First move what remains to the front, including the null terminator
+  memmove( getline_buf, getline_buf_ptr, getline_buf_length + 1 );
+  getline_buf_ptr = getline_buf;
+  result = getline_buf;
+
+  // Then try to fill the rest
+  int more_length = 0;
+
+  // Unless the buffer is full?
+  if( getline_buf_length >= MAX_LINE_LENGTH ){
+    // If so, it's a line that is too big, file is unfit to proceed
+    fast_getline_close( getline_fd );
+    return NULL;
+  }
+
+  // If this is a TTY then read one char at a time, until a newline
+  if( getline_is_tty ){
+    while( true ){
+      more_length = read( fd, getline_buf + getline_buf_length, 1 );
+      if( more_length <= 0 )break;
+      getline_buf_length += more_length;
+      if( getline_buf[ getline_buf_length - 1 ] == '\n' )break;
+      // Don't overflow
+      if( getline_buf_length >= MAX_LINE_LENGTH )break;
+    }
+
+  // If not a TTY, read as much as possible
+  }else{
+    more_length = read(
+      fd,
+      getline_buf + getline_buf_length,
+      MAX_LINE_LENGTH - getline_buf_length
+    );
+  }
+
+  // Some error or nothing?
+  if( more_length <= 0 ){
+    // On error, don't return an invalid line
+    if( more_length < 0 ){
+      fast_getline_close( getline_fd );
+      return NULL;
+    }
+    // Assume EOF, return last line, with added \n if necessary
+    result = fast_getline_remainder();
+    // If empty, close and return null
+    if( !result ){
+      fast_getline_close( getline_fd );
+    }
+    // Otherwise return what we have
+    return result;
+  }
+
+  // Make sure new content is null terminated
+  getline_buf[ getline_buf_length + more_length ] = 0;
+
+  // Retry, it should work this time
+  result = fast_getline( fd );
+  de&&mand_neq( (int) result, NULL );
+  return result;
+
+}
+
+}*/
+
+
 function process_whitespaces(){
   // EOF, end of file
   if( toker_ii == toker_text_length ){
     // If there is a stream, try to get more text from it
-    if( toker_stream ){
+    if(
+      /**/ toker_stream
+      //c/ toker_stream >= 0
+    ){
       /**/ const more_text = toker_stream.next();
       /*c{
-        Text more_text;
-        std::getline( *toker_stream, more_text );
+        Text more_text( fast_getline( toker_stream ) );
       /*c*/
       if( more_text != "" ){
         toker_text = more_text;
         toker_text_length = tlen( more_text );
-        toker_ch = more_text[ 0 ];
+        /**/ toker_ch = more_text[ 0 ];
+        //c/ toker_ch = more_text.substr( 0, 1 );
         toker_ii = 1;
         toker_previous_ii = 0;
       }else{
@@ -13912,7 +14365,8 @@ function process_whitespaces(){
 
   // Get next character in source
   }else{
-    toker_ch = toker_text[ toker_ii++ ];
+    /**/ toker_ch = toker_text[ toker_ii++ ];
+    //c/ toker_ch = toker_text.substr( toker_ii++, 1 );
   }
 
   // Is it some space or something equivalent?
@@ -14025,8 +14479,8 @@ function process_base_state(){
   }
 
   // Clear buf but keep the false start of comment if any
-  if( teq( toker_buf[0], comment_monoline_ch0 )
-  ||  teq( toker_buf[0], comment_multiline_ch0 )
+  if( teq( tcut( toker_buf, 1 ), comment_monoline_ch0 )
+  ||  teq( tcut( toker_buf, 1 ), comment_multiline_ch0 )
   ){
     toker_buf = tcut( toker_buf, -1 );
   }else{
@@ -14774,8 +15228,9 @@ function is_integer( buf : Text ) : boolean {
   /**/ return ! isNaN( parseInt( buf ) );
   /*c{
     // ToDo: bugs when too big
-    for( unsigned int ii = 0 ; ii < buf.length() ; ++ii ){
-      if( ! isdigit( buf[ ii ] ) ){
+    TxtC str = buf.c_str();
+    for( unsigned int ii = 0 ; ii < buf.length() ; ii++ ){
+      if( ! isdigit( str[ ii ] ) ){
         return false;
       }
     }
@@ -14803,10 +15258,19 @@ const tag_NaN = tag( "NaN" );
 
 
 function text_to_integer( buf : Text ) : Value {
+  // This function is called after is_integer() has returned true
   /**/ const parsed = parseInt( buf );
   /**/ de&&mand( ! isNaN( parsed ) );
   /**/ return parsed |0;
-  //c/ return std::stoi( buf );
+  /*c{
+    // ToDo: handle overflow
+    TxtC str = buf.c_str();
+    int num = 0;
+    for( int ii = 0 ; str[ ii ] != '\0' ; ii++ ){
+        num = num * 10 + ( str[ ii ] - 48 );
+    }
+    return num;
+  }*/
 }
 
 
@@ -15017,7 +15481,7 @@ let parse_codes = 0;
 
 function bug_parse_levels( title : TxtC ) : boolean {
   let auto_buf = S();
-  auto_buf += "Parser. Levels. " + title + " ";
+  auto_buf += "Parser. Levels. " + S() + title + " ";
   // Each level has type, name, verb, block_start, line_no, column_no
   // That's 6 cells per level
   auto_buf += stack_split_dump( parse_stack, 6 );
@@ -15300,7 +15764,7 @@ function eval_do_literal(){
 
 function eval_do_text_literal( t : TxtC ){
   eval_de&&bug( S()+ "Eval. Do text literal " + t );
-  if( t == ".\"" )debugger;
+  // if( teq( t, ".\"" ) )debugger;
   push_text( t );
   eval_do_literal();
 }
@@ -15666,7 +16130,7 @@ function is_special_verb( val : Text ) : boolean {
  *  eval primitive
  */
 
-function tok_match( t : Index, s : string ) : boolean {
+function tok_match( t : Index, s : Text ) : boolean {
   if( token_type != t )return false;
   if( tneq( token_text, s ) )return false;
   return true;
@@ -15719,6 +16183,7 @@ function primitive_eval(){
   let is_special_form = false;
   let is_int          = false;
   let is_operator     = false;
+  let token_length    = 0;
 
   /* ---------------------------------------------------------------------------
    *  Eval loop, until error or eof
@@ -15920,13 +16385,15 @@ function primitive_eval(){
     }
 
     // Sometimes it is the last character that help understand
-    /**/ let  first_ch
-    //c/ char first_ch
-    = token_text[ 0 ];
+    /**/ let  first_ch = token_text[ 0 ];
+    //c/ char first_ch = token_text.at( 0 );
+
+    token_length = tlen( token_text );
 
     /**/ let last_ch
+    /**/ = token_length > 1 ? token_text[ token_length - 1 ] : first_ch;
     //c/ char last_ch
-    = tlen( token_text ) > 1 ? token_text[ tlen( token_text ) - 1 ] : first_ch;
+    //c/ = token_length > 1 ? token_text.at( token_length - 1 ) : first_ch;
 
     // What happens next with the new token depends on multiple factors:
     // a) The type of nested structure we're currently in:
@@ -16067,7 +16534,7 @@ function primitive_eval(){
     // ( of xxx(  or ( of ( sub expression )
     if( !done && teq( last_ch, "(" ) ){
       // if ( of ( expr )
-      if( tlen( token_text ) == 1 ){
+      if( token_length == 1 ){
         parse_enter( parse_subexpr, no_text );
       // if ( of xxx(
       }else{
@@ -16079,7 +16546,7 @@ function primitive_eval(){
     }else if( teq( last_ch, "{" ) ){
 
       // { start of a block
-      if( tlen( token_text ) == 1 ){
+      if( token_length == 1 ){
         if( eval_is_compiling() ){
           eval_block_begin( no_text );
         // If { start of a block but not within a definition
@@ -16122,7 +16589,11 @@ function primitive_eval(){
           eval_block_end();
           // If .xxx{ call
           if( tlen( call_verb_name ) > 1
-          &&  teq( call_verb_name[0], "." ) // ToDo: first_ch?
+          &&  teq(
+            /**/ call_verb_name[0],
+            //c/ call_verb_name.at( 0 ),
+             "."
+            ) // ToDo: first_ch?
           ){
             eval_do_tag_literal( operand_X( call_verb_name ) );
             eval_do_machine_code( tag_run_method_by_name );
@@ -16147,7 +16618,7 @@ function primitive_eval(){
         }
 
         // if }abc also name result
-        if( tlen( token_text ) > 1 ){
+        if( token_length > 1 ){
           eval_do_tag_literal( operand_X( token_text ) );
           eval_do_machine_code( tag_rename );
         }
@@ -16176,7 +16647,13 @@ function primitive_eval(){
           call_verb_name = parse_name;
 
           // ) of .xxx( )
-          if( tlen( call_verb_name ) > 1 &&  teq( call_verb_name[0], "." ) ){
+          if( tlen( call_verb_name ) > 1
+          &&  teq(
+            /**/ call_verb_name[0],
+            //c/ call_verb_name.at( 0 ),
+            "."
+            )
+          ){
             // ToDo: what would be the meaning of .( xxxx ) ?
             // It could call some xxxx.call method of the target object
             // popped from the data stack. This would be convenient
@@ -16204,7 +16681,7 @@ function primitive_eval(){
         }
 
         // If )abc, name result
-        if( tlen( token_text ) > 1 ){
+        if( token_length > 1 ){
           eval_do_tag_literal( operand_X( token_text ) );
           eval_do_machine_code( tag_rename );
         }
@@ -16234,7 +16711,11 @@ function primitive_eval(){
       while( parsing( parse_keyword ) ){
 
         // .xx: ... yy: ... ; keyword method call
-        if( teq( parse_name[0], "." ) ){
+        if( teq(
+          /**/ parse_name[0],
+          //c/ parse_name.at( 0 ),
+           "."
+        ) ){
           // ToDo: should it be a tag or a text literal?
           // Hint: use a tag if it already exist? a text otherwise?
           eval_do_tag_literal( tcut( parse_name, 1 ) );
@@ -16283,7 +16764,7 @@ function primitive_eval(){
       // if #xx# it's a verb
       if( teq( first_ch, "#" )
       &&  teq( last_ch,  "#" )
-      &&  tlen( token_text ) > 2
+      &&  token_length > 2
       ){
         eval_do_verb_literal( operand_X_( token_text ) );
 
@@ -16300,7 +16781,7 @@ function primitive_eval(){
       // >xxx!, it's a lookup in the control stack with store
       }else if( teq( first_ch, ">" )
       && teq( last_ch, "!" )
-      && tlen( token_text ) > 2
+      && token_length > 2
       ){
         eval_do_tag_literal( operand_X_( token_text ) );
         eval_do_machine_code( tag_set_local );
@@ -16317,8 +16798,9 @@ function primitive_eval(){
 
       // .:xxxx, it's a method call
       }else if( teq( first_ch, "." )
-      && tlen( token_text ) > 2
-      && teq( token_text[ 1 ], ":" )
+      && token_length > 2
+      /**/ && teq( token_text[ 1 ], ":" )
+      //c/ && teq( token_text.at( 2 ), ":" )
       ){
         // ToDo: should it be a tag or a text operand?
         eval_do_tag_literal( operand_X( operand_X( token_text ) ) );
@@ -16327,14 +16809,14 @@ function primitive_eval(){
       // .xxxx!, it's a lookup in an object with store
       }else if( teq( first_ch, "." )
       &&        teq( last_ch,  "!" )
-      && tlen( token_text ) > 2
+      && token_length > 2
       ){
         eval_do_tag_literal( operand_X_( token_text ) );
         eval_do_machine_code( tag_object_set );
 
       // .xxxx, it's a lookup in an object with fetch
       }else if( teq( first_ch, "." )
-      && tlen( token_text ) > 1
+      && token_length > 1
       ){
         eval_do_tag_literal( operand_X( token_text ) );
         eval_do_machine_code( tag_object_get );
@@ -16342,7 +16824,7 @@ function primitive_eval(){
       // _xxxx!, it's a lookup in the data stack with store
       }else if( teq( first_ch, "_" )
       &&        teq( last_ch,  "!" )
-      && tlen( token_text ) > 2
+      && token_length > 2
       ){
         eval_do_tag_literal( operand_X_( token_text ) );
         eval_do_machine_code( tag_set_data );
@@ -16371,7 +16853,7 @@ function primitive_eval(){
       // {xxx}, it's a short block about a verb
       }else if( teq( first_ch, "{" )
       &&        teq( last_ch,  "}" )
-      && tlen( token_text ) > 2
+      && token_length > 2
       ){
         const auto_verb = operand_X_( token_text );
         if( verb_exists( auto_verb ) ){
@@ -16500,7 +16982,7 @@ primitive( "ascii-character", primitive_ascii_character );
 
 function primitive_ascii_code(){
   /**/ const code = cell_to_text( TOS ).charCodeAt( 0 );
-  //c/ int code = cell_to_text( TOS )[ 0 ];
+  //c/ int code = cell_to_text( TOS ).at( 0 );
   clear( TOS );
   set( TOS, type_integer, code, tag_ascii );
 }
@@ -16519,7 +17001,7 @@ int int_now( void ){
   long long count = ( long long ) delta.count();
   return static_cast< int >( count );
 }
-c*/
+}*/
 
 function primitive_now(){
   /**/ const since_start = now() - time_start;
@@ -16704,21 +17186,26 @@ function inox(){
 const I   = inox();
 const Fun = I.fun;
 
-/*c*/
+/*}*/
 
 function eval_file( name : TxtC ){
   /**/ const source_code = require( "fs" ).readFileSync( "lib/" + name, "utf8" );
   /**/ I.processor( "{}", "{}", source_code );
   /*c{
     Text source_code;
-    std::ifstream file( "lib/" + name );
-    Text line;
-    while( getline( file, line ) ){
-      source_code += line + "\n";
+    Text filename = S()+ "lib/" + name;
+    int fd = open( filename.c_str(), O_RDONLY );
+    if( fd < 0 ){
+      FATAL( "Can't open file: " + filename );
+      return;
     }
-    file.close();
+    TxtC line;
+    while( ( line = fast_getline( fd ) ) != NULL ){
+      source_code += line;
+    }
+    close( fd );
     processor( "{}", "{}", source_code );
-  /*c*/
+  }*/
 }
 
 
@@ -16726,8 +17213,7 @@ function eval_file( name : TxtC ){
  *  source primitive
  */
 
-/**/ I.primitive( "source", primitive_source );
-function                    primitive_source(){
+function primitive_source(){
 // Load a file and evaluate the content
   // ToDo: require, ?require, required?
   // ToDo: include, ?include, included?
@@ -16735,6 +17221,7 @@ function                    primitive_source(){
   /**/ eval_file( Fun.pop_as_text() );
   //c/ eval_file( pop_as_text() );
 }
+/**/ I.primitive( "source", primitive_source );
 
 function bootstrap(){
   eval_file( "bootstrap.nox" );
@@ -16748,15 +17235,15 @@ function bootstrap(){
 
 void init_globals(){
 
-  ALL_PRIMITIVE_DECLARATIONS
-
-c*/
-
   // In C++ calls to register primitives using primitive() cannot be done
   // until now, as a result the definition of the verbs that call those
   // is not available until now. This is not a problem in Javascript.
   // See code in build_targets() where all calls to primitive() are
   // collected and then inserted here in the generated C++ source file.
+  ALL_PRIMITIVE_DECLARATIONS
+
+}*/
+
   return_without_parameters_definition
   = definition( tag_return_without_parameters );
   until_checker_definition
@@ -16878,7 +17365,7 @@ if( require && require.main === module ){
   exports.inox = inox;
 }
 
-/*c*/
+/*}*/
 
 
 /* ----------------------------------------------------------------------------
@@ -16891,24 +17378,28 @@ if( require && require.main === module ){
 /*c{
 
 void TODO( const char* message ){
-  cerr << "TODO:" << message << endl;
+  Text buf( "TODO: " );
+  buf += message;
+  buf += "\n";
+  write( 2, buf.c_str(), buf.length() );
 }
 
 // void add_history( TxtC line ){
 //  TODO( "add_history: free the history when the program exits" );
 // }
 
+
 int repl(){
+  char* line;
   while( true ){
-    cout << "ok ";
+    trace( "ok " );
     // Read line from stdin
-    Text line;
-    getline( cin, line );
-    if( tlen( line ) == 0 ){
+    line = fast_getline( 0 );
+    if( !line ){
       break;
     }
     // ToDo: ? add_history( line );
-    cout << evaluate( S() + "~~\n" + line );
+   trace( evaluate( S() + "~~\n" + line ).c_str() );
   }
   return 0;
 }
@@ -16920,11 +17411,13 @@ int main( int argc, char *argv[] ){
   // ToDo: ? push ENV object & arguments onto the data stack
   // Display some speed info
   auto duration_to_start = int_now();
-  cout << duration_to_start << " ms"
-  << " and " << (
-    ceil( ( instructions_total / duration_to_start )
-    / 1000  ) )
-  << " Mips to start REPL" << endl;
+  char buf[ 100 ];
+  sprintf_s( buf, sizeof( buf ),
+    "%d ms and %d Mips to start REPL\n",
+    duration_to_start,
+    (int) ceil( ( instructions_total / duration_to_start ) / 1000  )
+  );
+  trace( buf );
   return repl();
 }
 
