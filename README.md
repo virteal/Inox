@@ -435,7 +435,7 @@ if: void then out( "true" )    ~~ => type error, void is not a boolean
 if: void ? then out( "true" )  ~~ nothing, void is falsy
 ```
 
-Verbs that expect a _boolean_ value will sometimes _coerce_ the value of an unexpected type into a _boolean_ value, using a very simple rule : everything is true. This is rarely something usefull and using `?`and the _falsy_ logic generaly makes more sense. But it is fast.
+Verbs that expect a _boolean_ value will sometimes _coerce_ the value of an unexpected type into a _boolean_ value, using a very simple rule : everything but boolean false is true. This is rarely something usefull and using `?`and the _falsy_ logic generaly makes more sense. But it is fast.
 
 Constants are verbs that push a specific value onto the data stack, like `true`, `false` and `void` that push `1`, `0` and `void` respectively.
 
@@ -848,7 +848,7 @@ Forth dialect
 
 Forth is an old language designed by Charles H. "Chuck" Moore in the early seventies. It is a fascinating language, very simple, yet very powerfull.
 
-Much like the Lisp language, also a simple and powerfull language, Forth gave birth to a multide of dialects. Where Lisp dialects are usually based on lists, Forth dialects are based on concatented words.
+Much like the Lisp language, also a simple and powerfull language, Forth gave birth to a multide of dialects. Where Lisp dialects are usually based on lists, Forth dialects are based on concatenated words.
 
 In that sense, Iɴᴏx is a Forth dialect, with verbs instead of words. The Iɴᴏx parser is way more complex than the Forth one and consequently the Forth syntax is very simple, basic.
 

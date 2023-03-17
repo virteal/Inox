@@ -15,6 +15,28 @@
  */
 
 /* ----------------------------------------------------------------------------
+ *  Literate programming.
+ *  See https://en.wikipedia.org/wiki/Literate_programming
+ *
+ *  To some extend this source file is a literate program. That does not mean
+ *  that it's a program that is easy to read and understand but that is
+ *  encouraged. You may learn a few things about interpreted languages,
+ *  object oriented programming, memory management and various data structures.
+ *
+ *  To the extend possible, some explanations are given in the source code when
+ *  a new concept is introduced. Yet it is not a tutorial about programming.
+ *  It's a reference implementation of a concatenative script language.
+ *
+ *  Concatenative languages are a very old idea. The Forth language is the
+ *  best known concatenative language. It's a stack based language, as Inox.
+ *  See https://en.wikipedia.org/wiki/Forth_(programming_language)
+ *
+ *  The reference implementation is a virtual machine,
+ *  see https://en.wikipedia.org/wiki/Virtual_machine
+ */
+
+
+/* ----------------------------------------------------------------------------
  *  Cross platform.
  *
  *  This source file is processed in various ways in order to produce multiple
@@ -67,6 +89,12 @@ using namespace std;
 
 #include <windows.h>
 
+// ----------------------------------------------------------------------------
+//  To avoid using C's standard library about file I/O, we define our own
+//  version of the Unix API. This is not a complete implementation, just enough
+//  to support the Inox standard library.
+
+// File open mode, read only
 #define O_RDONLY 1
 
 int open( const char* path, int mode ){
@@ -83,6 +111,7 @@ int open( const char* path, int mode ){
     NULL
   );
   if( file_handle == INVALID_HANDLE_VALUE )return -1;
+  // HANDLE is not supposed to be casted to int, but it works.
   return (int) file_handle;
 }
 
@@ -98,20 +127,27 @@ int close( int fd ){
 
 int read( int fd, void* buf, int count ){
   DWORD read_count;
-  if( fd != 0 )return -1;
-  HANDLE stdin_handle = GetStdHandle( STD_INPUT_HANDLE );
-  if( stdin_handle == INVALID_HANDLE_VALUE )return -1;
-  ReadFile( stdin_handle, buf, count, &read_count, NULL );
+  if( fd < 0 )return -1;
+  HANDLE h = (HANDLE) fd;
+  // Special handling for stdin
+  if( fd == 0 ){
+    h = GetStdHandle( STD_INPUT_HANDLE );
+    if( h == INVALID_HANDLE_VALUE )return -1;
+  }
+  auto status = ReadFile( h, buf, count, &read_count, NULL );
+  if( status == 0 )return -1;
   return (int) read_count;
 }
 
 
 int write( int fd, const void* buf, int count ){
   DWORD written_count;
+  // Works only for stdout and stderr
   if( fd != 1 && fd != 2 )return -1;
   HANDLE h = GetStdHandle( fd == 1 ? STD_OUTPUT_HANDLE : STD_ERROR_HANDLE );
   if( h == INVALID_HANDLE_VALUE )return -1;
-  WriteFile( h, buf, count, &written_count, NULL );
+  auto status = WriteFile( h, buf, count, &written_count, NULL );
+  if( status == 0 )return -1;
   return (int) written_count;
 }
 
@@ -188,23 +224,26 @@ std::chrono::milliseconds now( void ){
 #define USE_INT_ONLY
 #ifdef  USE_INT_ONLY
   #define     u8              int
-  #define     u32             int
+  #define     u32             unsigned int
   #define     i32             int
+  #define     u64             unsigned long long
   // Macro to convert an integer into a pointer
   // #define     cast_ptr( p )   ( (int*) (p) )
-  #define     cast_ptr( p )   ( reinterpret_cast<u32*>( p ) )
+  #define     cast_ptr( p ) ( reinterpret_cast<u32*>( p ) )
 #else
   #define USE_STDINT_H 1
   #ifdef USE_STDINT_H
     #define   u8              uint8_t
     #define   u32             uint32_t
     #define   i32             int32_t
-    #define   cast_ptr( p )   ( (int32_t*) (p) )
+    #define   u64             uint64_t
+    #define   cast_ptr( p ) ( (int32_t*) (p) )
   #else
-    typedef   unsigned int    u8;
-    typedef   unsigned int    u32;
-    typedef   int             i32;
-    #define   cast_ptr( p )   ( (int*) (p) )
+    typedef   unsigned int       u8;
+    typedef   unsigned int       u32;
+    typedef   int                i32;
+    typedef   unsigned long long u64;
+    #define   cast_ptr( p ) ( (int*) (p) )
   #endif
 #endif
 
@@ -220,9 +259,14 @@ std::chrono::milliseconds now( void ){
  *  Types and constants related to types
  */
 
-// Address of a cell's value, type and name
+// Address in memory of a cell, that's where the value, type and name are stored
+// It's a 28 bits index that needz to be << 3 shifted to get a byte pointer
 /**/ type    Cell = i32;
 //c/ #define Cell   i32
+
+// Address of a dynamically allocated cell, a substype of Cell
+/**/ type Area    = i32;
+//c/ #define Area   i32
 
 // Smallest entities at an address in memory
 /**/ type    InoxWord = i32;
@@ -236,11 +280,11 @@ std::chrono::milliseconds now( void ){
 /**/ type    Count = i32;
 //c/ #define Count   i32
 
-// Size of something, in bytes
+// Size of something, always in bytes
 /**/ type    Size = i32;
 //c/ #define Size   i32
 
-// Size in number of items, often cells
+// Size in number of items, often cells, never bytes
 /**/ type    Length  = i32;
 //c/ #define Length    i32
 
@@ -256,11 +300,11 @@ std::chrono::milliseconds now( void ){
 /**/ type    InoxOid = i32;
 //c/ #define InoxOid   i32
 
-// Payload of cell. ToDo: should be an int32
+// Payload of cell.
 /**/ type    Value = i32;
 //c/ #define Value   i32
 
-// Type & name info parts of a cell
+// Type & name info parts of a cell, packed
 /**/ type    Info = u32;
 //c/ #define Info   i32
 
@@ -277,26 +321,53 @@ std::chrono::milliseconds now( void ){
 //c/ #define Tag   i32
 
 // Shorthand for string, 4 vs 6 letters
-/**/ type    Text = string;
+/**/ type    Text    = string;
+/**/ type    MutText = string;
+
+// In C++, we define a custom string class, LeanString
 //c/ #define Text       LeanString
+//c/ #define MutText    LeanString
 //c/ #define TxtD( s )  LeanString( s )
 
 // Like Text, but const
+// ToDo: ugly, refactoring needed
 /**/ type TxtC        = string;
 /**/ type ConstText   = string;
-//c/ #define TxtC       const char*
 //c/ #define ConstText  const LeanString&
+//c/ #define TxtC       const char*
 
 /**/ type            Primitive = () => void;
 //c/ typedef void ( *Primitive )( void );
 
 // any is for proxied objects only at this time
+// ToDo: RTTI related stuff in some future?
+// ToDo: it should be a pointer to an AbstractInoxProxy object
 //c/ #define any const void*
+
+//c/ #define null NULL
 
 
 /* -----------------------------------------------------------------------------
  *  Let's go.
  *   Some debugging tools first.
+ *
+ *  Defensive programming. It is a style of programming that assumes that the
+ *  programmer barely knows what he is doing, and that the code will be used,
+ *  modified, and read by other people who are as incompetent than he is.
+ *  Coding is still a complex task, and it is not possible to write code that
+ *  is 100% correct. Defensive programming is a way to reduce the number of
+ *  bugs in the code, and to make it easier to find and fix them.
+ *
+ *  It can make the code more verbose, but it is a good investment. All veteran
+ *  programmers will tell you that the pain is worth it. Yet, some code is just
+ *  too complex to handle for most people, and it is not possible to make it
+ *  simple enough to be understood by everyone. In that case, defensive is a way
+ *  to make the code more robust and to avoid some of the most common bugs.
+ *
+ *  If this code is too complex for you, don't feel bad. It is too complex for
+ *  the author too. It is a work in progress and the code will hopefully get
+ *  simpler over time. In the meantime, if you can't stand the heat, get out of
+ *  the kitchen. Life is short.
  */
 
 /**/  import    assert from "assert";
@@ -316,6 +387,10 @@ std::chrono::milliseconds now( void ){
  *  It should be false in production, true in development. Once the code
  *  is stable, it should be possible to remove all the de&&bug() calls but
  *  this require some external tooling that would transpile the code.
+ *
+ *  Using compilation flags, it is posible to turn "de" and other debug
+ *  domains into constants. Then the C++ compiler can remove the calls
+ *  and the overhead is reduced to zero.
  */
 
 // Conditional compilation of debug domains
@@ -664,42 +739,44 @@ let can_log = true;
 function debug(){
   can_log = true;
   /**/ de = mem_de = alloc_de = true;
+  /**/ warn_de = token_de = parse_de = eval_de = run_de = stack_de = true;
+  /**/ blabla_de = step_de = true;
   /*c{
-    #ifndef INOX_NDE
+    #ifndef de
       de = true;
     #endif
-    #ifndef INOX_MEM_NDE
+    #ifndef mem_de
       mem_de = true;
     #endif
-    #ifndef INOX_ALLOC_NDE
+    #ifndef alloc_de
       alloc_de = true;
     #endif
-    #ifndef INOX_CHECK_NDE
+    #ifndef check_de
       check_de = true;
     #endif
-    #ifndef INOX_WARN_NDE
+    #ifndef warn_de
       warn_de = true;
     #endif
-    #ifndef INOX_BLABLA_NDE
+    #ifndef blabla_de
       blabla_de = true;
     #endif
-    #ifndef INOX_TOKEN_NDE
+    #ifndef token_de
       token_de = true;
     #endif
-    #ifndef INOX_PARSE_NDE
+    #ifndef parse_de
       parse_de = true;
     #endif
-    #ifndef INOX_EVAL_NDE
+    #ifndef eval_de
       eval_de = true;
     #endif
-    #ifndef INOX_RUN_NDE
+    #ifndef run_de
       run_de = true;
     #endif
-    #ifndef INOX_STACK_NDE
+    #ifndef stack_de
       stack_de = true;
     #endif
-    #ifndef INOX_STEP_NDE
-      step_de = false; // Not always convenient in C++
+    #ifndef step_de
+      step_de = true;
     #endif
   }*/
 }
@@ -717,25 +794,25 @@ function no_debug(){
   /**/ blabla_de = false;
   /**/ token_de = parse_de = eval_de = run_de = stack_de = step_de = false;
   /*c{
-    #ifndef INOX_BLABLA_NDE
+    #ifndef blabla_de
       blabla_de = false;
     #endif
-    #ifndef INOX_TOKEN_NDE
+    #ifndef token_de
       token_de = false;
     #endif
-    #ifndef INOX_PARSE_NDE
+    #ifndef parse_de
       parse_de = false;
     #endif
-    #ifndef INOX_EVAL_NDE
+    #ifndef eval_de
       eval_de = false;
     #endif
-    #ifndef INOX_RUN_NDE
+    #ifndef run_de
       run_de = false;
     #endif
-    #ifndef INOX_STACK_NDE
+    #ifndef stack_de
       stack_de = false;
     #endif
-    #ifndef INOX_STEP_NDE
+    #ifndef step_de
       step_de = false;
     #endif
   }*/
@@ -752,27 +829,29 @@ function no_debug(){
 function no_debug_at_all(){
   no_debug();
   /**/ de = mem_de = alloc_de = false;
+  /**/ check_de = false;
   /*c{
-    #ifndef INOX_NDE
+    #ifndef de
       de = false;
     #endif
-    #ifndef INOX_MEM_NDE
+    #ifndef mem_de
       mem_de = false;
     #endif
-    #ifndef INOX_ALLOC_NDE
+    #ifndef alloc_de
       alloc_de = false;
     #endif
+    #ifndef check_de
+      check_de = false;
+    #endif
   }*/
-  check_de = false;
 }
 
 
 function init_debug() : Index {
   let retcode = 0;
   // no_debug_at_all();
-  // no_debug(); retcode = 1;
-  debug(); retcode = 2;
-  //c/ step_de = false; // Not always convenient for debugging in C++
+  no_debug(); retcode = 1;
+  // debug(); retcode = 2;
   return retcode;
 }
 
@@ -822,6 +901,7 @@ const debug_level = init_debug();
 // Forward declarations to please C++
 /*c{
 bool  mand_eq( Value, Value );
+bool  mand_neq( Value, Value );
 bool  trace( char* );
 void  trace_context( TxtC );
 void  FATAL( TxtC msg );
@@ -830,32 +910,41 @@ bool  mand_cell_name( Cell, Tag );
 bool  mand_empty_cell( Cell );
 bool  mand_tos_is_in_bounds( void );
 bool  mand_csp_is_in_bounds( void );
-int   init_cells_allocator( void );
+int   init_cell_allocator( void );
 Cell  allocate_cell( void );
 Cell  allocate_cells( Count );
-void  free_cell( Cell );
-void  free_cells( Cell, Count );
-int   init_areas_allocator( void );
-Cell  allocate_area( Count );
-void  free_area( Cell );
-bool  is_safe_area( Cell );
-bool  is_busy_area( Cell );
-Size  area_size( Cell );
-Count area_capacity( Cell );
+void  cell_free( Cell );
+void  cells_free( Cell, Count );
+int   init_area_allocator( void );
+Size  area_aligned_size( Size );
+Area  allocate_area( Count );
+bool  area_is_shared( Cell );
+void  area_lock( Area );
+void  area_free( Area );
+void  lean_lock( Area );
+bool  area_is_safe( Area );
+bool  area_is_busy( Area );
+Size  area_size( Area );
+void  area_turn_free( Area, Area );
+void  area_turn_busy( Area, Size );
+void  area_init_busy( Area, Size );
+void  area_set_size( Area, Size );
+Count area_length( Area );
 void  set_next_cell( Cell, Cell );
-bool  is_valid_tag( Tag );
+Cell  tag( TxtC );
+bool  tag_is_valid( Tag );
 bool  is_a_tag_cell( Cell );
 bool  is_a_tag_singleton( Cell );
 bool  is_a_reference_cell( Cell );
-bool  needs_clear( Cell );
+void  init_cell( Cell, Value, Info );
+#define set( c, t, n, v )  init_cell( c, v, pack( t, n ) )
+void  move_cell( Cell, Cell );
 void  clear( Cell );
-Index object_length( Cell );
-void  free_text( Index );
+Index object_length( Area );
+void  free_text( Cell );
 void  free_proxy( Index );
-Cell  get_reference( Cell );
-void  increment_object_ref_count( Cell );
-void  decrement_object_ref_count( Cell );
-bool  is_last_reference_to_area( Cell );
+Area  get_reference( Cell );
+bool  is_sharable( Cell );
 Cell  stack_preallocate( Length );
 Count stack_length( Cell );
 bool  stack_is_extended( Cell );
@@ -908,9 +997,9 @@ Primitive get_primitive( Tag );
 
 // That the flat memory where the Inox interpretor will run
 // ToDo: make the size configurable at run time
-// Current default is 256 KB
-/**/ const   INOX_HEAP_SIZE =   1024 * 256;
-//c/ #define INOX_HEAP_SIZE   ( 1024 * 256 )
+// Current default is 64 KB
+/**/ const   INOX_HEAP_SIZE = 64 * 1024; // Minimum is 24
+//c/ #define INOX_HEAP_SIZE   64 * 1024  // Idem
 
 // cell number 0 is reserved, special, 0/0/0, void/void/void
 // It should never be accessed, but it is used as a default value.
@@ -930,16 +1019,17 @@ let the_next_free_cell = 0;
 let the_very_first_cell = 0;
 
 // There is also an upper limit, see init_cells() too
-let the_free_cell_limit = 0;
+let the_cell_limit = 0;
 
 // The memory is accessed differently depending on the target
-/**/ let mem    = new ArrayBuffer( INOX_HEAP_SIZE  ); // 256 kb
-/**/ let mem8   = new Uint8Array(   mem );
-/**/ let mem32  = new Int32Array(   mem );
-/**/ let mem32f = new Float32Array( mem );
+/**/ let mem    = new ArrayBuffer( INOX_HEAP_SIZE  );
+/**/ let mem8   = new Uint8Array(     mem );
+/**/ let mem32  = new Int32Array(     mem );
+/**/ let mem32f = new Float32Array(   mem );
+/**/ let mem64  = new BigUint64Array( mem );
 // ToDo: with AssemblyScript const mem64 = new Int64Array( mem );
 
-// Linked list of free byte areas, see init_areas_allocator()
+// Linked list of free byte areas, see init_area_allocator()
 let the_first_free_area = 0;
 
 let the_empty_text_cell = 0;
@@ -952,7 +1042,10 @@ let the_tmp_cell = 0;
 // They are documented better close to where they are used.
 let all_symbol_cells = 0;
 let all_symbol_cells_length = 0;
-let tag_list = 0; // Will become tag( "list" ) asap
+
+// Precomputed value for /list. It's needed early to manage the cells allocator
+/**/ const tag_list = 10;
+//c/ #define tag_list 10
 
 
 /* -----------------------------------------------------------------------------
@@ -998,13 +1091,19 @@ bool trace( char* msg ){
   // 1 is stdout
   int len = strlen( msg );
   msg[ len ] = '\n';
-  write( 1,msg, len + 1 );
+  write( 1, msg, len + 1 );
   return true;
 }
 
 // Hack to avoid a strange recursive call to trace() in C++
 bool trace_c_str( char* msg ){
   return trace( msg );
+}
+
+// Ultra safe version of trace() that can be used in any context
+bool trace_const_c_str( const char* msg ){
+  write( 1, msg, strlen( msg ) );
+  return true;
 }
 
 }*/
@@ -1117,19 +1216,54 @@ bool mand2_c_str( bool condition, char* msg ){
 // Write access to that cell triggers a debugger breakpoint in debug mode
 let breakpoint_cell = 1;
 
+function mand_cell_in_range( c : Cell ) : boolean {
+  if( c >= 0
+  && c >= the_very_first_cell
+  /**/ && ( ( c << 1 ) + 1 ) < mem32.length
+  //c/ && ( ( c << 1 ) + 1 ) < ( the_cell_limit << 1 )
+  ){
+    if( de && c == breakpoint_cell )debugger;
+    return true;
+  }
+  const target32 = ( c << 1 ) + 1;
+  const c16 = c;
+  const c32 = c << 1;
+  const c8  = c << 3;
+  /**/ const limit32 = mem32.length;
+  //c/ int limit32 = the_cell_limit << 1;
+  const limit8  = limit32 << 3;
+  let overflow32 = 0;
+  if( target32 >= limit32 ){
+    /**/ overflow32 = ( c32 - mem32.length  ) + 1;
+    //c/ overflow32 = ( c32 - ( the_cell_limit << 1 ) ) + 1;
+  }
+  const overflow8 = overflow32 << 2;
+  const overflow64 = overflow32 >> 1;
+  const overflow_cells = overflow64;
+  const overflow_bytes = overflow8;
+  if( de && c == breakpoint_cell ){
+    debugger;
+  }else{
+    debugger;
+  }
+  return false;
+}
+
+
 /*
  *  set_value() and set_info() are the only way to write to memory
  */
 
 function set_value( c : Cell, v : Value ){
    if( de && c == breakpoint_cell )debugger;
+   mem_de&&mand_cell_in_range( c );
    /**/ mem32[ c << 1 ] = v |0;
    //c/ *cast_ptr( to_ptr( c ) ) = v;
 }
 
 
 function set_info( c : Cell, i : Info  ){
-  if( de && c == breakpoint_cell )debugger;
+  mem_de&&mand_cell_in_range( c );
   /**/ mem32[ ( c << 1 ) + 1 ] = i |0;
   //c/ *cast_ptr( to_ptr( c ) + size_of_value ) = i;
 }
@@ -1140,6 +1274,7 @@ function set_info( c : Cell, i : Info  ){
  */
 
 function value( c : Cell ) : Value {
+  mem_de&&mand_cell_in_range( c );
   // return mem64[ c ] & 0xffffffff
   /**/ return mem32[ c << 1 ] |0;
   //c/ return *cast_ptr( to_ptr( c ) );
@@ -1147,6 +1282,7 @@ function value( c : Cell ) : Value {
 
 
 function info( c : Cell ) : Info {
+  mem_de&&mand_cell_in_range( c );
   // return mem64[ c ] >>> 32;
   /**/ return mem32[ (     c << 1 ) + 1 ] |0;
   //c/ return *cast_ptr( to_ptr( c ) + size_of_value );
@@ -1158,7 +1294,7 @@ function info( c : Cell ) : Info {
  */
 
 function reset( c : Cell ){
-  if( de && c == breakpoint_cell )debugger;
+  mem_de&&mand_cell_in_range( c );
   // mem64[ c ] = 0;
   /**/ mem32[       c << 1       ] = 0;
   /**/ mem32[     ( c << 1 ) + 1 ] = 0;
@@ -1172,7 +1308,7 @@ function reset( c : Cell ){
  */
 
 function reset_value( c : Cell ) : void {
-  if( de && c == breakpoint_cell )debugger;
+  mem_de&&mand_cell_in_range( c );
   /**/ mem32[     c << 1 ] = 0;
   //c/ *cast_ptr( to_ptr( c ) ) = 0;
 }
@@ -1183,7 +1319,7 @@ function reset_value( c : Cell ) : void {
  */
 
 function reset_info( c : Cell ) : void {
-  if( de && c == breakpoint_cell )debugger;
+  mem_de&&mand_cell_in_range( c );
   /**/ mem32[     ( c << 1 ) + 1 ] = 0;
   //c/ *cast_ptr( ( to_ptr( c ) ) + size_of_value ) = 0;
 }
@@ -1194,7 +1330,7 @@ function reset_info( c : Cell ) : void {
  */
 
 function init_cell( c : Cell, v : Value, i : Info ){
-  if( de && c == breakpoint_cell )debugger;
+  mem_de&&mand_cell_in_range( c );
   // mem64[ c ] = v | ( i << 32 );
   /**/ mem32[       c << 1       ]              = v |0;
   /**/ mem32[     ( c << 1 ) + 1 ]              = i |0;
@@ -1208,8 +1344,9 @@ function init_cell( c : Cell, v : Value, i : Info ){
  */
 
 function init_copy_cell( dst : Cell, src : Cell ){
-// Initialize a cell, using another one, raw copy.
-  if( de && dst == breakpoint_cell )debugger;
+// Initialize a cell, using another one, raw copy
+  mem_de&&mand_cell_in_range( dst );
+  mem_de&&mand_cell_in_range( src );
   /**/ const dst1 = dst << 1;
   /**/ const src1 = src << 1;
   /**/ mem32[ dst1     ] = mem32[ src1     ] |0;
@@ -1428,7 +1565,7 @@ function test_pack(){
 
 /* -----------------------------------------------------------------------------
  *  LeanString implementation.
- *  This is a minimal implementation of dynamiccally alllocated strings.
+ *  This is a minimal implementation of dynamiccally allocated strings.
  *  It is for all versions, both Typescript, AssemblyScript and C++.
  *  It initially stores the strings using allocate_cells() and then moves to
  *  using allocate_area() as soon as possible during bootstrap.
@@ -1442,23 +1579,55 @@ function test_pack(){
  *  between the C++, Typescript and the AssemblyScript version with ease.
  *  That the string representation is also C compatible makes it easy to
  *  interface Inox with C code.
+ *
+ *  ToDo: LeanStringView object that would be a view on a portion of a string.
+ *  It needs a pointer to the string area and a length.
+ *  One easy way to distinguish a LeanString from a LeanStringView is to
+ *  check the high bit of the address of the string. If set, it's a view.
+ *  In that case, the length could be stored either in an additional cell, or
+ *  more complex but more memory efficient, in the info part of the cell.
+ *  This would require a special type however, unless void can be used for
+ *  that when the high bit is set. This impacts the unpacking of the info
+ *  because it requires access to the value to check the high bit. This
+ *  is necessary only when the name is usefull in a context where it is
+ *  not sure that the cell is a "normal" cell or a LeanStringView cell.
+ *  This is the case in various dump functions and other debugging tools.
+ *  Another option is to use the range type with a range that is bound
+ *  to the underlying string. This is a bit more complex to implement
+ *  but more general maybe.
+ *
+ *  ToDo:
+ *  It should handle UTF-8, UTF-16, UTF-32, etc.
+ *  It is actually more a buffer than a string.
+ *
+ *  For very small strings, 3 chars at most, I could store them in the
+ *  address itself with some kind of encoding where the last byte is set to 0?
+ *  That would require that such a case never happens when allocate_area()
+ *  returns a new area. It would be endian dependent and possible only
+ *  when the lowest byte of the address is stored at the highest address,
+ *  ie big ending. A big-endian system stores the most significant byte of
+ *  a word at the smallest memory address and the least significant byte
+ *  at the largest. On little endian, this would require the addresses to be
+ *  limited to 20 bits, which is OK as long as 24 bits addressable memory
+ *  is OK, ie 16 MB. Another option is to handle short string of 2 chars
+ *  at most and have allocate_area() avoid returning an address with the
+ *  sentinel byte set to 0.
+ *
+ *  About sentinels.
+ *  Sentinels are special values used to detect the end of something.
+ *  This is an alternative to using a length field.
+ *  C style strings use a sentinel, the null byte. As a result, it is
+ *  impossible to store a null byte in a C style string. Inox strings
+ *  don't have that limitation but it still applies when interfacing with
+ *  C style strings. See https://en.wikipedia.org/wiki/Sentinel_value
  */
 
-// ToDo: endianness should be detected at compile time, how?
-// See https://developer.mozilla.org/en-US/docs/Glossary/Endianness
-// See https://stackoverflow.com/questions/1001307/detecting-endianness-programmatically-in-a-c-program
 
-/**/ const is_big_endian = false;
-//c/ #define is_big_endian false
+/**/ let bootstrapping         = true;
+//c/ static bool bootstrapping = true;
 
-/**/ let in_lean_mode    = true;
-//c/ static bool in_lean_mode = true;
-
-// ToDo: the magic number should be bigger than any expected string
-// That's because memory_dump() detects strings by looking for the magic number
-/**/ const lean_magic_number = 0x8234561;
-//c/ #define lean_magic_number 0x8234561
-
+// To avoid some infinite loops in assertion failure tracing
+let mand_entered = 0;
 
 // Declared here to avoid access before initialization
 let debug_next_allocate = 0;
@@ -1467,176 +1636,379 @@ let debug_next_allocate = 0;
 let the_first_free_cell = 0;
 
 // The basic cell allocator is needed, let's initialize it now
-const init_cells_allocator_done = init_cells_allocator();
+const init_cell_allocator_done = init_cell_allocator();
+
+// Some early declarations to avoid access before initialization
+
+// The first cell of a busy byte area header is the reference counter
+// This is precomputed, see init_symbols()
+/**/ const tag_dynamic_ref_count = 17;
+//c/ #define tag_dynamic_ref_count 17
+
+// When the area is freed, that header is overwritten with this tag
+// This is precomputed, see init_symbols()
+/**/ const tag_dynamic_next_area = 18;
+//c/ #define tag_dynamic_next_area 18
+
+// The second cell of the header is the size of the area, including the header
+// This is precomputed, see init_symbols()
+/**/ const tag_dynamic_area_size = 16;
+//c/ #define tag_dynamic_area_size 16
+
+// This is where to find the size, relative to the area first header address.
+const offset_of_area_size = ONE;
 
 
-function lean_aligned_cell_length( len : Length ) : Length {
-  // Add padding to align on size of cell
-  const padded_len = ( len + size_of_cell - 1 ) & ~( size_of_cell - 1 );
-  return to_cell( padded_len );
-}
+// There is a special empty string
+//c/ Cell lean_init_empty( void ); // Forward
+const the_empty_lean = lean_init_empty();
 
+//c/ Cell lean_allocate_cells_for_bytes( Length ); // Forward
 
-function lean_header( cell : Cell ) : Cell {
-  return cell - 2 * ONE;
-}
-
-
-function is_lean( cell : Cell ) : boolean {
-  return value( lean_header( cell ) ) == lean_magic_number;
-}
-
-
-function lean_allocate_cells( ncells : Index ) : Cell {
-// Allocate cells, each cell can hold size_of_cell bytes, ie 8.
-  if( in_lean_mode ){
-    // Add space for the fake headers
-    ncells += 2;
-    const header = allocate_cells( ncells );
-    // Header 0 may become a reference counter, for now it is a magic number
-    set_value( header + 0 * ONE, lean_magic_number );
-    // Header 1 is total size in bytes, including the two headers, aligned
-    set_value( header + 1 * ONE, ncells * size_of_cell );
-    const cell = header + 2 * ONE;
-    alloc_de&&mand( is_lean( cell ) );
-    return cell;
-  }else{
-    return allocate_area( ncells );
-  }
-}
-
-
-function lean_free( cell : Cell ){
-  // Clear the content of the string
-  const header = lean_header( cell );
-  const is_area = ! is_lean( cell );
-  const sz = value( header + 1 * ONE );
-  const ncells = to_cell( sz );
-  const limit = lean_header( cell ) + ncells;
-  let ii = header;
-  while( ii < limit ){
-    reset( ii );
-    ii += ONE;
-  }
-  // Use either the area allocator or the cell allocator
-  if( ! is_area ){
-    free_cells( header, ncells );
-  }else{
-    free_area( cell );
-  }
-}
-
-
-function lean_byte_at( cell : Cell, index : Index ) : Value {
-  // Typescript version uses the mem8 view on the memory buffer
-  /**/ return mem8[ to_ptr( cell ) + index ]
-  // AssemblyScript version uses the load<u8> function
-  //a/ return load<u8>( to_ptr( cell ) + index );
-  // C++ version uses the memory buffer directly
-  // ToDo: on ESP32 some memory regions are not byte adressable,
-  // hence the bytes should be extracted from 32 bits words
-  //c/ return *(char*)  ( to_ptr( cell ) + index );
-}
-
-
-function lean_byte_at_put( cell : Cell, index : Index, val : Value ){
-  // Typescript version uses the mem8 view on the memory buffer
-  /**/ mem8[ to_ptr( cell ) + index ] = val & 0xFF;
-  // AssemblyScript version uses the store<u8> function
-  //a/ store<u8>( to_ptr( cell ) + index, val & 0xFF );
-  // C++ version uses the memory buffer directly
-  // On ESP32, some memory regions are not byte adressable,
-  // hence the bytes should be inserted into 32 bits words
-  //c/ *(char*) ( to_ptr( cell ) + index ) = val & 0xFF;
-  alloc_de&&mand_eq( lean_byte_at( cell, index ), val );
-}
-
-
-function lean_byte_at_from( d : Cell, d_i : Index, s : Cell, s_i : Index ){
-  // Typescript version uses the mem8 view on the memory buffer
-  /**/ mem8[      to_ptr( d ) + d_i ] = mem8[      to_ptr( s ) + s_i ];
-  // AssemblyScript version uses the store<u8> function
-  //a/ store<u8>( to_ptr( d ) + d_i,    load<u8>(  to_ptr( s ) + s_i ) );
-  // C++ version uses char pointers directly
-  //c/ *(char*) ( to_ptr( d ) + d_i ) = *(char*) ( to_ptr( s ) + s_i );
-}
-
-
-function lean_strlen( cell : Cell ) : Length {
-// Compute the length of a lean string
-  // ToDo: area_allocator could store the exact size instead of aligned
-  const size =  value( lean_header( cell ) + 1 * ONE ) - 2 * size_of_cell;
-  let len = size;
-  let ii = len - 1;
-  // It's the size minus the null bytes at the end
-  while( lean_byte_at( cell, ii ) == 0 ){
-    len--;
-    ii--;
-  }
-  return len;
-}
-
-
-function lean_strdup_from_c_str( str : TxtC ) : Cell {
-// Create a lean copy of a native string
-  /**/ const str_len = str.length;
-  //c/ auto  str_len = strlen( str );
-  // Add one for the null terminator
-  const needed_cells = lean_aligned_cell_length( str_len + 1 );
-  const cell = lean_allocate_cells( needed_cells );
-  // Typescript version uses the mem8 view on the memory buffer
-  // ToDo: use a TextEncoder.encodeInto() instead
-  /*!c{*/
-    // Copy each character
-    for( let ii = 0; ii < str_len; ii++ ){
-      lean_byte_at_put( cell, ii, str.charCodeAt( ii ) );
-    }
-    // Add the null terminator
-    lean_byte_at_put( cell, str_len, 0 );
-  /*}*/
-  // C++ version uses fast memcpy(), including the final null terminator
-  //c/ memcpy( (char*) ( (int) to_ptr( cell ) ), str, str_len + 1 );
-  alloc_de&&mand_eq( lean_strlen( cell ), str_len );
+function lean_init_empty() : Cell {
+  de&&mand( bootstrapping );
+  const cell = lean_allocate_cells_for_bytes( 1 );
   return cell;
 }
 
 
-function lean_native_string( cell : Cell ) : TxtC {
-// Create a native string from a lean string. Shared representations.
-  // Typescript version
-  /*!c{*/
-    // ToDo:: optimize this a lot, using a Javascript TextDecoder
-    const len = lean_strlen( cell );
-    let str = "";
-    for( let ii = 0; ii < len; ii++ ){
-      str += String.fromCharCode( lean_byte_at( cell, ii ) );
-    }
-    return str;
-  /*}*/
-  // C++ version is much simpler, it's already a native string
-  /*c{
-    return (char*) to_ptr( cell );
-  }*/
+//c/ bool lean_is_valid( Cell ); // Forward
+//c/ Length lean_strlen( Cell ); // Forward
+
+function lean_is_empty( area : Area ) : boolean {
+  if( area == the_empty_lean ){
+    return true;
+  }
+  // Only the empty lean string is empty
+  if( alloc_de ){
+    mand( lean_is_valid( area ) );
+    const len = lean_strlen( area );
+    mand_neq( len, 0 );
+  }
+  return false;
 }
 
 
-function lean_streq( cell1 : Cell, cell2 : Cell ) : boolean {
+function lean_new_empty() : Area {
+// Return a reference to the empty lean string
+  // ToDo: no need to lock it because it is never freed
+  // area_lock( the_empty_lean );
+  return the_empty_lean;
+}
+
+
+function lean_aligned_cell_length( len : Length ) : Length {
+// Return how many cells to store bytes. Headers excluded, payload only
+  // Add padding to align on the size of cells
+  const padded_len = ( len + size_of_cell - 1 ) & ~( size_of_cell - 1 );
+  // Divide by the size of cells to get the number of cells
+  return to_cell( padded_len );
+}
+
+
+function lean_to_header( area : Area ) : Area {
+// The header is two cells before the payload
+  // Header is made of a reference counter and a size
+  return area - 2 * ONE;
+}
+
+
+//c/ Value lean_unchecked_byte_at( Cell, Index ); // Forward
+
+function lean_is_valid( area : Area ) : boolean {
+// Check that a cell is a valid lean string
+  if( !area_is_busy( area ) )return false;
+  const size =  value( lean_to_header( area ) + 1 * ONE ) - 2 * size_of_cell;
+  if( size <= 0 )return false;
+  // Check that there is a null terminator
+  if( lean_unchecked_byte_at( area, size - 1 ) != 0 )return false;
+  // If size is 1 then it is a null terminator alone, ie the_empty_lean
+  if( size != 1 )return true;
+  return area == the_empty_lean;
+}
+
+
+function lean_allocate_cells_for_bytes( sz : Size ) : Area {
+// Allocate cells to store a string of len bytes, including the null terminator
+
+  // At least one bye is needed, for the null terminator
+  alloc_de&&mand( sz > 0 );
+
+  if( !bootstrapping )return allocate_area( sz );
+
+  // During bootstrap, the byte area allocator is not yet available
+  let needed_cells = lean_aligned_cell_length( sz );
+
+  // Add space for the headers to fake a byte area
+  needed_cells += 2;
+  const header = allocate_cells( needed_cells );
+
+  // Header 0 is a reference counter
+  set_info(  header + 0 * ONE, pack( type_integer, tag_dynamic_ref_count ) );
+  set_value( header + 0 * ONE, 1 );
+
+  // Header 1 is total size in bytes, including the two headers, aligned
+  set_info(  header + 1 * ONE, pack( type_integer, tag_dynamic_area_size ) );
+  set_value( header + 1 * ONE, 2 * size_of_cell + sz );
+
+  // The convention is to address the first byte of the payload
+  const area = header + 2 * ONE;
+
+  alloc_de&&mand( area_is_busy( area ) );
+
+  return area;
+
+}
+
+
+function lean_lock( area : Area ){
+  area_lock( area );
+}
+
+
+function lean_free( area : Area ){
+
+  // No need to unshare the empty string, it will never be freed
+  if( area == the_empty_lean ){
+    return;
+  }
+
+  // Is it the last reference to the string?
+  if( area_is_shared( area ) ){
+    // No, just decrement the reference counter
+    area_free( area );
+    return;
+  }
+
+  // Should never free the empty string
+  if( area == the_empty_lean ){
+    //c/ trace_const_c_str( "Internal error, free the empty lean string\n" );
+    /**/ debugger;
+    return;
+  }
+  alloc_de&&mand_neq( area, the_empty_lean );
+
+  // Clear the content of the string
+  const ncells = area_length( area );
+  const limit  = area + ncells * ONE;
+  let ii = area;
+  // ToDo: optimize this in C++ by using memset()
+  while( ii < limit ){
+    reset( ii );
+    ii += ONE;
+  }
+
+  area_free( area );
+
+}
+
+
+function lean_unchecked_byte_at( cell : Cell, index : Index ) : Value {
+  // Typescript version uses the mem8 view on the memory buffer
+  /**/ return mem8[ to_ptr( cell ) + index ];
+  // AssemblyScript version uses the load<u8> function
+  //a/ return load<u8>( to_ptr( cell ) + index );
+  // C++ version uses the memory buffer directly
+  //c/ return *(char*)  ( to_ptr( cell ) + index );
+}
+
+
+function lean_byte_at( area : Area, index : Index ) : Value {
+  if( alloc_de ){
+    mand( lean_is_valid( area ) );
+    mand( index >= 0 );
+    mand( index < lean_strlen( area ) );
+  }
+  return lean_unchecked_byte_at( area, index );
+}
+
+
+function lean_byte_at_put( area : Cell, index : Index, val : Value ){
+// Set a byte at some position inside a byte area
+  // Typescript version uses the mem8 view on the memory buffer
+  /**/ mem8[ to_ptr( area ) + index ] = val & 0xFF;
+  // AssemblyScript version uses the store<u8> function
+  //a/ store<u8>( to_ptr( cell ) + index, val & 0xFF );
+  // C++ version uses the memory buffer directly
+  // On ESP32, some memory regions are not byte adressable,
+  // hence the bytes should be inserted into the 32 bits word
+  //c/ *(char*) ( to_ptr( area ) + index ) = val & 0xFF;
+  alloc_de&&mand_eq( lean_byte_at( area, index ), val );
+}
+
+
+function lean_byte_at_from( dst : Area, d_i : Index, src : Area, s_i : Index ){
+// Copy a byte from a byte area to another one
+  // Typescript version uses the mem8 view on the memory buffer
+  /**/ mem8[      to_ptr( dst ) + d_i ] = mem8[      to_ptr( src ) + s_i ];
+  // AssemblyScript version uses the store<u8> function
+  //a/ store<u8>( to_ptr( dst ) + d_i,    load<u8>(  to_ptr( src ) + s_i ) );
+  // C++ version uses char pointers directly
+  //c/ *(char*) ( to_ptr( dst) + d_i )  = *(char*) ( to_ptr( src ) + s_i );
+}
+
+//c/ Size area_payload_size( Cell ); // Forward
+
+function lean_strlen( area : Area ) : Length {
+// Return the length of a lean string
+  alloc_de&&mand( lean_is_valid( area ) );
+  // Fast path for empty strings
+  if( area == the_empty_lean )return 0;
+  // Don't include the null terminator
+  return area_payload_size( area ) - 1;
+}
+
+
+function lean_new_from_native( str : TxtC ) : Area {
+// Create a lean copy of a native string
+
+  // ToDo: there is room for optimization here:
+  // - when size is small, store the string in the header
+  // There could be a flag in the last byte of the header to indicate that,
+  // after the null byte. Strings from 0 to 6 bytes could be stored
+  // that way.
+  // - When the size is even shorter a "by value" scheme is possible.
+  // Implementation would depend on the architecture endianness.
+  // In the best case, strings from 0 to 2 bytes could be stored that way
+  // and still be null terminated (hence C compatible).
+  // - When a string is a substring of another one, it could be stored
+  // as a pointer to the other one, with an offset and a length. This
+  // require a copy on write mechanism.
+  // - To speed up concatenation, there could be some preallocated space
+  // filled with null bytes at the end of the string. This would
+  // reduce the number of allocations. Note: there is some padding to reuse.
+  // - When the string is anticipated to be very big, it could be implemented
+  // as a "rope", see https://en.wikipedia.org/wiki/Rope_(data_structure)
+
+  // Typescript version:
+  /*!c{*/
+
+    // If empty, reuse the empty lean string
+    if( str.length == 0 ){
+      return lean_new_empty();
+    }
+
+    // Convert using a TextEncoder, utf-8 is the default encoding
+    // ToDo: figure a way to avoid the tempory buffer
+    const encoder = new TextEncoder();
+    const buf = encoder.encode( str );
+
+    // Get the byte length of the string
+    const str_len = buf.length;
+
+    // Allocate space to store the bytes, + 1 for the null terminator
+    const area = lean_allocate_cells_for_bytes( str_len + 1 );
+
+    // Copy the bytes, via a transient view
+    const view = new Uint8Array( mem, to_ptr( area ), str_len + 1 );
+    view.set( buf );
+
+  /*}*/
+
+  // C++ version uses fast memcpy(), the destination is filled with 0 bytes
+  /*c{
+    Count str_len = strlen( str );
+    if( str_len == 0 )return lean_new_empty();
+    Area area = lean_allocate_cells_for_bytes( str_len + 1 );
+    memcpy( (char*) ( (int) to_ptr( area ) ), str, str_len );
+  }*/
+
+  // ToDo: AssemblyScript version
+
+  alloc_de&&mand_eq( lean_strlen( area ), str_len );
+  return area;
+}
+
+
+function lean_to_native( area : Area ) : TxtC {
+// Create a native string from a lean string. Shared representations.
+
+  if( alloc_de ){
+    // Check that the cell is a string
+    alloc_de&&mand( lean_is_valid( area ) );
+  }
+
+  // C++ version is simple, it's already a compatible native string
+  /*c{
+    return (char*) to_ptr( area );
+  }*/
+
+  /*!c{*/
+    // Return the empty string?
+    if( area == the_empty_lean )return "";
+    // ToDo:: optimize this a lot, using a Javascript TextDecoder
+    const len = lean_strlen( area );
+    let str = "";
+    for( let ii = 0; ii < len; ii++ ){
+      str += String.fromCharCode( lean_byte_at( area, ii ) );
+    }
+    return str;
+  /*}*/
+}
+
+
+function lean_streq( area1 : Area, area2 : Area ) : boolean {
 // Compare two lean strings for equality
-  // This is faster than using lean_strcmp because it avoids
-  // the overhead of the loop when the strings have different lengths
-  const len1 = lean_strlen( cell1 );
-  const len2 = lean_strlen( cell2 );
-  if( len1 != len2 ){
+
+  // Check that the cells are strings
+  alloc_de&&mand( lean_is_valid( area1 ) );
+  alloc_de&&mand( lean_is_valid( area2 ) );
+
+  // Exact same addresses?
+  if( area1 == area2 )return true;
+
+  // First check the number of bytes, if not the same, not equal
+  const bytes = area_payload_size( area1 );
+  if( bytes != area_payload_size( area2 ) ){
     return false;
   }
-  // ToDo: I could avoid checking that last padding null bytes
-  let ii = 0;
-  for( ii = 0 ; ii < len1 ; ii++ ){
-    if( lean_byte_at( cell1, ii ) != lean_byte_at( cell2, ii ) ){
-      return false;
-    }
+
+  // Same size. If empty, they are equal
+  if( alloc_de && bytes == 1 ){
+    // It should be null terminated
+    alloc_de&&mand_eq( lean_byte_at( area1, 0 ), 0 );
+    // It should be the same cell, the empty one
+    alloc_de&&mand_eq( area1, the_empty_lean );
+    return true;
   }
+
+  // Adjust, aligned on size of cell, skip null terminator
+  const sz = ( ( bytes - 1 ) + size_of_cell - 1 ) & ~( size_of_cell - 1 );
+
+  // Check the content, 8 bytes at a time where possible
+
+  /*c{
+    u64* start_ptr = reinterpret_cast< u64* > to_ptr( area1 );
+    u64* end_ptr = start_ptr + sz;
+    u64* other_ptr = reinterpret_cast< u64* > to_ptr( area2 );
+    while( start_ptr < end_ptr ){
+      if( *start_ptr != *other_ptr )return false;
+      start_ptr += size_of_cell;
+      other_ptr += size_of_cell;
+    }
+  }*/
+
+  /*!c{*/
+    let a = area1;
+    let b = area2;
+    const length = sz / size_of_cell;
+    for( let ii = 0 ; ii < length ; ii++ ){
+      // ToDo: optimize this using 64 bits words when possible
+      if( value( a ) != value( b ) ){
+        return false;
+      }
+      if( info( a ) != info( b ) ){
+        return false;
+      }
+      // Move to next cells
+      a = a + ONE;
+      b = b + ONE;
+    }
+  /*}*/
+
+  // All cells are equal
   return true;
+
 }
 
 
@@ -1648,7 +2020,14 @@ bool lean_streq_with_c_str( Cell cell1, TxtC str ){
   if( len1 != len2 ){
     return false;
   }
-  return strncmp( (char*) to_ptr( cell1 ), str, len1 ) == 0;
+  if( cell1 == the_empty_lean ){
+    return str[ 0 ] == 0;
+  }
+  return strncmp(
+    (char*) to_ptr( cell1 ),
+    str,
+    len1 > len2 ? len2 : len2 // longest
+  ) == 0;
 }
 }*/
 
@@ -1659,7 +2038,7 @@ function lean_strcmp( cell1 : Cell, cell2 : Cell ) : Value {
   /*!c{*/
     const len1 = lean_strlen( cell1 );
     const len2 = lean_strlen( cell2 );
-    const len = Math.min( len1, len2 );
+    const len = len1 < len2 ? len1 : len2;
     for( let ii = 0; ii < len; ii++ ){
       const byte1 = lean_byte_at( cell1, ii );
       const byte2 = lean_byte_at( cell2, ii );
@@ -1669,6 +2048,7 @@ function lean_strcmp( cell1 : Cell, cell2 : Cell ) : Value {
         return 1;
       }
     }
+    // It both strings start with the same bytes, the shortest one is first
     if( len1 < len2 ){
       return -1;
     }else if( len1 > len2 ){
@@ -1676,71 +2056,112 @@ function lean_strcmp( cell1 : Cell, cell2 : Cell ) : Value {
     }
     return 0;
   /*}*/
-  // C++ version is much simpler, it's already a native string
-  //c/ return strcmp( (char*) to_ptr( cell1 ), (char*) to_ptr( cell2 ) );
+
+  // C++ version uses strncmp()
+  // ToDo: is it correct or should it be strcmp()?
+  /*c{
+    auto len1 = lean_strlen( cell1 );
+    auto len2 = lean_strlen( cell2 );
+    return strncmp(
+      (char*) to_ptr( cell1 ),
+      (char*) to_ptr( cell2 ),
+      len1 > len2 ? len1 : len2 // longest length
+    );
+  }*/
 }
 
 
-function lean_strcat( cell1 : Cell, cell2 : Cell ) : Cell {
+function lean_new_from_strcat( area1 : Area, area2 : Area ) : Area {
 // Concatenate two lean strings, returns a new string
-  // Compute the length of the result
-  const len1 = lean_strlen( cell1 );
-  const len2 = lean_strlen( cell2 );
+
+  // Deal with the empty strings
+  const len1 = lean_strlen( area1 );
+  if( len1 == 0 ){
+    alloc_de&&mand( area1 == the_empty_lean );
+    // ToDo: avoid the ref counter decrement on the empty lean string ?
+    // lean_free( area1 );
+    lean_lock( area2 );
+    return area2;
+  }
+
+  const len2 = lean_strlen( area2 );
+  if( len2 == 0 ){
+    alloc_de&&mand( area2 == the_empty_lean );
+    // ToDo: avoid the ref counter decrement on the empty lean string ?
+    // lean_free( area2 );
+    lean_lock( area1 );
+    return area1;
+  }
+
   // Add one for the final null terminator
   const len = len1 + len2 + 1;
-  const ncells = lean_aligned_cell_length( len );
+
   // Allocate the needed cells
-  const cell = lean_allocate_cells( ncells );
-  // C++ version uses fast memcpy(), including the final null terminator
+  const new_area = lean_allocate_cells_for_bytes( len );
+
+  // C++ version uses fast memcpy()
   /*c{
     memcpy(
-      (char*) to_ptr( cell ),
-      (char*) to_ptr( cell1 ),
+      (char*) to_ptr( new_area ),
+      (char*) to_ptr( area1 ),
       len1
     );
     memcpy(
-      (char*) to_ptr( cell ) + len1,
-      (char*) to_ptr( cell2 ),
-      len2 + 1
+      (char*) to_ptr( new_area ) + len1,
+      (char*) to_ptr( area2 ),
+      len2
     );
   }*/
+
   // Other versions copy each character
   /*!c{*/
+    let ii = 0;
     // Copy the first string
-    for( let ii = 0 ; ii < len1; ii++ ){
-      lean_byte_at_from( cell, ii, cell1, ii );
+    while( ii < len1 ){
+      lean_byte_at_from( new_area, ii, area1, ii );
+      ii++;
     }
-    // Copy the second string, including the final null terminator
-    for( let ii = 0; ii <= len2; ii++ ){
-      lean_byte_at_from( cell, len1 + ii, cell2, ii );
+    // Copy the second string
+    let jj = 0;
+    while( ii < len ){
+      lean_byte_at_from( new_area, ii, area2, jj );
+      ii++;
+      jj++;
     }
   /*}*/
-  alloc_de&&mand_eq( lean_strlen( cell ), len - 1 );
-  return cell;
+
+  alloc_de&&mand_eq( lean_strlen( new_area ), len - 1 );
+  return new_area;
+
 }
 
 
-function lean_strindex( str1 : Cell, str2 : Cell ) : Value {
+function lean_strindex( target : Cell, pattern : Cell ) : Value {
 // Find the first occurence of str2 in str1
+
   // ToDo: fast C++ version
-  // Compute the length of the strings
-  const len1 = lean_strlen( str1 );
-  const len2 = lean_strlen( str2 );
-  // Loop over the first string
+  const len_target  = lean_strlen( target );
+  const len_pattern = lean_strlen( pattern );
+
+  // Can't find big in small
+  if( len_pattern > len_target )return -1;
+
+  // Loop over the target
   let ii = 0;
   let jj = 0;
-  for( ii = 0 ; ii < len1 ; ii++ ){
+  let last_possible = len_target - len_pattern;
+  for( ii = 0 ; ii <= last_possible ; ii++ ){
     // Check if the first character matches
-    if( lean_byte_at( str1, ii ) == lean_byte_at( str2, 0 ) ){
-      // Loop over the second string
-      for( jj = 1 ; jj < len2; jj++ ){
+    if( lean_byte_at( target, ii ) == lean_byte_at( pattern, 0 ) ){
+      // Loop over the rest of the pattern
+      for( jj = 1 ; jj < len_pattern; jj++ ){
         // Check if the characters match
-        if( lean_byte_at( str1, ii + jj ) != lean_byte_at( str2, jj ) ){
+        if( lean_byte_at( target, ii + jj ) != lean_byte_at( pattern, jj ) ){
           break;
         }
       }
       // Check if the second string was found
-      if( jj == len2 ){
+      if( jj == len_pattern ){
         return ii;
       }
     }
@@ -1751,23 +2172,32 @@ function lean_strindex( str1 : Cell, str2 : Cell ) : Value {
 
 function lean_strrindex( target : Cell, pattern : Cell ) : Value {
 // Find the last occurence of str2 in str1
+
   // ToDo: fast C++ version
   let ii = 0;
   let jj = 0;
-  let kk = 0;
+
   const len_target = lean_strlen( target );
   const len_pattern = lean_strlen( pattern );
-  for( ii = len_target - 1 ; lean_byte_at( target, ii ) != 0 ; ii-- ){
-    jj = ii;
-    kk = len_pattern - 1;
-    while( lean_byte_at( pattern, kk ) != 0
-    && lean_byte_at( target, jj ) == lean_byte_at( pattern, kk )
-    ){
-      jj--;
-      kk--;
-    }
-    if( kk < 0 ){
-      return ii - len_pattern + 1;
+
+  // Can't find big in small
+  if( len_pattern > len_target )return -1;
+
+  // Loop over the target, starting at the end
+  for( ii = len_target - 1 ; ii >= 0 ; ii-- ){
+    // Check if the first character matches
+    if( lean_byte_at( target, ii ) == lean_byte_at( pattern, 0 ) ){
+      // Loop over the rest of the pattern
+      for( jj = 1 ; jj < len_pattern; jj++ ){
+        // Check if the characters match
+        if( lean_byte_at( target, ii + jj ) != lean_byte_at( pattern, jj ) ){
+          break;
+        }
+      }
+      // Check if the second string was found
+      if( jj == len_pattern ){
+        return ii;
+      }
     }
   }
   return -1;
@@ -1775,12 +2205,12 @@ function lean_strrindex( target : Cell, pattern : Cell ) : Value {
 
 
 function lean_substr( str : Cell, start : Value, len : Value ) : Cell {
-// Extract a substring from a lean string
+// Extract a substring from a lean string, return a new string
 
   // If past the end, return an empty string
   const str_len = lean_strlen( str );
   if( start >= str_len ){
-    return lean_strdup_from_c_str( "" );
+    return lean_new_empty();
   }
 
   // Truncate the length if needed
@@ -1788,61 +2218,32 @@ function lean_substr( str : Cell, start : Value, len : Value ) : Cell {
     len = str_len - start;
   }
 
+  // If the substring is empty, return an empty string
+  if( len == 0 ){
+    return lean_new_empty();
+  }
+
   // ToDo: if big enough, share the string
   // This requires to detect that cstr points to a substring.
   // It also means that .c_str() must turn the substring into
   // a full string, null terminated, ie stop sharing.
   // This is worth the trouble once lean mode is stable.
+  // See comments about short string optimization.
 
   // Allocate the result
-  const ncells = lean_aligned_cell_length( len + 1 );
-  const cell = lean_allocate_cells( ncells );
+  const new_area = lean_allocate_cells_for_bytes( len + 1 );
 
   // Copy the substring
   // ToDo: fast C++ version
   let ii = 0;
   for( ii = 0 ; ii < len ; ii++ ){
-    lean_byte_at_from( cell, ii, str, start + ii );
+    lean_byte_at_from( new_area, ii, str, start + ii );
   }
-  return cell;
+  return new_area;
 }
 
 
-function lean_string_test() : Index {
-// Test the string functions
-  const str1 = lean_strdup_from_c_str( "Hello" );
-  const str2 = lean_strdup_from_c_str( "World" );
-  const str3 = lean_strcat( str1, str2 );
-  const str4 = lean_strdup_from_c_str( "HelloWorld" );
-  if( lean_strcmp( str3, str4 ) != 0 ){
-    FATAL( "lean_strcmp failed" );
-    return 0;
-  }
-  if( lean_strindex( str3, str1 ) != 0 ){
-    FATAL( "lean_strindex failed" );
-    return 0;
-  }
-  if( lean_strindex( str3, str2 ) != 5 ){
-    FATAL( "lean_strindex failed" );
-    return 0;
-  }
-  const str5 = lean_substr( str3, 0, 5 );
-  if( lean_strcmp( str5, str1 ) != 0 ){
-    FATAL( "lean_substr failed" );
-    return 0;
-  }
-  lean_free( str1 );
-  lean_free( str2 );
-  lean_free( str3 );
-  lean_free( str4 );
-  lean_free( str5 );
-  return 1;
-}
-
-const lean_string_test_done = lean_string_test();
-
-
-// Now we get all we need to implement the std library compatible string
+// Now we get all we need to implement a simplified std lib compatible string
 
 // Only in C++ however
 /*c{
@@ -1856,32 +2257,45 @@ class LeanString {
   public:
 
   // Where the C string is stored, null terminated
+  // It's aligned a cell boundary because it's a byte area from allocate_bytes()
   char* cstr;
 
-  // Constructor
+  // Constructor for an empty string
   LeanString( void ){
-    cstr = to_cstr( lean_strdup_from_c_str( "" ) );
+    // An empty string shares the empty string singleton
+    lean_lock( the_empty_lean );
+    cstr = to_cstr( the_empty_lean );
   }
 
   // Constructor from a C string
   LeanString( TxtC str ){
-    cstr = to_cstr( lean_strdup_from_c_str( str ) );
+    cstr = to_cstr( lean_new_from_native( str ) );
   }
 
   // Constructor from a C string literal
   template< std::size_t N >
   LeanString( const char (&str)[N] ){
-    cstr = to_cstr( lean_strdup_from_c_str( str ) );
+    cstr = to_cstr( lean_new_from_native( str ) );
   }
 
-  // Destructor
-  ~LeanString( void ){
-    lean_free( to_cell( cstr ) );
+  // Constructor from a dynamically allocated byte area
+  LeanString( Area area ){
+    // No copy, just share the same area
+    lean_lock(     area );
+    cstr = to_ptr( area );
   }
 
   // Copy constructor
   LeanString( const LeanString& str ){
-    cstr = to_cstr( lean_strdup_from_c_str( str.cstr ) );
+    // Share the other string, increment the reference counter
+    cstr = str.cstr;
+    lean_lock( to_cell( cstr ) );
+  }
+
+  // Destructor
+  ~LeanString( void ){
+    // "unshare" the string, decrement the reference counter
+    lean_free( to_cell( cstr ) );
   }
 
   TxtC c_str( void ) const {
@@ -1898,25 +2312,28 @@ class LeanString {
 
   // Assignment operator
   LeanString& operator=( const LeanString& str ){
+    // First, forget the old string
     lean_free( to_cell( cstr ) );
-    cstr = to_cstr( lean_strdup_from_c_str( str.cstr ) );
+    // Then share the new one
+    lean_lock( to_cell( str.cstr ) );
+    cstr = str.cstr;
     return *this;
   }
 
   // Assignment operator from a C string
   LeanString& operator=( TxtC str ){
+    // Forget the old string
     lean_free( to_cell( cstr ) );
-    cstr = to_cstr( lean_strdup_from_c_str( str ) );
+    // Make a new one to remplace the old one
+    cstr = to_cstr( lean_new_from_native( str ) );
     return *this;
   }
 
   // Concatenation operator
   LeanString operator+( const LeanString& str ) const {
     // ToDo: optimize this
-    auto str1 = lean_strdup_from_c_str( str.cstr );
-    auto str2 = lean_strcat( to_cell( cstr ), str1 );
-    auto r = LeanString( to_cstr( str2 ) );
-    lean_free( str1 );
+    Area str2 = lean_new_from_strcat( to_cell( cstr ), to_cell( str.cstr ) );
+    auto r = LeanString( str2 );
     lean_free( str2 );
     return r;
   }
@@ -1924,39 +2341,42 @@ class LeanString {
   // Concatenation operator from a C string
   LeanString operator+( TxtC str ) const {
     // ToDo: optimize this
-    auto str1 = lean_strdup_from_c_str( str );
-    auto str2 = lean_strcat( to_cell( cstr ), str1 );
-    auto r = LeanString( to_cstr( str2 ) );
+    Area str1 = lean_new_from_native( str );
+    Area str2 = lean_new_from_strcat( to_cell( cstr ), str1 );
+    auto r = LeanString( str2 );
     lean_free( str1 );
     lean_free( str2 );
     return r;
   }
 
-  // Concatenation operator
+  // In place concatenation operator
   LeanString& operator+=( const LeanString& str ){
+    // Replace the old string by a new one
     auto old_cell = to_cell( cstr );
-    cstr = to_cstr( lean_strcat( old_cell, to_cell( str.cstr ) ) );
+    cstr = to_cstr( lean_new_from_strcat( old_cell, to_cell( str.cstr ) ) );
+    // Unshare the old one
     lean_free( old_cell );
     return *this;
   }
 
-  // Concatenation operator from a C string
+  // In place concatenation operator for a C string
   LeanString& operator+=( TxtC str ){
     auto old_cell = to_cell( cstr );
-    auto str1 = lean_strdup_from_c_str( str );
-    cstr = to_cstr( lean_strcat( old_cell, str1 ) );
+    auto str1 = lean_new_from_native( str );
+    cstr = to_cstr( lean_new_from_strcat( old_cell, str1 ) );
     lean_free( old_cell );
     lean_free( str1 );
     return *this;
   }
 
-  // Concatenation operator from a char
+  // In place concatenation operator for a char
   LeanString& operator+=( char c ){
     // ToDo: optimize this
+    // There is often space for an extra char in the last cell
     auto old_cell = to_cell( cstr );
     char buf[ 2 ] = { c, '\0' };
-    auto str1 = lean_strdup_from_c_str( buf );
-    cstr = to_cstr( lean_strcat( old_cell, str1 ) );
+    auto str1 = lean_new_from_native( buf );
+    cstr = to_cstr( lean_new_from_strcat( old_cell, str1 ) );
     lean_free( old_cell );
     lean_free( str1 );
     return *this;
@@ -1967,7 +2387,7 @@ class LeanString {
     return lean_streq( to_cell( cstr ), to_cell( str.cstr ) );
   }
 
-  // Comparison operator from a C string
+  // Comparison operator with a C string
   bool operator==( TxtC str ) const {
     auto r = lean_streq_with_c_str( to_cell( cstr ), str );
     return r;
@@ -1978,7 +2398,7 @@ class LeanString {
     return !lean_streq( to_cell( cstr ), to_cell( str.cstr ) );
   }
 
-  // Comparison operator from a C string
+  // Comparison operator with a C string
   bool operator!=( TxtC str ) const {
     auto r = !lean_streq_with_c_str( to_cell( cstr ), str );
     return r;
@@ -1992,17 +2412,20 @@ class LeanString {
   // Return a substring
   LeanString substr( size_t pos, size_t len ) const {
     // ToDo: optimize this
-    auto r = LeanString( to_cstr( lean_substr( to_cell( cstr ), pos, len ) ) );
+    Area str2 = lean_substr( to_cell( cstr ), pos, len );
+    auto r = LeanString( str2 );
+    lean_free( str2 );
     return r;
   }
 
   // Return char at position or 0 if out of bounds
   char at( size_t pos ) const {
-    if( pos >= length() ) return 0;
+    // ToDo: should raise an exception when out of bounds?
+    if( pos >= (size_t ) length() ) return 0;
     return cstr[ pos ];
   }
 
-  // [] operator
+  // [] operator. ToDo: that does not compile when used...
   char operator[]( size_t pos ) const {
     return at( pos );
   }
@@ -2022,17 +2445,18 @@ class LeanString {
     return lean_strrindex( to_cell( cstr ), to_cell( str.cstr ) );
   }
 
-}; // ToDO: why do I need this semicolon here?
+}; // ToDo: why do I need this semicolon here?
+
+
+// Now that LeanString is defined, some needed overloaded functions are possible
 
 // Overloaded binary + operator for "xxx" + LeanString
 LeanString operator+( TxtC str1, const LeanString& str2 ){
-  Text r = str1;
+  MutText r = str1;
   r += str2;
   return r;
 }
 
-
-// Now that LeanString is defined, some needed overloaded functions are possible
 
 bool mand2( bool b1, const Text& msg ){
   return mand2_c_str( b1, msg.mut_c_str() );
@@ -2071,7 +2495,7 @@ Text  extract_line( TxtC, Index );
  */
 
 /**/ const no_text = "";
-//c/ static const Text no_text;
+//c/ static const Text no_text( "" );
 
 
 /* -----------------------------------------------------------------------------
@@ -2102,6 +2526,7 @@ Text  extract_line( TxtC, Index );
 /*c{
   Text N( int n ){
     char buf[ 32 ];
+    // ToDo: avoid sprintf
     if( n >= the_very_first_cell && n <= the_next_free_cell ){
       sprintf_s( buf, sizeof( buf ), "@%d", n );
     }else{
@@ -2394,7 +2819,7 @@ bool tneq( char s1, const char* s2 ) {
  *  tidx() - index of substring in text, -1 if not found
  */
 
-function tidx( s : Text, sub : Text ) : Index {
+function tidx( s : ConstText, sub : ConstText ) : Index {
   /**/ return s.indexOf( sub );
   //c/ return s.find( sub );
 }
@@ -2404,157 +2829,51 @@ function tidx( s : Text, sub : Text ) : Index {
  *  tidxr() - last index of substring in text, -1 if not found
  */
 
-function tidxr( s : Text, sub : Text ) : Index {
+function tidxr( s : ConstText, sub : ConstText ) : Index {
   /**/ return s.lastIndexOf( sub );
   //c/ return s.rfind( sub );
 }
 
 
-/*
- *  Some basic tests of the above functions
- */
-
-
-/**/function tbad( actual : any, expected : any ) : boolean {
-//c/ bool tbad( int actual, int expected ){
-  // Return true bad, i.e. not as expected
-  if( actual == expected )return false;
-  trace( S()
-    + "tbad: actual: " + N( actual )
-    + " vs expected: " + N( expected )
-  );
-  debugger;
-  return true;
-}
-
-
-/*c{
-bool tbad( Text actual, Text expected ){
-  if( actual == expected )return false;
-  trace( S()
-    + "tbad: actual: " + actual
-    + " vs expected: " + expected
-  );
-  debugger;
-  return true;
-}
-}*/
-
-
-function test_text() : Index {
-
-  // tidx()
-  if( tbad( tidx( "abc", "b" ),     1 ) )return 0;
-  if( tbad( tidx( "abc", "d" ),    -1 ) )return 0;
-  if( tbad( tidx( "abc", "bc" ),    1 ) )return 0;
-  if( tbad( tidx( "abc", "ab" ),    0 ) )return 0;
-  if( tbad( tidx( "abc", "abc" ),   0 ) )return 0;
-  if( tbad( tidx( "abc", "abcd" ), -1 ) )return 0;
-
-  // tidxr()
-  if( tbad( tidxr( "abc", "b" ),     1 ) )return 0;
-  if( tbad( tidxr( "abc", "d" ),    -1 ) )return 0;
-  if( tbad( tidxr( "abc", "bc" ),    1 ) )return 0;
-  if( tbad( tidxr( "abc", "ab" ),    0 ) )return 0;
-  if( tbad( tidxr( "abc", "abc" ),   0 ) )return 0;
-  if( tbad( tidxr( "abc", "abcd" ), -1 ) )return 0;
-  if( tbad( tidxr( "abcabc", "bc" ), 4 ) )return 0;
-
-  // tmid()
-  if( tbad( tmid( "abc", 0, 3 ), "abc" ) )return 0;
-  if( tbad( tmid( "abc", 0, 2 ), "ab"  ) )return 0;
-  if( tbad( tmid( "abc", 1, 2 ), "b"   ) )return 0;
-  if( tbad( tmid( "abc", 1, 1 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", 1, 0 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", 0, 0 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", 0, 1 ), "a"   ) )return 0;
-  if( tbad( tmid( "abc", 0, 4 ), "abc" ) )return 0;
-  if( tbad( tmid( "abc", 1, 4 ), "bc"  ) )return 0;
-  if( tbad( tmid( "abc", 2, 4 ), "c"   ) )return 0;
-  if( tbad( tmid( "abc", 2, 1 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", 2, 0 ), ""    ) )return 0;
-
-  // tmid(), with negative indexes
-  if( tbad( tmid( "abc", -1, 3 ), "c"   ) )return 0;
-  if( tbad( tmid( "abc", -2, 3 ), "bc"  ) )return 0;
-  if( tbad( tmid( "abc", -3, 3 ), "abc" ) )return 0;
-  if( tbad( tmid( "abc", -4, 3 ), "abc" ) )return 0;
-  if( tbad( tmid( "abc", -1, 2 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", -2, 2 ), "b"   ) )return 0;
-  if( tbad( tmid( "abc", -3, 2 ), "ab"  ) )return 0;
-  if( tbad( tmid( "abc", -4, 2 ), "ab"  ) )return 0;
-  if( tbad( tmid( "abc", -1, 1 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", -2, 1 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", -3, 1 ), "a"   ) )return 0;
-  if( tbad( tmid( "abc", -4, 1 ), "a"   ) )return 0;
-  if( tbad( tmid( "abc", -1, 0 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", -2, 0 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", -2, 1 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", -3, 0 ), ""    ) )return 0;
-  if( tbad( tmid( "abc", -4, 0 ), ""    ) )return 0;
-
-  // tcut()
-  if( tbad( tcut( "abc",  3 ), "abc" ) )return 0;
-  if( tbad( tcut( "abc",  2 ), "ab"  ) )return 0;
-  if( tbad( tcut( "abc",  1 ), "a"   ) )return 0;
-  if( tbad( tcut( "abc",  0 ), ""    ) )return 0;
-  if( tbad( tcut( "abc", -1 ), "ab"  ) )return 0;
-  if( tbad( tcut( "abc", -2 ), "a"   ) )return 0;
-  if( tbad( tcut( "abc", -3 ), ""    ) )return 0;
-  if( tbad( tcut( "abc", -4 ), ""    ) )return 0;
-
-  // tbut()
-  if( tbad( tbut( "abc",  3 ), ""    ) )return 0;
-  if( tbad( tbut( "abc",  2 ), "c"   ) )return 0;
-  if( tbad( tbut( "abc",  1 ), "bc"  ) )return 0;
-  if( tbad( tbut( "abc",  0 ), "abc" ) )return 0;
-  if( tbad( tbut( "abc", -1 ), "c"   ) )return 0;
-  if( tbad( tbut( "abc", -2 ), "bc"  ) )return 0;
-  if( tbad( tbut( "abc", -3 ), "abc" ) )return 0;
-  if( tbad( tbut( "abc", -4 ), "abc" ) )return 0;
-  if( tbad( tbut( "abc", -5 ), "abc" ) )return 0;
-
-  // tlow()
-  if( tbad( tlow( "abc" ), "abc" ) )return 0;
-  if( tbad( tlow( "ABC" ), "abc" ) )return 0;
-  if( tbad( tlow( "aBc" ), "abc" ) )return 0;
-  if( tbad( tlow( "AbC" ), "abc" ) )return 0;
-
-  // tup()
-  if( tbad( tup( "abc" ), "ABC" ) )return 0;
-  if( tbad( tup( "ABC" ), "ABC" ) )return 0;
-  if( tbad( tup( "aBc" ), "ABC" ) )return 0;
-  if( tbad( tup( "AbC" ), "ABC" ) )return 0;
-
-  return 1;
-}
-
-// Hack to invoke test_text() at C++ dynamic initialization time
-const test_text_done = test_text();
-
-
 /* -----------------------------------------------------------------------------
  *  Some more assertion checker, defined now because they use the LeanString
- *  type that is not defined where the other assertions checkers are.
+ *  type that is not defined where the other assertion checkers are defined.
  */
 
-
 function mand_eq( a : i32, b : i32 ) : boolean {
-  // Check that two values are equal
+// Check that two values are equal
+
   if( a == b )return true;
-  if( is_valid_tag( a ) || is_valid_tag( b ) ){
-    if( is_valid_tag( a ) && is_valid_tag( b ) ){
+
+  if( bootstrapping )return mand( false );
+
+  // The code below may fail, let's avoid infinite recursion
+  if( mand_entered != 0 ){
+    /**/ trace(
+    //c/ trace_const_c_str(
+      "mand() called recursively"
+    );
+    debugger;
+    return true;
+  }
+  mand_entered = 1;
+
+  if( tag_is_valid( a ) || tag_is_valid( b ) ){
+    if( tag_is_valid( a ) && tag_is_valid( b ) ){
       trace(
         S()+ "bad eq " + tag_to_text( a ) + " / " + tag_to_text( b )
       );
-    }else if( is_valid_tag( a ) ){
+    }else if( tag_is_valid( a ) ){
       trace( S()+ "bad eq " + tag_to_text( a ) + " / " + N( b ) );
     }else{
       trace( S()+ "bad eq " + N( a ) + " / " + tag_to_text( b ) );
     }
   }
   mand2( false, S()+ "bad eq " + N( a ) + " / " + N( b ) );
+
+  mand_entered = 0;
   return false;
+
 }
 
 
@@ -2570,74 +2889,282 @@ function mand_neq( a : i32, b : i32 ) : boolean {
  *  Cell allocator
  */
 
-function init_cells_allocator() : Index {
+//c/ static Cell the_previous_chunk_area = 0;
+
+function init_cell_allocator() : Index {
 
   // Typescript version, using ArrayBuffers:
-  /**/ the_very_first_cell = 0;
-  /**/ the_free_cell_limit = mem32.length;
+  /*!c{*/
+    the_very_first_cell = 0;
+    the_cell_limit = to_cell( mem32.byteLength );
+  /*}*/
 
-  // C++ version, using calloc() chuncks:
+  // C++ version, using calloc() linked chuncks of byte areas:
   /*c{
+
+    // There is a lower limit to the initial heap size
+    de&&mand( INOX_HEAP_SIZE >= 3 * size_of_cell );
+
+    // Use system's calloc() to allocate the first chunk of memory
     the_very_first_cell = to_cell( (int) calloc( INOX_HEAP_SIZE, 1 ) );
+
+    // Check that the allocation succeeded
     if( the_very_first_cell == 0 ){
       FATAL( "Out of memory, first calloc() failed" );
       return 0;
     }
-    the_free_cell_limit = the_very_first_cell + to_cell( INOX_HEAP_SIZE ) - 1;
+
+    // Set the new limit
+    the_cell_limit = the_very_first_cell + to_cell( INOX_HEAP_SIZE );
+
+    // Set two sentinel cells, fake header, just to help debug the interpreter
+    set(
+      the_cell_limit - 2 * ONE,
+      type_integer,
+      tag_dynamic_ref_count,
+      0
+    );
+    set(
+      the_cell_limit - 1 * ONE,
+      type_integer,
+      tag_dynamic_area_size,
+      2 * size_of_cell // empty payload
+    );
+    the_previous_chunk_area = the_cell_limit;
+    alloc_de&&mand_cell_name(
+      the_previous_chunk_area - 2 * ONE,
+      tag_dynamic_ref_count
+    );
+    alloc_de&&mand_cell_name(
+      the_previous_chunk_area - 1 * ONE,
+      tag_dynamic_area_size
+    );
+
+    // Reduce the limit accordingly
+    the_cell_limit -= 2 * ONE;
+
   }*/
 
   the_next_free_cell = the_very_first_cell;
 
-  // Avoid using the addresses that match a type id
+  // Avoid using the addresses that match a type ide
   // It helps for debugging traces, see N() and C()
   /**/ allocate_cells( 16 );
 
   the_tmp_cell = allocate_cell();
+
   return 1;
 }
 
 
-function resize_memory(){
-  // The heap is full, we need to expand it
+/* -----------------------------------------------------------------------------
+ *  The memory
+ *
+ *  The memory is the place where data manipulated by the Inox interpreter is
+ *  stored. It looks like a contiguous area of memory, divided into cells. Each *  cell is 64 bits wide, 3 parts : 4 bits for the type of the cell, 28 bits for
+ *  for the name of the cell and 32 bits for the value of the cell. Such values
+ *  are called "named values". Each cell has an address. It is the index of the
+ *  cell in the memory. The possible range extends from 0 to 2^28-1, ie
+ *  approximately 268 million cells. It should be possible to change the size of
+ *  a cell, either to reduce it or to increase it. The size of a cell is defined
+ *  by the size_of_cell constant, itself defined as the addition of 32 bits for
+ *  the value, 28 bits for the name and 4 bits for the type, the type and name
+ *  beeing packed together in a single 32 bits value.
+ *
+ *  The implementation of the memory is not the same in Typescript and C++. In
+ *  Typescript, the memory is implemented as an ArrayBuffer, a contiguous area
+ *  of memory. In C++, the memory is implemented as a linked list of chunks of
+ *  memory, each chunk being allocated by the system's calloc() function.
+ *
+ *  With this solution, some cells are not used, ie they are not part of the
+ *  addressable memory. In Typescript, the available cells are the ones between
+ *  address 0 and some upper limit that can grow. In C++, the available cells
+ *  are between some lower limit and some upper limit that can grow. The lower
+ *  limit is the address of the first cell of the older chunk of memory. The
+ *  upper limit is the address of the last cell of the last chunk of memory.
+ *  In between, there are gaps that depends on the results of the calloc()
+ *  function.
+ *
+ *  If this chunk based solution is not good enough, it should be possible to
+ *  add an indirection layer, ie to use a table of pointers to fixed size
+ *  chunks, in order to restore an apparently contiguous memory.
+ *
+ *  The memory is further divided into two parts : the free region and the
+ *  allocated region. The free region is the part of the memory that is not
+ *  yet used, it is located between some lower limit and some upper limit.
+ *  The lower limite is stored in the global variable the_next_free_cell.
+ *  The upper limit is stored in the global variable the_cell_limit.
+ *
+ *  At the other end, at the bottom of the memory, there is also a limit,
+ *  stored in variable the_very_first_cell. It is the address of the first cell
+ *  of the older chunk of memory in C++ and 0 in Typescript.
+ *
+ *  The allocated part of the memory is further divided in smaller parts, each
+ *  part being called "an area in the heap". Such areas are allocated much
+ *  like bytes are in C using malloc() and free(). The difference is that
+ *  areas are allocated in cells, not in bytes. There is also a reference
+ *  counter associated with each area. When the reference counter reaches 0,
+ *  the area is freed. The reference counter is stored in the first cell of
+ *  the area. The first cell is called the "header" of the area. The header
+ *  contains the type of the area, the size of the area and the reference
+ *  counter. The size of the area is stored in the second cell of the area.
+ *  Then comes the payload of the area, ie the actual data. The payload is
+ *  often an array of cells but it can also be an array of bytes, for text
+ *  strings typically.
+ *
+ *  Note: in AssemblyScript (hence WASM), the memory is not contiguous, it is
+ *  organized much like a linked list of chunks of memory, like in C++. This
+ *  is not yet implemented however.
+ *
+ *  ToDo: because the results of calloc() do not increase monotonically, it
+ *  should be possible to reorganize the memory in order to change the layout
+ *  with a lower bound that can change over time and an additional limit for
+ *  the upper bound of the free region. This would allow to use the memory
+ *  more efficiently. The current workaround is to keep trying to allocate
+ *  more memory at a higher address by asking for more memory from the system.
+ */
+
+function grow_memory( sz : Size ){
+// The heap is full, need to expand it by some amount
+
+  // Align on size of a cell, ie 7 becomes 8, 9 becomes 16, etc.
+  let min_size = area_aligned_size( sz );
+
+  // Make sure some minimum size is allocated
+  if( min_size < INOX_HEAP_SIZE ){
+    min_size = INOX_HEAP_SIZE;
+  }
+
+  // In any case, the minimum size should be the size of one cell
+  if( min_size < size_of_cell ){
+    min_size = size_of_cell;
+  }
 
   // Typescript version:
-  /**/  const new_size = mem32.length + INOX_HEAP_SIZE / 16;
-  /**/  const new_mem    = new ArrayBuffer( new_size );
-  /**/  const new_mem8   = new Uint8Array(   new_mem );
-  /**/  const new_mem32  = new Int32Array(   new_mem );
-  /**/  const new_mem32f = new Float32Array( new_mem );
-  /**/  // Copy the old memory buffer into the new one
-  /**/  // ToDo: use ArrayBuffer.transfert() when it becomes available (03/2023)
-  /**/  new_mem32.set( mem32 );
-  /**/  // Update the global variables
-  /**/  mem    = new_mem;
-  /**/  mem8   = new_mem8;
-  /**/  mem32  = new_mem32;
-  /**/  mem32f = new_mem32f;
-  /**/  the_free_cell_limit = mem32.length;
+  /*!c{*/
+
+    // Allocate a new memory buffer that is bigger than the old one
+    const new_total_size = min_size + mem32.byteLength;
+    alloc_de&&mand( new_total_size % size_of_cell == 0 );
+    const new_mem    = new ArrayBuffer( new_total_size );
+    const new_mem8   = new Uint8Array(     new_mem );
+    const new_mem32  = new Int32Array(     new_mem );
+    const new_mem32f = new Float32Array(   new_mem );
+    const new_mem64  = new BigUint64Array( new_mem );
+
+    // Copy the old memory buffer into the new one
+    // ToDo: use ArrayBuffer.transfert() when it becomes available (03/2023)
+    new_mem32.set( mem32 );
+
+    // Update the global variables
+    mem    = new_mem;
+    mem8   = new_mem8;
+    mem32  = new_mem32;
+    mem32f = new_mem32f;
+    mem64  = new_mem64;
+
+    // See the new limit, valid adresses are below it
+    the_cell_limit = to_cell( mem32.byteLength );
+    de&&mand_cell_in_range( the_cell_limit - 1 * ONE );
+
+  /*!c}*/
 
   // C++ version:
   /*c{
-    // Add a sentinel cell at the end of the older chunk, see memory_dump()
-    // ToDo: maybe I should create a "fake" busy area?
-    set_next_cell( the_free_cell_limit, -1 );
-    // Allocate a new chunk
-    // ToDo: it bugs if new_mem is at a lower address than the old limit
-    // Workaround: use a bigger chunk until it's address is higher?
-    // Another workaround is to use realloc() and relocate everything...
-    void* new_mem = calloc( 1, INOX_HEAP_SIZE / 16 ); // 16 Kb
+
+    // Add space for a gap area header at the end of the new memory chunk
+    min_size += 2 * size_of_cell;
+
+    // Allocate the new chunk, to be linked to the old one, well aligned
+    void* new_mem = calloc( min_size / size_of_cell, size_of_cell );
+
     if( new_mem == NULL ){
       FATAL( "Out of memory for cells" );
       return;
     }
-    if( (int) new_mem < (int) to_ptr( the_free_cell_limit ) ){
-      FATAL( "Out of memory, new alloc is too low" );
+
+    // New chuck must be at a higher address than the old limit
+    // ToDo: handle the case where it is not
+    if( (int) new_mem < (int) to_ptr( the_cell_limit ) ){
+      // It bugs if new_mem is at a lower address than the old limit
+      // Workaround: ask for a bigger chunk until it's address is higher
+      // Doing so would eventually lead to some sbrk() call by malloc and
+      // the address should be higher.
+      // There is nothing to lose to try, let's ask for more, twice more
+      free( new_mem );
+      grow_memory( min_size * 2 );
       return;
     }
-    // Set the new limit (including space for sentinel) & the new next free cell
-    the_free_cell_limit
-    = to_cell( ( (int) new_mem ) + to_cell( INOX_HEAP_SIZE / 16 ) ) - 1;
+
+    // The new next free cell is the one at the beginning of the new chunk
     the_next_free_cell = to_cell( (int) new_mem );
+
+    // Update the gap busy area at the end of the older chunk to skip the gap
+    // Note: by convention, the id of an area is the address of the payload,
+    // not the address of the header that is two cells before. See to_header().
+    int old_gap_area = the_cell_limit + 2 * ONE;
+    alloc_de&&mand_eq( old_gap_area, the_previous_chunk_area );
+
+    // Gap between the end of the old chunk and the beginning of the new chunk
+    int gap_size = (int) new_mem - ( (int) to_ptr( the_cell_limit ) );
+
+    // Push the limit to avoid memory assert failures on bound checks
+    the_cell_limit += 2 * ONE;
+
+    // Check that the previously set sentinel cells are still there
+    alloc_de&&mand_eq( old_gap_area, the_cell_limit );
+    alloc_de&&mand_cell_name(
+      old_gap_area - 2 * ONE,
+      tag_dynamic_ref_count
+    );
+    alloc_de&&mand_cell_name(
+      old_gap_area - 1 * ONE,
+      tag_dynamic_area_size
+    );
+
+    // Reinitialize the previous chunck's busy gap area headers
+    area_init_busy( old_gap_area, gap_size );
+
+    // The end of the old gap area should be the start of the new area
+    alloc_de&&mand_eq(
+      ( old_gap_area - 2 * ONE ) + to_cell( gap_size ),
+      to_cell( new_mem )
+    );
+    alloc_de&&mand_eq(
+      (int) to_ptr( old_gap_area ) - 2 * size_of_cell
+      + area_size( old_gap_area ),
+      (int) new_mem
+    );
+
+    // Set the new limit
+    the_cell_limit = to_cell( (int) new_mem + min_size );
+
+    const new_gap_area = the_cell_limit;
+
+    // Set two sentinel cells, gap header, just to help debug the interpreter
+    set(
+      new_gap_area - 2 * ONE,
+      type_integer,
+      tag_dynamic_ref_count,
+      0
+    );
+    set(
+      new_gap_area - 1 * ONE,
+      type_integer,
+      tag_dynamic_area_size,
+      2 * size_of_cell // empty payload
+    );
+    the_previous_chunk_area = new_gap_area;
+
+    // Decrease the limit accordingly
+    the_cell_limit -= 2 * ONE;
+
+    // The number of free cells should match the new size, minus the gap skipper
+    alloc_de&&mand_eq(
+      (int) to_ptr( the_cell_limit ) - (int) to_ptr( the_next_free_cell ),
+      min_size - 2 * size_of_cell
+    );
+
   }*/
 }
 
@@ -2681,14 +3208,16 @@ function allocate_cells( n : Count ) : Cell {
     debug_next_allocate = 0;
   }
   // Do we cross the limit?
-  while( the_next_free_cell + n * ONE > the_free_cell_limit ){
+  if( the_next_free_cell + n * ONE > the_cell_limit ){
     // The heap is full, we need to expand it
-    resize_memory();
+    grow_memory( n * size_of_cell );
   }
-  alloc_de&&mand( the_next_free_cell           < the_free_cell_limit  );
-  alloc_de&&mand( the_next_free_cell + n * ONE <= the_free_cell_limit );
+  alloc_de&&mand( the_next_free_cell           < the_cell_limit  );
+  alloc_de&&mand( the_next_free_cell + n * ONE <= the_cell_limit );
   const cell = the_next_free_cell;
   the_next_free_cell += n * ONE;
+  alloc_de&&mand_cell_in_range( cell );
+  alloc_de&&mand_cell_in_range( the_next_free_cell - 1 * ONE );
   return cell;
 }
 
@@ -2706,9 +3235,9 @@ function allocate_cell() : Cell {
   let cell = the_first_free_cell;
   if( cell == 0 ){
     // ToDo: check that the heap does not overflow
-    if( the_next_free_cell == the_free_cell_limit ){
+    if( the_next_free_cell == the_cell_limit ){
       // The heap is full, we need to expand it
-      resize_memory();
+      grow_memory( 0 );
     }
     // The heap grows upward
     cell = the_next_free_cell;
@@ -2726,7 +3255,7 @@ function allocate_cell() : Cell {
 }
 
 
-function compact_free_cells() : void {
+function compact_cells_free() : void {
 // Compact the free list of cells
 
   // Try to free cells in the free list
@@ -2762,7 +3291,7 @@ function compact_free_cells() : void {
 }
 
 
-function free_cell( c : Cell ) : void {
+function cell_free( c : Cell ) : void {
 // Free a cell, add it to the free list
 
   de&&mand_empty_cell( c );
@@ -2782,24 +3311,877 @@ function free_cell( c : Cell ) : void {
 }
 
 
-function free_cells( c : Cell, n : Count ) : void {
+function cells_free( c : Cell, n : Count ) : void {
 // Free a number of consecutive cells
 
   // If last allocated cells, restore the next free cell
   if( c + n * ONE == the_next_free_cell ){
     // This works well for fast LIFO style allocations
     the_next_free_cell = c;
-    compact_free_cells();
+    compact_cells_free();
     return;
   }
 
   // ToDo: If big enough, it is better to add it to the dynamic pool.
   let ii;
   for( ii = 0 ; ii < n ; ii++ ){
-    free_cell( c + ii * ONE );
+    cell_free( c + ii * ONE );
   }
 
 }
+
+
+/* ---------------------------------------------------------------------------
+ *  Dynamic areas of cells.
+ *  Dynamic memory allocation of cells in the heap.
+ *  Bytes areas are allocated and freed using a reference counter.
+ *  Each busy area has two header cells that contain the reference counter and
+ *  a size. When the area is free, the first header links to the next free area.
+ *  ToDo: should reuse the platform provided malloc/free to the extend
+ *  it is possible?
+ *  All ptr are to regular cells, all sizes are number of bytes. The header
+ *  is two cells long and is stored before the area.
+ *  ToDo: size optimisation where name of ref counter also encodes the size.
+ *  This would be usefull for small areas, boxed values and proxied objects.
+ *  dynrc1 would mean one cell, ie 8 bytes + 8 bytes header. This
+ *  is a total of 16 bytes versus the non optimized 24 bytes.
+ *  ToDo: there could also be special types for free and busy areas.
+ *  With this scheme, the name part of a cell would not be a name anymore
+ *  and could be either a reference counter, a size or a pointer to the next
+ *  free area. As a result, the overhead of an area would be 8 bytes versus
+ *  the current 16 bytes. In some cases, storing the size in the header
+ *  is not necessary, for example when the area is a boxed value or a proxied
+ *  object or some kind of array whose size in store elsewhere. However,
+ *  the reference counter is still neeed. That would not be the case
+ *  if there were a garbage collector. This is fairly complex.
+ */
+
+
+function init_area_allocator() : Index {
+
+  the_first_free_area = 0;
+
+  // Check precomputed tags
+  de&&mand_eq( tag( "_dynrc" ), tag_dynamic_ref_count );
+  de&&mand_eq( tag( "_dynxt" ), tag_dynamic_next_area );
+  de&&mand_eq( tag( "_dynsz" ), tag_dynamic_area_size );
+
+  // This completes the low level bootstrap phase 1
+  bootstrapping = false;
+
+  return 1;
+
+}
+
+
+function area_to_header( area : Area ) : Cell {
+// Return the address of the first header cell of a byte area, the ref count.
+  return area - 2 * ONE;
+}
+
+function header_to_area( header : Cell ) : Area {
+// Return the address of an area given the address of it's first header cell.
+  // Skip the two header cells, the reference counter and the size
+  return header + 2 * ONE;
+}
+
+
+function area_ref_count( area : Area ) : Value {
+// Return the value of the reference counter of a byte area
+  alloc_de&&mand( area_is_busy( area ) );
+  return value( area_to_header( area ) );
+}
+
+
+function area_turn_busy( area : Area, sz : Size ){
+// Set the reference counter header of a free byte area to 1, ie it becomes busy
+  const header = area_to_header( area );
+  // Before it becomes busy, it was free, so it must have a next_area header
+  alloc_de&&mand_cell_name( header, tag_dynamic_next_area );
+  set( header, type_integer, tag_dynamic_ref_count, 1 );
+  alloc_de&&mand_cell_name( header + ONE, tag_dynamic_area_size );
+  set_value( header + ONE, sz );
+}
+
+
+function area_turn_free( area : Area, next_area : Area ){
+// Set the tag of the header of a byte area to tag_dynamic_next_area
+  const header = area_to_header( area );
+  set( header, type_integer, tag_dynamic_next_area, next_area );
+}
+
+
+function area_init_busy( area : Area, size : Count ){
+// Initialize a new busy area
+  const header = area_to_header( area );
+  set( header, type_integer, tag_dynamic_ref_count, 1 );
+  set( header + ONE, type_integer, tag_dynamic_area_size, size );
+}
+
+
+function area_is_busy( area : Area ) : boolean {
+// Return true if the area is busy, false if it is free
+  alloc_de&&mand( area_is_safe( area ) );
+  return name( area_to_header( area ) ) == tag_dynamic_ref_count;
+}
+
+
+function area_is_free( area : Area ) : boolean {
+// Return true if the area is free, false if it is busy
+  alloc_de&&mand( area_is_safe( area ) );
+  return name( area_to_header( area ) ) == tag_dynamic_next_area;
+}
+
+
+function area_cell_is_area( cell : Cell ) : boolean {
+// Return true if the cell is the first cell of a dynamic area, false otherwise
+  // This is maybe not 100% reliable, but it is good enough
+  const first_header = area_to_header( cell );
+  if( name( first_header ) == tag_dynamic_ref_count ){
+    if( type( first_header ) == type_integer ){
+      alloc_de&&mand( area_is_busy( cell ) );
+      return true;
+    }
+    return false;
+  }else if( name( first_header ) == tag_dynamic_next_area ){
+    if( type( first_header ) == type_integer ){
+      alloc_de&&mand( area_is_free( cell ) );
+      return true;
+    }
+    return false;
+  }else{
+    return false;
+  }
+}
+
+
+function area_next( area : Area ) : Area {
+// Return the address of the next free area
+  alloc_de&&mand( area_is_free( area ) );
+  return value( area_to_header( area ) );
+}
+
+
+function area_set_next( area : Area, nxt : Area ){
+// Set the address of the next free area
+  alloc_de&&mand( area_is_free( area ) );
+  set_value( area_to_header( area ), nxt );
+}
+
+
+function area_set_ref_count( area : Area, v : Value ){
+// Set the reference counter of a byte area
+  alloc_de&&mand( area_is_busy( area ) );
+  set_value( area_to_header( area ), v );
+}
+
+
+function area_size( area : Area ) : Size {
+// Return the size of a byte area, in bytes. It includes the 2 header cells
+  alloc_de&&mand( area_is_safe( area ) );
+  const byte_size = value( area_to_header( area ) + offset_of_area_size * ONE );
+  // Do as if last cell was fully occupied
+  const aligned_size = ( byte_size + size_of_cell - 1 ) & ~( size_of_cell - 1 );
+  return aligned_size;
+}
+
+
+function area_length( area : Area ) : Length {
+// Return the length, in cells. It does not include the 2 header cells
+  return to_cell( area_size( area ) ) - 2;
+}
+
+
+function area_payload_size( area : Area ) : Size {
+// Return the size of a byte area, in bytes. It does not include the headers
+// and it is not aligned on cell size. ie, that the "true" size of the payload.
+  // For lean strings, the minimum size is 1 byte, due to the null terminator
+  // The size is in the header that is just before the area
+  return value( area - 1 * ONE ) - 2 * size_of_cell;
+}
+
+
+function area_set_size( area : Area, s : Size ) : void {
+// Set the size of a byte area, it includes the header
+  const header = area_to_header( area );
+  // The second header is after the first one, ie after the ref count.
+  set( header + offset_of_area_size, type_integer, tag_dynamic_area_size, s );
+}
+
+
+function area_aligned_size( s : Size ) : Size {
+// Align on size of cells, ie 7 becomes 8, 8 stays 8, 9 becomes 16, etc
+  let aligned_size = ( s + ( size_of_cell - 1 ) ) & ~( size_of_cell - 1 );
+  return aligned_size;
+}
+
+
+// All budy lists are empty at first, index is number of cells in area
+/**/  const all_free_lists_by_area_length : Array< Cell >
+/**/  = [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ];
+/*c{
+u32 all_free_lists_by_area_length[ 10 ]
+= { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+}*/
+
+
+/* -----------------------------------------------------------------------------
+ *  Pretty naive garbadge collector.
+ *  It is not at all a classical mark and sweep collector. It just scans
+ *  the whole memory to join consecutive free areas. First it frees
+ *  all areas of size 1, 2, 3, 4, 5, 6, 7, 8, 9, 10.
+ *  It is incremental in the sense that it does not scan the whole memory
+ *  at once, but only a small part of it. It is called by the interpreter
+ *  when it is idle or when it needs more memory.
+ */
+
+let   last_visited_cell = 0;
+const collector_increment = 1000;
+let   how_much_was_collected = 0;
+
+function area_free_small_areas() : Count {
+// Free all small areas, ie all areas of size 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+  how_much_was_collected = 0;
+  let ii;
+  for( ii = 0 ; ii < 10 ; ii++ ){
+    let free;
+    while( ( free = all_free_lists_by_area_length[ ii ] ) != 0 ){
+      all_free_lists_by_area_length[ ii ] = area_next( free );
+      area_set_next( free, the_first_free_area );
+      the_first_free_area = free;
+      de&&mand( area_is_free( free ) );
+      how_much_was_collected++;
+    }
+  }
+  return how_much_was_collected;
+}
+
+
+let count_total_busy = 0;
+let count_total_free = 0;
+
+
+function area_garbage_collector() : Count {
+  // Garbage collect the dynamic areas. Return false if nothing was collected.
+
+  // Set the default return value
+  how_much_was_collected = 0;
+  count_total_busy = 0;
+  count_total_free = 0;
+
+  // First empty all the "per length" free lists, they interfere.
+  how_much_was_collected = area_free_small_areas();
+
+  // Then scan the entire heap and coalesce consecutive free areas.
+  // ToDo: another option would have been to keep a sorted list of free areas.
+
+
+  // Limit the time taken, don't restart from the beginning nor end too far
+  let cell = last_visited_cell;
+  if( cell < the_very_first_cell ){
+    cell = the_very_first_cell;
+  }
+
+  let count_visited = 0;
+  let cells_in_heap = the_next_free_cell - the_very_first_cell;
+
+  while( true ){
+
+    // Exit loop if too much time has been spent, unless nothing was collected
+    if( count_visited > collector_increment
+      && how_much_was_collected != 0
+    ){
+      break;
+    }
+
+    // Time is proportional to the number of cells visited
+    count_visited++;
+
+    // When all cells have been visited, exit loop
+    if( count_visited >= cells_in_heap )break;
+
+    // OK, advance to next cell. Note: cell 0 is never visited, that's ok
+    cell += ONE;
+
+    // Time to restart if last cell was reached
+    if( cell >= the_next_free_cell ){
+      cell = the_very_first_cell;
+      continue;
+    }
+
+    // Detect areas, continue if none found
+    if( !area_cell_is_area( cell + 2 * ONE ) ){
+      continue;
+    }
+
+    // If busy, skip it
+    if( !area_is_free( cell + 2 * ONE ) ){
+      count_total_busy++;
+      cell += to_cell( area_size( cell + 2 * ONE ) );
+      continue;
+    }
+
+    // The area is after two header cells, ptr to next area and size
+    cell += 2 * ONE;
+
+    alloc_de&&mand( area_is_free( cell ) );
+    count_total_free++;
+
+    // Coalesce consecutive free areas, as long as there are some
+    while( true ){
+
+      // ToDo: if size were not aligned, it should be aligned here
+      const potential_next_area = cell + to_cell( area_size( cell ) );
+
+      if( potential_next_area >= the_next_free_cell
+      || !area_cell_is_area( potential_next_area )
+      || !area_is_free(      potential_next_area )
+      ){
+        break;
+      }
+
+      // Coalesce consecutive two free areas
+      let total_size = area_size( cell ) + area_size( potential_next_area );
+      area_set_size( cell, total_size );
+      area_set_next( cell, area_next( potential_next_area ) );
+      reset( area_to_header( potential_next_area ) );
+      reset( area_to_header( potential_next_area ) + ONE );
+
+      // If that was the head of the free list, update it
+      if( the_first_free_area == potential_next_area ){
+        the_first_free_area = cell;
+      }
+      how_much_was_collected++;
+
+      // Check that it did work
+      if( alloc_de ){
+        mand( area_is_free( cell ) );
+        mand( !area_cell_is_area( potential_next_area ) );
+      }
+
+    } // End of while( true ) over consecutive free areas
+
+  } // End of while( true ) over all cells
+
+  last_visited_cell = cell;
+  return how_much_was_collected;
+
+}
+
+
+function area_garbage_collector_all(){
+// Run garbage collector until nothing is collected
+  // First compact the free cells used by allocate_cell()
+  compact_cells_free();
+  // Start from the beginning and loop until nothing is collected
+  last_visited_cell = 0;
+  // Loop until nothing is collected
+  while( area_garbage_collector() != 0 ){
+    // ToDo: don't monopolize the processor
+  };
+}
+
+/*
+ *  Allocate a byte area, return its address, or 0 if not enough memory
+ */
+
+let allocate_area_entered = 0;
+
+// Some monitoring to detect memory leaks
+let stat_allocated_bytes   = 0;
+let stat_allocated_areas   = 0;
+let stat_deallocated_bytes = 0;
+let stat_deallocated_areas = 0;
+
+
+function allocate_area( sz : Size ) : Area {
+
+  if( alloc_de ){
+    if( allocate_area_entered != 0 ){
+      debugger;
+      FATAL( "allocate_area() reentered" );
+      return 0;
+    }
+  }
+
+  // To detect some catastrophic errors
+  allocate_area_entered = 1;
+
+  /**/ if( de ){
+  /**/   if( sz > 20000 ){
+  /**/     if( sz != INOX_HEAP_SIZE / 2 ){
+  /**/       bug( S()+ "Large memory allocation, " + N( sz ) );
+  /**/       debugger;
+  /**/     }
+  /**/   }
+  /**/   // alloc_de&&mand( size != 0 );
+  /**/ }
+
+  // Was something broken?
+  alloc_de&&mand(
+    the_first_free_area == 0 || area_is_free( the_first_free_area )
+  );
+
+  // Align on 64 bits, size of a cell, plus size of headers
+  let adjusted_size = area_aligned_size( sz ) + 2 * size_of_cell;
+
+  // Search in "per length" free lists if size is small enough
+  if( adjusted_size < 10 * size_of_cell ){
+    let try_length = to_cell( adjusted_size );
+    let small_free_area = all_free_lists_by_area_length[ try_length ];
+    if( small_free_area ){
+      all_free_lists_by_area_length[ try_length ]
+      = area_next( small_free_area );
+      area_turn_busy( small_free_area, sz + 2 * size_of_cell );
+      allocate_area_entered = 0;
+      stat_allocated_bytes += adjusted_size;
+      stat_allocated_areas += 1;
+      return small_free_area;
+    }
+  }
+
+  // Search first fit, starting from the first item of the free area list
+  alloc_de&&mand(
+    the_first_free_area == 0 || area_is_free( the_first_free_area )
+  );
+  let area = the_first_free_area;
+  let area_sz = 0;
+  let previous_area = 0;
+  let limit = 100000;
+  while( area ){
+
+    // Never loop forever
+    if( limit-- == 0 ){
+      allocate_area_entered = 0;
+      // ToDo: this does happen, but it's not clear why
+      FATAL( "Infinite loop in allocate_area" );
+      return 0;
+    }
+
+    alloc_de&&mand( area_is_free( area ) );
+    area_sz = area_size( area );
+
+    if( area_sz < adjusted_size ){
+      // The area is too small, try next one
+      previous_area = area;
+      area = area_next( area );
+      // Detect loop in list
+      if( area == the_first_free_area ){
+        debugger;
+        return 0;
+      }
+      continue;
+    }
+
+    // The area is big enough, use it
+    if( previous_area ){
+      // The area is not the first one, remove it from the list
+      alloc_de&&mand_eq( area_next( previous_area ), area );
+      area_set_next( previous_area, area_next( area ) );
+    }else{
+      // The area is the first one, update the list
+      alloc_de&&mand_eq( area, the_first_free_area );
+      the_first_free_area = area_next( area );
+      alloc_de&&mand(
+        the_first_free_area == 0 || area_is_free( the_first_free_area )
+      );
+    }
+
+    // Break big area and release extra space
+    let remaining_size = area_sz - adjusted_size;
+
+    // Only split if the remaining area is big enough for the smallest payload
+    if( remaining_size > 2 * size_of_cell ){
+      let remaining_area = area + to_cell( adjusted_size );
+      area_set_size( remaining_area, remaining_size );
+      // The remaining area becomes the new first free area
+      area_turn_free( remaining_area, the_first_free_area );
+      if( the_first_free_area ){
+        alloc_de&&mand( area_is_free( the_first_free_area ) );
+        area_set_next( remaining_area, the_first_free_area );
+      }
+      the_first_free_area = remaining_area;
+      alloc_de&&mand( area_is_free( remaining_area ) );
+
+    }else{
+      // The area is too small to split, use it all
+      adjusted_size = area_sz;
+    }
+
+    // Mark the found free area as busy, for the requested size + the headers
+    area_turn_busy( area, sz + 2 * size_of_cell );
+
+    alloc_de&&mand( area_is_busy(    area ) );
+    alloc_de&&mand( !area_is_shared( area ) );
+    alloc_de&&mand_neq( area, the_first_free_area );
+    alloc_de&&mand(
+      the_first_free_area == 0 || area_is_free( the_first_free_area )
+    );
+
+    allocate_area_entered = 0;
+    stat_allocated_bytes += adjusted_size;
+    stat_allocated_areas += 1;
+    return area;
+
+  }
+
+  // If nothing was found, allocate more memory for the heap and retry
+  alloc_de&&mand(
+    the_first_free_area == 0 || area_is_free( the_first_free_area )
+  );
+
+  // Add some extra cells to avoid too many small allocations
+  let extra_cells = 128;
+
+  // Don't forget the cell for the refcount and size headers
+  let needed_cells = to_cell( adjusted_size ) + extra_cells + 2;
+
+  const cells = allocate_cells( needed_cells );
+  alloc_de&&mand( cells + needed_cells * ONE <= the_next_free_cell );
+
+  alloc_de&&mand(
+    the_first_free_area == 0 || area_is_free( the_first_free_area )
+  );
+
+  // Skip the refcount and size headers future headers
+  area = cells + 2 * ONE;
+
+  // Pretend it is a busy area and then free it to add it to the heap
+  area_init_busy( area, needed_cells * size_of_cell );
+  alloc_de&&mand( area_is_busy( area ) );
+  area_free( area );
+
+  // Retry the allocation, it should work now
+  allocate_area_entered = 0;
+  const allocated_area = allocate_area( sz );
+
+  // The result should be the newly added area
+  alloc_de&&mand_eq( allocated_area, area );
+  alloc_de&&mand_eq(
+    area + to_cell( adjusted_size ),
+    the_first_free_area
+  );
+
+  // The new first free area should contain the extra cells
+  alloc_de&&mand_eq(
+    area_payload_size( the_first_free_area ),
+    extra_cells * size_of_cell
+  );
+
+  // Defensive
+  alloc_de&&mand(
+    the_first_free_area == 0 || area_is_free( the_first_free_area )
+  );
+
+  stat_allocated_bytes += adjusted_size;
+  stat_allocated_areas += 1;
+  return allocated_area;
+
+}
+
+
+function resize_area( area : Area, sz : Size ) : Area {
+  alloc_de&&mand( area_is_busy( area ) );
+  let ii = area_size( area );
+  if( sz <= ii ){
+    // ToDo: should split the area and free the extra space
+    return area;
+  }
+  const new_mem = allocate_area( sz );
+  while( true ){
+    ii -= size_of_cell;
+    // ToDo: should copy cell if previous area is referenced somewhere?
+    alloc_de&&mand( area_ref_count( area ) <= 1 );
+    move_cell( area + ii * size_of_cell, new_mem + ii * size_of_cell );
+    if( ii == 0 )break;
+  }
+  area_free( area );
+  return new_mem;
+}
+
+
+function area_free( area : Area ){
+
+  // Void is void is void
+  if( area == 0 ){
+    return;
+  }
+
+  if( area == the_empty_lean ){
+    return;
+  }
+
+  alloc_de&&mand( area_is_busy( area ) );
+  const old_count = area_ref_count( area );
+
+  // Just decrement the reference counter if it's not the last reference
+  if( old_count != 1 ){
+    area_set_ref_count( area, old_count - 1 );
+    return;
+  }
+
+  // The whole area should be full of zeros, ie cleared
+  if( de ){
+    const capacity = area_length( area );
+    let ii;
+    for( ii = 0 ; ii < capacity ; ii++ ){
+      mand_empty_cell( area + ii * ONE );
+    }
+  }
+
+  // Add to a "per length" free list if small enough area
+  const size = area_size( area );
+  if( size < 10 * size_of_cell ){
+    area_turn_free( area, all_free_lists_by_area_length[ to_cell( size ) ] );
+    all_free_lists_by_area_length[ to_cell( size ) ] = area;
+    // ToDo: this can degenerate when too many small areas are unused.
+    // I should from time to time empty the free lists and add areas to the
+    // global pool, the older areas first to maximize locality.
+    // That is what collect_garbage() does, supposedly.
+    // ToDo: when is collect_garbage() called?
+    return;
+  }
+
+  // Add area in free list
+  // ToDo: insert area in sorted list instead of at the start?
+  // I should do this to coalesce adjacent free areas to avoid fragmentation
+  area_turn_free( area, the_first_free_area );
+  alloc_de&&mand(
+    the_first_free_area == 0 || area_is_free( the_first_free_area )
+  );
+  the_first_free_area = area;
+  alloc_de&&mand( area_is_free( area ) );
+}
+
+
+function area_lock( area : Area ){
+// Increment reference counter of bytes area allocated using allocate_bytes()
+  // When area_free() is called, that counter is decremented and the area
+  // is actually freed only when it reaches zero.
+
+  // Void is void is void
+  if( area == 0 ){
+    return;
+  }
+
+  alloc_de&&mand( area_is_busy( area ) );
+
+  // Increment reference counter
+  const old_count = area_ref_count( area );
+  const new_count = old_count + 1;
+  area_set_ref_count( area, new_count );
+
+}
+
+
+function area_is_shared( area : Area ) : boolean {
+  // When the last reference disappears the bytes must be freed
+  // To be called by clear_cell() only, on non zero adresses
+
+  // Void is void is void
+  if( area == 0 )return true;
+
+  alloc_de&&mand( area_is_busy( area ) );
+
+  return area_ref_count( area ) != 1;
+
+}
+
+// To dectect loops in list of free areas, defensive
+let area_is_safe_entered = 0;
+let area_is_safe_entered_nth = 0;
+
+function area_is_safe( area : Cell ) : boolean {
+// Try to determine if the address points to a valid area
+
+  if( !alloc_de )return true;
+
+  // This helps to debug unbalanced calls to area_lock() and area_free().
+  // zero is ok for both reference counter & size because it never happens
+  if( area == 0 ){
+    return true;
+  }
+
+  const header = area_to_header( area );
+
+  // The address must be in the heap
+  if( header < the_very_first_cell && !bootstrapping ){
+    FATAL( S()+ "Invalid area, too low, " + C( area ) );
+    return false;
+  }
+  if( header >= the_next_free_cell ){
+    FATAL( S()+ "Invalid area, too high, " + C( area ) );
+    return false;
+  }
+
+  // The address must be aligned on a cell boundary
+  if( area % ( size_of_cell / size_of_word ) != 0 ){
+    FATAL( S()+ "Invalid area, not aligned on a cell boundary, " + C( area ) );
+    return false;
+  }
+
+  // When busy
+  if( name( header ) == tag_dynamic_ref_count ){
+
+    // The reference counter must be an integer
+    alloc_de&&mand( type( header ) == type_integer );
+
+    // The reference counter must be non zero when busy
+    const reference_counter = value( header );
+    if( reference_counter == 0 ){
+      FATAL( S()
+        + "Invalid area, 0 reference counter, " + N( reference_counter )
+        + " " + N( area )
+      );
+      return false;
+    }
+
+    // When one of the 4 most significant bits is set, that's a type id probably
+    if( reference_counter >= ( 1 << 28 ) ){
+      // It also could be a very big reference counter, but that's unlikely
+      const type = unpack_type( reference_counter );
+      FATAL( S()+ "Invalid area, bad counter, " + N( type ) + " " + C( area ) );
+      return false;
+    }
+
+  }else if( name( header ) == tag_dynamic_next_area ){
+
+    // The value should be the integer address of a next free area, or zero
+    alloc_de&&mand( type( header ) == type_integer );
+    if( area_is_safe_entered == area ){
+      debugger;
+      area_is_safe_entered = 0;
+      area_is_safe_entered_nth = 0;
+      FATAL( S()+ "Invalid free area, loop, " + C( area ) );
+      return false;
+    }
+
+
+    // Limit the amount of recursion when walking the list of free areas
+    // ToDo: the limit should be configurable at compile time. On some CPUs it
+    // bombs at 377
+    if( area_is_safe_entered_nth > 10 ){
+      // Just walk the list instead
+      let nxt = area;
+      while( true ){
+        nxt = area_to_header( value( nxt ) );
+        if( nxt == -2 )break;
+        if( nxt == area_is_safe_entered ){
+          area_is_safe_entered = 0;
+          area_is_safe_entered_nth = 0;
+          FATAL( S()+ "Invalid free area, loop, " + C( area ) );
+          return false;
+        }
+      }
+      return true;
+    }
+
+    const next = value( header );
+
+    if( next != 0 ){
+      if( area_is_safe_entered == 0 ){
+        area_is_safe_entered = area;
+      }
+      area_is_safe_entered_nth++;
+      if( !area_is_safe( next ) ){
+        area_is_safe_entered = 0;
+        area_is_safe_entered_nth = 0;
+        FATAL( S()+ "Invalid area, bad next, " + C( next ) + " " + C( area ) );
+        return false;
+      }
+      area_is_safe_entered_nth--;
+      if( area_is_safe_entered == area || area_is_safe_entered_nth <= 0 ){
+        area_is_safe_entered = 0;
+        area_is_safe_entered_nth = 0;
+      }
+    }
+
+  }else{
+    FATAL( S()+ "Invalid area, bad header, " + N( header ) + " " + C( area ) );
+    return false;
+  }
+
+  // The second header must be named tag_dynamic_area_size
+  if( name( header + 1 * ONE ) != tag_dynamic_area_size ){
+    FATAL( S()+ "Invalid area, bad size header, " + C( area ) );
+    return false;
+  }
+
+  // It must be an integer
+  if( type( header + 1 * ONE ) != type_integer ){
+    FATAL( S()+ "Invalid area, bad size header type, " + C( area ) );
+    return false;
+  }
+
+  // The size must be bigger than the size of the headers
+  const size = value( header + 1 * ONE );
+  if( size
+    /**/ < // empty payload areas are oids for proxied objects
+    //c/ <=
+    2 * size_of_cell
+  ){
+    FATAL( S()+ "Invalid area, too small, " + N( size ) + " " + C( area ) );
+    return false;
+  }
+
+  // The whole area must be in the heap
+  if( header + to_cell( size ) > the_next_free_cell && !bootstrapping ){
+    FATAL( S()+
+      "Invalid area, out of heap, size " + N( size ) + ", " + C( area )
+    );
+    return false;
+  }
+
+  // When one of the 4 most significant bits is set, that's a type id probably
+  if( size >= ( 1 << 28 ) ){
+    const type = unpack_type( size );
+    FATAL( S()+ "Invalid counter for area? " + N( type ) + " " + C( area ) );
+    return false;
+  }
+
+  // The size must be a multiple of the size of a cell
+  if( size % ( size_of_cell / size_of_word ) != 0 ){
+    FATAL( S()+ "Invalid size for area " + N( size ) + " " + C( area ) );
+    return false;
+  }
+
+  // The size must be smaller than the heap size
+  if( !bootstrapping
+  && size > ( the_next_free_cell - the_very_first_cell ) * size_of_cell
+  ){
+    FATAL( S()+ "Invalid size for area " + N( size ) + " " + C( area ) );
+    return false;
+  }
+
+  return true;
+}
+
+
+function decrement_object_ref_count( area : Area ){
+  area_free( area );
+}
+
+
+function area_test_suite(){
+  // This was generated by copilot, it is very insufficent
+  const the_area = allocate_area( 10 );
+  de&&mand( area_is_busy( the_area ) );
+  area_free( the_area );
+  de&&mand( area_is_free( the_area ) );
+  const the_area2 = allocate_area( 10 );
+  de&&mand( area_is_busy( the_area2 ) );
+  area_lock( the_area2 );
+  de&&mand( area_is_busy( the_area2 ) );
+  area_free( the_area2 );
+  de&&mand( area_is_busy( the_area2 ) );
+  area_free( the_area2 );
+  de&&mand( area_is_free( the_area ) );
+}
+
+
+/* ------------------------------------------------------------------------
+ *
+ */
 
 
 function mand_empty_cell( c : Cell ) : boolean {
@@ -2814,8 +4196,8 @@ function mand_empty_cell( c : Cell ) : boolean {
 // Not on metal
 /*!c{*/
 
-function set( c : Cell, t : Type, n : Name, v : Value ) : void {
-  de&&mand( is_valid_tag( n ) );
+function set( c : Cell, t : Type, n : Tag, v : Value ) : void {
+  de&&mand( tag_is_valid( n ) );
   init_cell( c, v, pack( t, n ) );
   if( mem_de ){
     de&&mand_eq( type(  c ), t );
@@ -2830,7 +4212,6 @@ function set_tos( t : Type, n : Name, v : Value ) : void {
 
 /*}{
 
-#define set( c, t, n, v )  init_cell( c, v, pack( t, n ) )
 #define set_tos( t, n, v ) set( TOS, t, n, v )
 
 }*/
@@ -2838,15 +4219,19 @@ function set_tos( t : Type, n : Name, v : Value ) : void {
 
 function copy_cell( source : Cell, destination : Cell ){
 // Copy the content of a cell, handling references.
+
   clear( destination );
+
   init_copy_cell( destination, source );
+
   if( mem_de ){
     de&&mand_eq( type(  destination ), type(  source ) );
     de&&mand_eq( name(  destination ), name(  source ) );
     de&&mand_eq( value( destination ), value( source ) );
   }
+
   // If the source was a reference, increment the reference counter
-  if( needs_clear( source ) ){
+  if( is_sharable( source ) ){
     // This would not be necessary if there were a classical GC.
     // However, I may implement some destructor logic when an object
     // goes out of scope and it sometimes make sense to have that logic
@@ -2856,7 +4241,7 @@ function copy_cell( source : Cell, destination : Cell ){
     // ToDo: make sure copy cell is called when a destructor could be
     // executed without corrupting anything. Alternatively the queue of
     // destructors could be processed by return.
-    increment_object_ref_count( value( source ) );
+    area_lock( value( source ) );
   }
 }
 
@@ -2893,15 +4278,15 @@ function raw_copy_cell( source : Cell, destination : Cell ){
 
 
 function reset_cell_value( c : Cell ){
-  de&&mand( ! needs_clear( c ) );
+  de&&mand( ! is_sharable( c ) );
   reset_value( c );
 }
 
 
 function clear( c : Cell ){
-  // If reference, decrement reference counter and free if needed
 
-  if( ! needs_clear( c ) ){
+  // If value semantics, just reset the cell
+  if( ! is_sharable( c ) ){
     if( de ){
       if( type(  c ) == type_tag
       &&  value( c ) == c
@@ -2914,17 +4299,17 @@ function clear( c : Cell ){
     return;
   }
 
-  // Cell is either a reference or a proxy
-  de&&mand( needs_clear( c ) );
+  // Cell is either a string, a reference or a proxy
+  de&&mand( is_sharable( c ) );
 
-  const reference = value( c );
-  const typ       = type( c );
+  const area = value( c );
+  const typ  = type( c );
 
   reset( c );
 
   // Both references and proxies have a reference counter
-  if( !is_last_reference_to_area( reference ) ){
-    decrement_object_ref_count( reference );
+  if( area_is_shared( area ) ){
+    area_free( area );
     return;
   }
 
@@ -2932,30 +4317,59 @@ function clear( c : Cell ){
 
   // If object, first clear all it's attributes
   if( typ == type_reference ){
-    // ToDo: refactor this code with free_object()
-    let ptr = reference;
+    // ToDo: refactor this code with object_free()
+    let ptr = area;
     // Add a level of indirection if object is extensible
     if( type( c ) == type_reference ){
       ptr = get_reference( ptr );
-      reset( reference );
-      free_area( reference );
+      reset( area );
+      area_free( area );
     }
     // ToDo: avoid recursion?
+    // This can take a long time, not real time safe
+    // A solution could be to "queue" the object and free it later.
+    // This would destroy the "destructor" logic however.
+    // Maybe the destructor logic could be implemented in a different way.
+    // For example with a flag about the semantic of the object.
+    // This could be a "per class" attribute.
+    // For the case where the cleaning is queued, there are issues
+    // with the size of the queue and some incremental tree walking logic
+    // may be needed to avoid the queue to grow too much.
+    // Overall, this renforces the idea that some "background" logic
+    // should be implemented, for various reasons including memory
+    // management, event dispatching, interruptions handling, timers,
+    // etc. This would be a good reason to implement a new version
+    // of the LinkOS kernel, l9.
+    // Note: there is plenty of room to add flags to references because
+    // the reference itself is a 28 bits address. The 4 bits left
+    // could be used for flags.
+    // This could be used to increase the number of types with a
+    // distinction between "by value" and "by reference" types.
+    // Among the "by reference" types, there could be a distinction
+    // between "by reference with value semantics" and "by reference
+    // with reference semantics". The current implementation of the
+    // text type is an example of "by reference with value semantics".
+    // There is a need for a generic array type, which would be like
+    // text but with arbitrary elements, either of the same type
+    // or heterogeneous. Much like a StringView makes sense for text,
+    // an ArrayView would make sense for arrays. This would also make
+    // sense for lists or any ordered collection.
+
     const length = object_length( ptr );
     let ii;
     for( ii = 0 ; ii < length ; ii++ ){
       clear( ptr + ii * ONE );
     }
-    free_area( ptr );
+    area_free( ptr );
 
   // If text, free the text
   }else if( typ == type_text ){
-    free_text( reference );
+    free_text( area );
 
   // Else it is a proxy, free the proxy
   }else{
     de&&mand_eq( typ, type_proxy );
-    free_proxy( reference );
+    free_proxy( area );
   }
 }
 
@@ -3046,11 +4460,11 @@ function init_symbols() : Index {
   // See tables below, from "void" to "stack", 21 symbols
   all_symbol_cells_length = 21;
 
-  // This 512 should be configurable?
+  // This should be configurable?
   // ToDo: test with a smaller value
-  all_symbol_cells_capacity    = 512;
-  //c/ all_primitives_capacity  = 512;
-  //c/ all_definitions_capacity = 512;
+  all_symbol_cells_capacity = 2048;
+  //c/ all_primitives_capacity  = all_symbol_cells_capacity;
+  //c/ all_definitions_capacity = all_symbol_cells_capacity;
 
   // ToDo: turn this into a normal stack object asap
   // This becomes possible later on, when the area allocator is ready
@@ -3087,9 +4501,9 @@ function init_symbols() : Index {
       "invalid3",   // 13
       "invalid4",   // 14
       "invalid5",   // 15
-      "_dynrc",     // 16 - dynamic area allocator related
-      "_dynxt",     // 17
-      "_dynsz",     // 18
+      "_dynsz",     // 16 - dynamic area allocator related
+      "_dynrc",     // 17 - dynamic area allocator related
+      "_dynxt",     // 18 - dynamic area allocator related
       "true",       // 19 - misc
       "stack",      // 20
     ];
@@ -3101,26 +4515,27 @@ function init_symbols() : Index {
     // Alternatively I could allocate within the symbol table or in a dyn area
     //all_symbol_texts
     //= (char**) calloc( all_symbol_cells_capacity, sizeof( char* ) );
+    // ToDo: DRY
     all_symbol_texts = new Text[ all_symbol_cells_capacity ];
     all_symbol_texts[  0 ] = "void";
     all_symbol_texts[  1 ] = "boolean";
     all_symbol_texts[  2 ] = "tag";
     all_symbol_texts[  3 ] = "integer";
-    all_symbol_texts[  4 ] = "reference";
-    all_symbol_texts[  5 ] = "proxy";
-    all_symbol_texts[  6 ] = "string";
-    all_symbol_texts[  7 ] = "verb";
-    all_symbol_texts[  8 ] = "flow";
-    all_symbol_texts[  9 ] = "list";
-    all_symbol_texts[ 10 ] = "invalid";
-    all_symbol_texts[ 11 ] = "invalid1";
+    all_symbol_texts[  4 ] = "verb";
+    all_symbol_texts[  5 ] = "float";
+    all_symbol_texts[  6 ] = "reference";
+    all_symbol_texts[  7 ] = "proxy";
+    all_symbol_texts[  8 ] = "string";
+    all_symbol_texts[  9 ] = "flow";
+    all_symbol_texts[ 10 ] = "list";
+    all_symbol_texts[ 11 ] = "invalid";
     all_symbol_texts[ 12 ] = "invalid2";
     all_symbol_texts[ 13 ] = "invalid3";
     all_symbol_texts[ 14 ] = "invalid4";
     all_symbol_texts[ 15 ] = "invalid5";
-    all_symbol_texts[ 16 ] = "_dynrc";
-    all_symbol_texts[ 17 ] = "_dynxt";
-    all_symbol_texts[ 18 ] = "_dynsz";
+    all_symbol_texts[ 16 ] = "_dynsz";
+    all_symbol_texts[ 17 ] = "_dynrc";
+    all_symbol_texts[ 18 ] = "_dynxt";
     all_symbol_texts[ 19 ] = "true";
     all_symbol_texts[ 20 ] = "stack";
     all_primitives = (Primitive*) calloc(
@@ -3133,13 +4548,17 @@ function init_symbols() : Index {
     );
   }*/
 
-  tag_list = tag( "list" );
+  // tag_list = tag( "list" );
+  // Can't use tag() yet, because of LeanString. Hence it is hardcoded
+  de&&mand_eq( tag_list, 10 );
   return 1;
 }
 
 
 function upgrade_symbols(){
 // Upgrade the global arrays of all symbols into real stack objects
+
+  // ToDo: not called yet
 
   // First the tag to text table
   const new_symbols = stack_preallocate( all_symbol_cells_length );
@@ -3180,7 +4599,7 @@ function upgrade_symbols(){
   for( ii = 0 ; ii < all_symbol_cells_capacity ; ii++ ){
     clear( all_symbol_cells + ii * ONE );
   }
-  free_cells( all_symbol_cells, all_symbol_cells_capacity );
+  cells_free( all_symbol_cells, all_symbol_cells_capacity );
   // C++ version needs to free the other arrays too
   /*c{
     delete all_symbol_texts;
@@ -3215,17 +4634,13 @@ const tag_proxy     = tag( "proxy" );
 const tag_text      = tag( "text" );
 const tag_flow      = tag( "flow" );
 const tag_invalid   = tag( "invalid" );
-const tag_true      = tag( "true" );
-const tag_dynrc     = tag( "_dynrc" );
-const tag_dynxt     = tag( "_dynxt" );
-const tag_dynsz     = tag( "_dynsz" );
 const tag_stack     = tag( "stack" );
 
 
 function tag_to_text( t : Tag ) : Text {
 // Return the string value of a tag
-  de&&mand( is_valid_tag( t ) );
-  if( ! is_valid_tag( t ) ){
+  de&&mand( tag_is_valid( t ) );
+  if( ! tag_is_valid( t ) ){
     return S()+ "invalid-tag-" + C( t );
   }
   return all_symbol_texts[ t ];
@@ -3240,21 +4655,28 @@ function symbol_to_text( c : Cell ) : Text {
 }
 
 
-function symbol_lookup( name : Text ) : Index {
+function symbol_lookup( name : TxtC ) : Index {
 // Return the entry number of a symbol, or 0 if not found
   // Starting from the end
   let ii = all_symbol_cells_length;
   while( --ii ){
+    /*!c{*/
     if( teq( symbol_to_text( all_symbol_cells + ii * ONE ), name ) ){
       return ii;
     }
+    /*}*/
+    /*c{
+      if( strcmp( all_symbol_texts[ ii ].c_str(), name ) == 0 ){
+        return ii;
+      }
+    }*/
   }
   return 0;
   // ToDo: speed this up with a hash table
 }
 
 
-function register_symbol( name : Text ) : Index {
+function register_symbol( name : TxtC ) : Index {
 // Register a symbol and return its entry number
 
   const index = symbol_lookup( name );
@@ -3274,7 +4696,7 @@ function register_symbol( name : Text ) : Index {
       new_cells,
       all_symbol_cells_capacity
     );
-    free_cells( all_symbol_cells, all_symbol_cells_capacity );
+    cells_free( all_symbol_cells, all_symbol_cells_capacity );
     all_symbol_cells          = new_cells;
     all_symbol_cells_capacity = new_capacity;
 
@@ -3297,8 +4719,7 @@ function register_symbol( name : Text ) : Index {
   }
 
   // Add the name to the arrays, as a tag and as a string
-  /**/ all_symbol_texts[ all_symbol_cells_length ] = name;
-  //c/ all_symbol_texts[ all_symbol_cells_length ] = _strdup( name.c_str() );
+  all_symbol_texts[ all_symbol_cells_length ] = name;
   set(
     all_symbol_cells + all_symbol_cells_length * ONE,
     type_tag,
@@ -3418,6 +4839,9 @@ function definition_exists( t : Tag ) : boolean {
   return d ? true : false;
 }
 
+// Now that the symbol table is initialized, that ends phase 1 of the boot
+let init_area_allocator_done = init_area_allocator();
+
 
 /* ---------------------------------------------------------------------------
  *  Stacks
@@ -3433,44 +4857,44 @@ function definition_exists( t : Tag ) : boolean {
  *  In C++, there is a shadow array of pointers to LeanString objects.
  */
 
-function stack_allocate( l : Length ) : Cell {
+function stack_allocate( len : Length ) : Cell {
 // Allocate a stack of length l
   // First cell holds the length of the stack and it's class name
-  const a = allocate_area( ( l + 1 ) * size_of_cell );
+  const area = allocate_area( ( len + 1 ) * size_of_cell );
   // If stack is extensible, ie has an initial length of 0
-  if( l == 0 ){
+  if( len == 0 ){
     // Then first cell is a reference to some other stack that may change
-    set( a, type_reference, tag_stack, stack_allocate( 1 ) ); // one cell
+    set( area, type_reference, tag_stack, stack_allocate( len ) ); // one cell
   // If stack isn't extensible, then first cell is the length of the stack
   }else{
-    set( a, type_integer, tag_stack, 0 );
-    de&&mand_eq( stack_length( a ), 0 );
+    set( area, type_integer, tag_stack, 0 );
+    de&&mand_eq( stack_length( area ), 0 );
   }
-  de&&mand_eq( stack_length( a ), 0 );
+  de&&mand_eq( stack_length( area ), 0 );
   // ToDo: should return a + ONE maybe, ie skip the header first cell?
-  return a;
+  return area;
 }
 
 
-function stack_preallocate( l : Length ) : Cell {
+function stack_preallocate( len : Length ) : Cell {
 // Allocate an extensible stack with an initial capacity
   const a = allocate_area( 1 * size_of_cell );
-  set( a, type_reference, tag_stack, stack_allocate( l ) );
+  set( a, type_reference, tag_stack, stack_allocate( len ) );
   de&&mand_eq( stack_length( a ), 0 );
   return a;
 }
 
 
-function stack_clear( s : Cell ){
+function stack_clear( stk : Area ){
 // Empty the entire stack, don't deallocate it however
   let ptr;
   let len;
   let ii;
   // Dereference if stack is extended
-  if( stack_is_extended( s ) ){
-    ptr = value( s );
+  if( stack_is_extended( stk ) ){
+    ptr = value( stk );
   }else{
-    ptr = s;
+    ptr = stk;
   }
   // First cell is the length of the stack
   de&&mand_cell_type( ptr, type_integer );
@@ -3482,231 +4906,231 @@ function stack_clear( s : Cell ){
   // Set length to 0
   de&&mand_cell_type( ptr, type_integer );
   set_value( ptr, 0 );
-  de&&mand_eq( stack_length( s ), 0 );
+  de&&mand_eq( stack_length( stk ), 0 );
 }
 
 
-function stack_free( s : Cell ) : void {
+function stack_free( stk : Area ) : void {
 // Free a stack
   // Clear all the cells in the stack
-  stack_clear( s );
+  stack_clear( stk );
   let ptr;
   // Dereference if stack is extended
-  if( stack_is_extended( s ) ){
-    ptr = value( s );
+  if( stack_is_extended( stk ) ){
+    ptr = value( stk );
     // Check that length is 0
     de&&mand_cell_type( ptr, type_integer );
     de&&mand_eq( value( ptr ), 0 );
     reset( ptr );
-    free_area( ptr );
+    area_free( ptr );
   }else{
-    de&&mand_cell_type( s, type_integer );
-    de&&mand_eq( value( s ), 0 );
+    de&&mand_cell_type( stk, type_integer );
+    de&&mand_eq( value( stk ), 0 );
   }
-  reset( s );
-  free_area( s );
+  reset( stk );
+  area_free( stk );
 }
 
 
-function stack_capacity( s : Cell ) : Length {
+function stack_capacity( stk : Area ) : Length {
 // Return the capacity of a stack
   // The capacity does not include the first cell that holds the length itself
-  if( stack_is_extended( s ) ){
-    return area_capacity( value( s ) ) - 1;
+  if( stack_is_extended( stk ) ){
+    return area_length( value( stk ) ) - 1;
   }else{
-    return area_capacity( s ) - 1;
+    return area_length( stk ) - 1;
   }
 }
 
 
-function stack_length( s : Cell ) : Length {
+function stack_length( stk : Area ) : Length {
 // Return the length of a stack, ie the number of attributes
   // This does not include the first cell that holds the length itself
-  let l;
-  if( stack_is_extended( s ) ){
-    de&&mand_cell_type( value( s ), type_integer );
-    l = value( value( s ) );
+  let len;
+  if( stack_is_extended( stk ) ){
+    de&&mand_cell_type( value( stk ), type_integer );
+    len = value( value( stk ) );
   }else{
-    de&&mand_cell_type( s, type_integer );
-    l = value( s );
+    de&&mand_cell_type( stk, type_integer );
+    len = value( stk );
   }
-  de&&mand( l >= 0 );
-  return l;
+  de&&mand( len >= 0 );
+  return len;
 }
 
 
-function stack_is_empty( s : Cell ) : boolean {
+function stack_is_empty( stk : Area ) : boolean {
 // Return true if the stack is empty
-  return stack_length( s ) == 0;
+  return stack_length( stk ) == 0;
 }
 
 
-function stack_is_not_empty( s : Cell ) : boolean {
+function stack_is_not_empty( stk : Area ) : boolean {
 // Return true if the stack is not empty
-  return stack_length( s ) != 0;
+  return stack_length( stk ) != 0;
 }
 
 
-function stack_set_length( s : Cell, l : Length ){
+function stack_set_length( stk : Area, len : Length ){
 // Set the length of a stack
   // ToDo: what about overflow?
-  if( stack_is_extended( s ) ){
-    set_value( value( s ), l );
+  if( stack_is_extended( stk ) ){
+    set_value( value( stk ), len );
   }else{
-    set_value( s, l );
+    set_value( stk, len );
   }
 }
 
 
-function stack_push( s : Cell, c : Cell ){
+function stack_push( stk : Area, c : Cell ){
 // Push a cell on a stack, the source cell gets cleared
-  const l = stack_length( s );
-  stack_put( s, l, c );
-  de&&mand_eq( stack_length( s ), l + 1 );
+  const len = stack_length( stk );
+  stack_put( stk, len, c );
+  de&&mand_eq( stack_length( stk ), len + 1 );
 }
 
 
-function stack_pushes( s : Cell, c : Cell, l : Length ){
+function stack_pushes( stk : Area, c : Cell, len : Length ){
 // Push an array of cells on a stack, the source cells get cleared
   let ii;
-  for( ii = 0 ; ii < l ; ii++ ){
-    stack_push( s, c + ii * ONE );
+  for( ii = 0 ; ii < len ; ii++ ){
+    stack_push( stk, c + ii * ONE );
   }
 }
 
 
-function stack_push_copy( s : Cell, c : Cell ){
+function stack_push_copy( stk : Area, c : Cell ){
 // Push a cell on a stack, the source cell is not cleared
-  const l = stack_length( s );
-  stack_put_copy( s, l, c );
-  de&&mand_eq( stack_length( s ), l + 1 );
+  const len = stack_length( stk );
+  stack_put_copy( stk, len, c );
+  de&&mand_eq( stack_length( stk ), len + 1 );
 }
 
 
-function stack_push_copies( s : Cell, c : Cell, l : Length ){
+function stack_push_copies( stk : Area, c : Cell, len : Length ){
 // Push an array of cells on a stack, the source cells are not cleared
   // ToDo: optimize this
   let ii;
-  for( ii = 0 ; ii < l ; ii++ ){
-    stack_push_copy( s, c + ii * ONE );
+  for( ii = 0 ; ii < len ; ii++ ){
+    stack_push_copy( stk, c + ii * ONE );
   }
 }
 
 
-function stack_pop( s : Cell ) : Cell {
+function stack_pop( stk : Area ) : Cell {
 // Pop a cell from a stack, just returning it's address
-  const i = stack_length( s ) - 1;
+  const i = stack_length( stk ) - 1;
   if( check_de && i < 0 ){
     FATAL( "stack_pop: stack is empty" );
   }
-  const c = stack_at( s, i );
-  stack_set_length( s, i );
+  const c = stack_at( stk, i );
+  stack_set_length( stk, i );
   return c;
 }
 
 
-function stack_pop_nice( s : Cell ) : Cell {
+function stack_pop_nice( stk : Area ) : Cell {
 // Pop a cell from a stack, just returning it's address, 0 if empty
-  const i = stack_length( s ) - 1;
+  const i = stack_length( stk ) - 1;
   if( check_de && i < 0 ){
     return 0;
   }
-  const c = stack_at( s, i );
-  stack_set_length( s, i );
+  const c = stack_at( stk, i );
+  stack_set_length( stk, i );
   return c;
 }
 
 
-function stack_peek( s : Cell ) : Cell {
+function stack_peek( stk : Area ) : Cell {
 // Peek at the top of a stack, ie the last cell
   let ptr;
-  if( stack_is_extended( s ) ){
-    ptr = value( s );
+  if( stack_is_extended( stk ) ){
+    ptr = value( stk );
   }else{
-    ptr = s;
+    ptr = stk;
   }
   // base + length works because cell 0 is the length
   return ptr + value( ptr ) * ONE;
 }
 
 
-function stack_dup( s : Cell ) : Cell {
+function stack_dup( stk : Area ) : Cell {
 // Duplicate the top of a stack
-  const c = stack_peek( s );
-  stack_push_copy( s, c );
+  const c = stack_peek( stk );
+  stack_push_copy( stk, c );
   return c;
 }
 
 
-function stack_at( s : Cell, i : Index ) : Cell {
+function stack_at( stk : Area, i : Index ) : Cell {
 // Get the i-th cell from a stack
   let addr;
   // ToDo: handle negative indices?
   // Must be length 1 to hold item 0, hence the + 1
-  stack_extend( s, i + 1 );
-  if( stack_is_extended( s ) ){
-    addr = value( s ) + ( i + 1 ) * ONE;
+  stack_extend( stk, i + 1 );
+  if( stack_is_extended( stk ) ){
+    addr = value( stk ) + ( i + 1 ) * ONE;
   }else{
-    addr = s + ( i + 1 ) * ONE;
+    addr = stk + ( i + 1 ) * ONE;
   }
   return addr;
 }
 
 
-function stack_put( s : Cell, i : Index, c : Cell ){
+function stack_put( stk : Area, i : Index, src : Cell ){
 // Set the i-th cell from a stack, the source cell gets cleared
-  move_cell( c, stack_at( s, i ) );
+  move_cell( src, stack_at( stk, i ) );
 }
 
 
-function stack_put_copy( s : Cell, i : Index, c : Cell ){
+function stack_put_copy( stk : Area, i : Index, src : Cell ){
 // Set the i-th cell from a stack, the source cell is not cleared
-  copy_cell( c, stack_at( s, i ) );
+  copy_cell( src, stack_at( stk, i ) );
 }
 
 
-function stack_dump( s : Cell ) : Text {
+function stack_dump( stk : Area ) : Text {
 // Dump a stack
   // "[ ]" is the empty stack
-  const l = stack_length( s );
+  const len = stack_length( stk );
   let auto_r = S();
   // ToDo: a JSON style format, TLV probably
   auto_r += "[ ";
   let ii;
-  for( ii = 0 ; ii < l ; ii++ ){
-    auto_r += dump( stack_at( s, ii ) ) + " ";
+  for( ii = 0 ; ii < len ; ii++ ){
+    auto_r += dump( stack_at( stk, ii ) ) + " ";
   }
   auto_r += "]";
   return auto_r;
 }
 
 
-function stack_split_dump( s : Cell, nth : Index ) : Text {
+function stack_split_dump( stk : Area, nth : Index ) : Text {
 // Dump a stack, with a newline every nth item
   // "[ ]" is the empty stack
-  const l = stack_length( s );
+  const len = stack_length( stk );
   let auto_r = S();
   // ToDo: a JSON style format, TLV probably
   auto_r += "[ ";
   let ii;
-  for( ii = 0 ; ii < l ; ii++ ){
+  for( ii = 0 ; ii < len ; ii++ ){
     if( ii % nth == 0 ){
       auto_r += "\n";
     }
-    auto_r += short_dump( stack_at( s, ii ) ) + " ";
+    auto_r += short_dump( stack_at( stk, ii ) ) + " ";
   }
   auto_r += "]";
   return auto_r;
 }
 
 
-function stack_lookup_by_name( s : Cell, n : ConstText ) : Cell {
+function stack_lookup_by_name( stk : Area, n : ConstText ) : Cell {
 // Lookup a cell in a stack by name
-  const l = stack_length( s );
+  const len = stack_length( stk );
   // Starting from the end of the stack, look for the name
   let ii;
-  for( ii = l ; ii > 0 ; ii-- ){
-    const c = stack_at( s, ii - 1 );
+  for( ii = len ; ii > 0 ; ii-- ){
+    const c = stack_at( stk, ii - 1 );
     if( teq( n, tag_to_text( name( c ) ) ) ){
       return c;
     }
@@ -3716,13 +5140,13 @@ function stack_lookup_by_name( s : Cell, n : ConstText ) : Cell {
 }
 
 
-function stack_lookup_by_tag( s : Cell, tag : Tag ) : Cell {
+function stack_lookup_by_tag( stk : Area, tag : Tag ) : Cell {
 // Lookup a cell in a stack by tag
-  const l = stack_length( s );
+  const len = stack_length( stk );
   // Starting from the end of the stack, look for the name
   let ii;
-  for( ii = l ; ii > 0 ; ii-- ){
-    const c = stack_at( s, ii - 1 );
+  for( ii = len ; ii > 0 ; ii-- ){
+    const c = stack_at( stk, ii - 1 );
     if( tag == name( c ) ){
       return c;
     }
@@ -3732,16 +5156,16 @@ function stack_lookup_by_tag( s : Cell, tag : Tag ) : Cell {
 }
 
 
-function stack_update_by_name( s : Cell, n : ConstText ){
+function stack_update_by_name( stk : Area, n : ConstText ){
 // Update a cell using the tos cell, by name.
-  const l = stack_length( s );
+  const l = stack_length( stk );
   // Starting from the end of the stack, look for the name
   let ii;
   for( ii = l ; ii > 0 ; ii-- ){
-    const c = stack_at( s, ii - 1 );
+    const c = stack_at( stk, ii - 1 );
     if( teq( n, tag_to_text( name( c ) ) ) ){
-      stack_put( s, ii - 1, stack_peek( s ) );
-      stack_pop( s );
+      stack_put( stk, ii - 1, stack_peek( stk ) );
+      stack_pop( stk );
       return;
     }
   }
@@ -3752,16 +5176,16 @@ function stack_update_by_name( s : Cell, n : ConstText ){
 }
 
 
-function stack_update_by_value( s : Cell, c : Cell ){
+function stack_update_by_value( stk : Area, c : Cell ){
 // Update a cell using the tos cell, by value
-  const l = stack_length( s );
+  const len = stack_length( stk );
   // Starting from the end of the stack, look for the name
   let ii;
-  for( ii = l ; ii > 0 ; ii-- ){
-    const a = stack_at( s, ii - 1 );
+  for( ii = len ; ii > 0 ; ii-- ){
+    const a = stack_at( stk, ii - 1 );
     if( a == c ){
-      stack_put( s, ii - 1, stack_peek( s ) );
-      stack_pop( s );
+      stack_put( stk, ii - 1, stack_peek( stk ) );
+      stack_pop( stk );
       return;
     }
   }
@@ -3772,16 +5196,16 @@ function stack_update_by_value( s : Cell, c : Cell ){
 }
 
 
-function stack_update_by_tag( s : Cell, tag : Tag ){
+function stack_update_by_tag( stk : Area, tag : Tag ){
 // Update a cell using the tos cell, by tag
-  const l = stack_length( s );
+  const l = stack_length( stk );
   // Starting from the end of the stack, look for the name
   let ii;
   for( ii = l ; ii > 0 ; ii-- ){
-    const c = stack_at( s, ii - 1 );
+    const c = stack_at( stk, ii - 1 );
     if( tag == name( c ) ){
-      stack_put( s, ii - 1, stack_peek( s ) );
-      stack_pop( s );
+      stack_put( stk, ii - 1, stack_peek( stk ) );
+      stack_pop( stk );
       return;
     }
   }
@@ -3792,12 +5216,12 @@ function stack_update_by_tag( s : Cell, tag : Tag ){
 }
 
 
-function stack_contains_cell( s : Cell, c : Cell ) : boolean {
+function stack_contains_cell( stk : Area, c : Cell ) : boolean {
 // Check if a stack contains a cell
-  const l = stack_length( s );
-  let ii;
-  for( ii = 0 ; ii < l ; ii++ ){
-    const a = stack_at( s, ii );
+  const len = stack_length( stk );
+  let ii = len;
+  while( --ii >= 0 ){
+    const a = stack_at( stk, ii );
     if( a == c ){
       return true;
     }
@@ -3806,12 +5230,12 @@ function stack_contains_cell( s : Cell, c : Cell ) : boolean {
 }
 
 
-function stack_contains_name( s : Cell, n : Text ) : boolean {
+function stack_contains_name( stk : Area, n : ConstText ) : boolean {
 // Check if a stack contains a cell by name
-  const l = stack_length( s );
-  let ii;
-  for( ii = 0 ; ii < l ; ii++ ){
-    const c = stack_at( s, ii );
+  const len = stack_length( stk );
+  let ii = len;
+  while( --ii >= 0 ){
+    const c = stack_at( stk, ii );
     if( teq( n, tag_to_text( name( c ) ) ) ){
       return true;
     }
@@ -3820,12 +5244,12 @@ function stack_contains_name( s : Cell, n : Text ) : boolean {
 }
 
 
-function stack_contains_tag( s : Cell, tag : Tag ) : boolean {
+function stack_contains_tag( stk : Area, tag : Tag ) : boolean {
 // Check if a stack contains a cell by tag
-  const l = stack_length( s );
-  let ii;
-  for( ii = 0 ; ii < l ; ii++ ){
-    const c = stack_at( s, ii );
+  const len = stack_length( stk );
+  let ii = len;
+  while( --ii >= 0 ){
+    const c = stack_at( stk, ii );
     if( tag == name( c ) ){
       return true;
     }
@@ -3834,58 +5258,58 @@ function stack_contains_tag( s : Cell, tag : Tag ) : boolean {
 }
 
 
-function stack_resize( s : Cell, l : Length ) : Cell {
+function stack_resize( stk : Area, len : Length ) : Cell {
 // Return a copy of a stack with a new capacity, clear the old stack
-  const new_stack = stack_allocate( l );
-  let max = stack_length( s );
-  if( max > l ){
-    max = l;
+  const new_stack = stack_allocate( len );
+  let max = stack_length( stk );
+  if( max < len ){
+    max = len;
   }
   let ii;
   for( ii = 0 ; ii < max ; ii++ ){
-    move_cell( stack_at( s, ii ), stack_at( new_stack, ii ) );
+    move_cell( stack_at( stk, ii ), stack_at( new_stack, ii ) );
   }
-  stack_free( s );
+  stack_free( stk );
   stack_set_length( new_stack, max );
   return new_stack;
 }
 
 
-function stack_rebase( s : Cell ) : Cell {
+function stack_rebase( stk : Area ) : Cell {
 // Return a fixed size copy of a stack, clear the old stack
-  return stack_resize( s, stack_length( s ) );
+  return stack_resize( stk, stack_length( stk ) );
 }
 
 
-function stack_is_extended( s : Cell ) : boolean {
+function stack_is_extended( stk : Area ) : boolean {
 // Check if a stack is extended, ie extensible
-  return type( s ) == type_reference;
+  return type( stk ) == type_reference;
 }
 
 
-function stack_extend( s : Cell, l : Length ){
+function stack_extend( stk : Area, len : Length ){
 // Extend a stack with a new capacity if needed, clear the old stack
-  if( l <= stack_capacity( s ) ){
-    if( l > stack_length( s ) ){
-      stack_set_length( s, l );
+  if( len <= stack_capacity( stk ) ){
+    if( len > stack_length( stk ) ){
+      stack_set_length( stk, len );
     }
     return;
   }
-  if( ! stack_is_extended( s ) ){
+  if( ! stack_is_extended( stk ) ){
     FATAL( "Can't extend a non extensible stack" );
   }
-  const capacity = stack_capacity( s );
+  const capacity = stack_capacity( stk );
   let new_capacity = capacity;
-  while( new_capacity < l ){
+  while( new_capacity < len ){
     new_capacity = new_capacity * 2;
   }
-  const old_stack = value( s );
+  const old_stack = value( stk );
   const new_stack = stack_resize( old_stack, new_capacity );
   stack_free( old_stack );
-  set_value( s, new_stack );
-  de&&mand( stack_is_extended( s) );
-  if( l > stack_length( s ) ){
-    stack_set_length( s, l );
+  set_value( stk, new_stack );
+  de&&mand( stack_is_extended( stk) );
+  if( len > stack_length( stk ) ){
+    stack_set_length( stk, len );
   }
 }
 
@@ -3936,14 +5360,23 @@ function tag( tag : TxtC ) : Tag {
 
 function tag_exists( n : TxtC ) : boolean {
 // Return true if the tag singleton cell with the given name exists
-  return is_valid_tag( symbol_lookup( n ) );
+  return tag_is_valid( symbol_lookup( n ) );
 }
 
 
-function is_valid_tag( id : Tag ) : boolean {
+function tag_is_valid( id : Tag ) : boolean {
 // True if tag was internalized
   // <= vs < because register_symbol() calls this function before incrementing
-  return id >= 0 && id <= all_symbol_cells_length;
+  const is_valid = ( id >= 0 && id <= all_symbol_cells_length );
+  if( ! is_valid ){
+    debugger;
+    if( bootstrapping ){
+      return true;
+    }else{
+      return false;
+    }
+  }
+  return is_valid;
 }
 
 
@@ -3984,7 +5417,7 @@ function cell_integer( c : Cell ) : Value {
 
 
 /* -----------------------------------------------------------------------
- *  Float, type 4, 32 bits
+ *  Float, 32 bits
  *  ToDo: Double integers, 64 bits.
  *  ToDo: type_f64, type_bigint, type_f32
  */
@@ -4013,714 +5446,8 @@ function cell_float( c : Cell ) : Float {
 }
 
 
-
-/* ---------------------------------------------------------------------------
- *  Dynamic areas of cells.
- *  Dynamic memory allocation of cells in the heap.
- *  Bytes areas are allocated and freed using a reference counter.
- *  Each busy area has two header cells that contain the reference counter and
- *  a size. When the area is free, the first header links to the next free area.
- *  ToDo: should reuse the platform provided malloc/free to the extend
- *  it is possible?
- *  All ptr are to regular InoxCells, all sizes are number of bytes. The header
- *  is two cells long and is stored before the area.
- *  ToDo: size optimisation where name of ref counter also encodes the size.
- *  This would be usefull for small areas, boxed values and proxied objects.
- *  dynrc1 would mean one cell, ie 8 bytes + 8 bytes header. This
- *  is a total of 16 bytes versus the non optimized 24 bytes.
- */
-
-// The first cell of a busy header is the reference counter.
-const tag_dynamic_ref_count = tag( "_dynrc" );
-
-// When the area is freed, that header is overwritten with this tag.
-const tag_dynamic_next_area = tag( "_dynxt" );
-
-// The second cell of the header is the ajusted size of the area in bytes.
-const tag_dynamic_area_size = tag( "_dynsz" );
-
-// This is where to find the size relative to the area first header address.
-const offset_of_area_size = ONE;
-
-const the_first_ever_area = the_next_free_cell;
-
-function init_areas_allocator() : Index {
-  the_first_free_area = 0;
-  // ToDo: until the bug with the allocator is fixed, get by with a big area
-  // const big_area = allocate_area( INOX_HEAP_SIZE / 2 );
-  // free_area( big_area );
-  return 1;
-}
-let init_areas_allocator_done = init_areas_allocator();
-
-
-function area_header( area : Cell ) : Cell {
-  // Return the address of the first header cell of a byte area, the ref count.
-  return area - 2 * ONE;
-}
-
-function header_to_area( header : Cell ) : Cell {
-  // Return the address of an area given the address of it's first header cell.
-  return header + 2 * ONE;
-}
-
-
-
-function area_ref_count( area : Cell ) : Value {
-// Return the reference counter of a byte area
-  alloc_de&&mand( is_busy_area( area ) );
-  return value( area_header( area ) );
-}
-
-
-function set_area_busy( area : Cell ){
-// Set the reference count header of a byte area to 1
-  const header = area_header( area );
-  // Before it becomes busy, it was free, so it has a next_area header.
-  alloc_de&&mand_cell_name( header, tag_dynamic_next_area );
-  set( header, type_integer, tag_dynamic_ref_count, 1 );
-}
-
-
-function set_area_free( area : Cell ){
-// Set the tag of the header of a byte area to tag_dynamic_next_area
-  set_name( area_header( area ), tag_dynamic_next_area );
-}
-
-
-function is_busy_area( area : Cell ) : boolean {
-// Return true if the area is busy, false if it is free
-  return name( area_header( area ) ) == tag_dynamic_ref_count;
-}
-
-
-function is_free_area( area : Cell ) : boolean {
-// Return true if the area is free, false if it is busy
-  return name( area_header( area ) ) == tag_dynamic_next_area;
-}
-
-
-function is_dynamic_area( area : Cell ) : boolean {
-// Return true if the area is a dynamic area, false otherwise
-  // This is maybe not 100% reliable, but it is good enough.
-  const auto_first_header_ok = is_busy_area( area ) || is_free_area( area );
-  if( ! auto_first_header_ok )return false;
-  const auto_second_header_ok
-  = name( area_header( area ) + ONE ) == tag_dynamic_area_size;
-  return auto_second_header_ok;
-}
-
-
-function next_area( area : Cell ) : Cell {
-// Return the address of the next free area
-  alloc_de&&mand( is_safe_area( area ) );
-  alloc_de&&mand( is_free_area( area ) );
-  const next_area = value( area_header( area ) );
-  alloc_de&&mand( next_area == 0 || is_safe_area( next_area ) );
-  return value( area_header( area ) );
-}
-
-
-function set_next_area( area : Cell, nxt : Cell ){
-// Set the address of the next free area
-  alloc_de&&mand( is_safe_area( area ) );
-  alloc_de&&mand( is_free_area( area ) );
-  set_value( area_header( area ), nxt );
-}
-
-
-function set_area_ref_count( area : Cell, v : Value ){
-// Set the reference counter of a byte area
-  alloc_de&&mand( is_busy_area( area ) );
-  set_value( area_header( area ), v );
-}
-
-
-function area_size( area : Cell ) : Size {
-// Return the size of a byte area, in bytes. It includes the 2 header cells.
-  alloc_de&&mand_cell_name(
-    area_header( area ) + offset_of_area_size * ONE,
-    tag_dynamic_area_size
-  );
-  return value( area_header( area ) + offset_of_area_size );
-}
-
-function area_capacity( area : Cell ) : Length {
-// Return the capacity, in cells. It does not include the 2 header cells
-  return to_cell( area_size( area ) ) - 2;
-}
-
-
-function set_area_size( area : Cell, s : Size ) : void {
-// Set the size of a byte area, it includes the header
-  const header = area_header( area );
-  // The second header is after the first one, ie after the ref count.
-  set( header + offset_of_area_size, type_integer, tag_dynamic_area_size, s );
-}
-
-
-function adjusted_bytes_size( s : Size ) : Size {
-  // Align on size of cells and add size for heap management
-  // The header is two cells, first is the ref count, second is the size.
-  let aligned_size
-  = 2 * size_of_cell
-  + ( s + ( size_of_cell - 1 ) ) & ~( size_of_cell - 1 );
-  return aligned_size;
-}
-
-
-// All budy lists are empty at first, index is number of cells in area
-/**/  const all_free_lists_by_area_length : Array< Cell >
-/**/  = [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ];
-/*c{
-u32 all_free_lists_by_area_length[ 10 ]
-= { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-}*/
-
-
-/* -----------------------------------------------------------------------------
- *  Pretty naive garbadge collector.
- *  It is not at all a classical mark and sweep collector. It just scans
- *  the whole memory to join consecutive free areas. First it frees
- *  all areas of size 1, 2, 3, 4, 5, 6, 7, 8, 9, 10.
- *  It is incremental in the sense that it does not scan the whole memory
- *  at once, but only a small part of it. It is called by the interpreter
- *  when it is idle or when it needs more memory.
- */
-
-let   last_visited_cell = 0;
-const collector_increment = 1000;
-let   something_was_collected = false;
-
-function area_free_small_areas() : boolean {
-// Free all small areas, ie all areas of size 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
-  something_was_collected = false;
-  let ii;
-  for( ii = 0 ; ii < 10 ; ii++ ){
-    let free;
-    while( ( free = all_free_lists_by_area_length[ ii ] ) != 0 ){
-      all_free_lists_by_area_length[ ii ] = next_area( free );
-      set_next_area( free, the_first_free_area );
-      the_first_free_area = free;
-      de&&mand( is_free_area( free ) );
-      something_was_collected = true;
-    }
-  }
-  return something_was_collected;
-}
-
-
-function area_garbage_collector() : boolean {
-  // Garbage collect the dynamic areas. Return false if nothing was collected.
-
-  // Set the default return value
-  something_was_collected = false;
-
-  // First empty all the "per length" free lists, they interfere.
-  if( area_free_small_areas() ){
-    something_was_collected = true;
-  }
-
-  // Then scan the entire heap and coalesce consecutive free areas.
-  // ToDo: another option would have been to keep a sorted list of free areas.
-
-
-  // Limit the time taken, don't restart from the beginning nor end too far
-  let cell = last_visited_cell;
-  if( cell < the_very_first_cell ){
-    cell = the_very_first_cell;
-  }
-
-  let count_visited = 0;
-  let cells_in_heap = the_next_free_cell - the_very_first_cell;
-
-  while( true ){
-
-    // Exit loop if too much time has been spent, unless nothing was collected
-    if( count_visited > collector_increment && something_was_collected )break;
-
-    // Time is proportional to the number of cells visited
-    count_visited++;
-
-    // When all cells have been visited, exit loop
-    if( count_visited >= cells_in_heap )break;
-
-    // OK, advance to next cell. Note: cell 0 is never visited, that's ok
-    cell += ONE;
-
-    // Time to restart if last cell was reached
-    if( cell >= the_next_free_cell ){
-      cell = the_very_first_cell;
-      continue;
-    }
-
-    // Detect areas, continue if none found
-    if( !is_dynamic_area( cell + 2 * ONE ) )continue;
-
-    // If busy, skip it
-    if( !is_free_area( cell + 2 * ONE ) ){
-      cell += to_cell( area_size( cell + 2 * ONE ) );
-      continue;
-    }
-
-    // The area is after two header cells, ptr to next area and size
-    cell += 2 * ONE;
-
-    alloc_de&&mand( is_free_area( cell ) );
-
-    // Coalesce consecutive free areas, as long as there are some
-    while( true ){
-
-      // ToDo: if size were not aligned, it should be aligned here
-      const potential_next_area = cell + to_cell( area_size( cell ) );
-
-      if( potential_next_area >= the_next_free_cell
-      || !is_dynamic_area( potential_next_area )
-      || !is_free_area( potential_next_area )
-      )break;
-
-      // Coalesce consecutive two free areas
-      let total_size = area_size( cell ) + area_size( potential_next_area );
-      set_area_size( cell, total_size );
-      set_next_area( cell, next_area( potential_next_area ) );
-      reset( area_header( potential_next_area ) );
-      reset( area_header( potential_next_area ) + ONE );
-      // If that was the head of the free list, update it
-      if( the_first_free_area == potential_next_area ){
-        the_first_free_area = cell;
-      }
-      something_was_collected = true;
-
-    } // End of while( true ) over consecutive free areas
-
-  } // End of while( true ) over all cells
-
-  return something_was_collected;
-
-}
-
-
-function area_garbage_collector_all(){
-// Run garbage collector until nothing is collected
-  // First compact the free cells used by allocate_cell()
-  compact_free_cells();
-  // Start from the beginning and loop until nothing is collected
-  last_visited_cell = 0;
-  // Loop until nothing is collected
-  while( area_garbage_collector() );
-}
-
-
-function allocate_area( s : Size ) : Cell {
-// Allocate a byte area, return its address, or 0 if not enough memory
-
-  /**/ if( de ){
-  /**/   if( s > 1000 ){
-  /**/     if( s != INOX_HEAP_SIZE / 2 ){
-  /**/       bug( S()+ "Large memory allocation, " + N( s ) );
-  /**/       debugger;
-  /**/     }
-  /**/   }
-  /**/   // alloc_de&&mand( size != 0 );
-  /**/ }
-
-  // Was something broken?
-  alloc_de&&mand(
-    the_first_free_area == 0 || is_safe_area( the_first_free_area )
-  );
-
-  // Align on 64 bits, size of a cell, plus size of headers
-  let adjusted_size = adjusted_bytes_size( s );
-
-  // Search in "per length" free lists if size is small enough
-  if( adjusted_size <= 10 * size_of_cell
-    //c/ && false  // ToDo: disabled for now, it's not working in C++
-  ){
-    let try_length = to_cell( adjusted_size );
-    let small_free_area = all_free_lists_by_area_length[ try_length ];
-    if( small_free_area ){
-      all_free_lists_by_area_length[ try_length ]
-      = next_area( small_free_area );
-      set_area_busy( small_free_area );
-      // ToDo: isn't size already correct?
-      set_area_size( small_free_area, try_length * size_of_cell );
-      return small_free_area;
-    }
-  }
-
-  // Search first fit, starting from the first item of the free area list
-  alloc_de&&mand(
-    the_first_free_area == 0 || is_safe_area( the_first_free_area )
-  );
-  let area = the_first_free_area;
-  let area_sz = 0;
-  let previous_area = 0;
-  let limit = 1000;
-  while( area ){
-
-    // Never loop forever
-    if( limit-- == 0 ){
-      FATAL( "Infinite loop in allocate_area" );
-      return 0;
-    }
-
-    alloc_de&&mand( is_safe_area( area ) );
-    alloc_de&&mand( is_free_area( area ) );
-    area_sz = area_size( area );
-
-    if( area_sz < adjusted_size ){
-      // The area is too small, try next one
-      previous_area = area;
-      area = next_area( area );
-      continue;
-    }
-
-    // The area is big enough, use it
-    if( previous_area ){
-      // The area is not the first one, remove it from the list
-      alloc_de&&mand_eq( next_area( previous_area ), area );
-      set_next_area( previous_area, next_area( area ) );
-    }else{
-      // The area is the first one, update the list
-      alloc_de&&mand_eq( area, the_first_free_area );
-      the_first_free_area = next_area( area );
-      alloc_de&&mand(
-        the_first_free_area == 0 || is_safe_area( the_first_free_area )
-      );
-    }
-
-    // Break big area and release extra space
-    let remaining_size = area_sz - adjusted_size;
-
-    // Only split if the remaining area is big enough for headers
-    if( remaining_size >= 2 * size_of_cell ){
-      let remaining_area = area + to_cell( adjusted_size);
-      set_area_size( remaining_area, remaining_size );
-      set_area_free( remaining_area );
-      set_next_area( remaining_area, next_area( area ) );
-      if( the_first_free_area ){
-        alloc_de&&mand( is_safe_area( the_first_free_area ) );
-        set_next_area( remaining_area, the_first_free_area );
-      }
-      the_first_free_area = remaining_area;
-      alloc_de&&mand( is_safe_area( remaining_area ) );
-      alloc_de&&mand( is_free_area( remaining_area ) );
-
-    }else{
-      // The area is too small to split, use it all
-      adjusted_size = area_sz;
-    }
-
-    // Mark the found area as busy
-    set_area_busy( area );
-    set_area_size( area, adjusted_size );
-
-    alloc_de&&mand( is_safe_area( area ) );
-    alloc_de&&mand( is_busy_area( area ) );
-    alloc_de&&mand( is_last_reference_to_area( area ) );
-    alloc_de&&mand_neq( area, the_first_free_area );
-    alloc_de&&mand(
-      the_first_free_area == 0 || is_safe_area( the_first_free_area )
-    );
-    return area;
-  }
-
-  // If nothing was found, allocate more memory for the heap and retry
-  alloc_de&&mand(
-    the_first_free_area == 0 || is_safe_area( the_first_free_area )
-  );
-
-  // Add some extra cells to avoid too many small allocations
-  let extra_cells = 128;
-
-  // Don't forget the cell for the refcount and size headers
-  let needed_cells = to_cell( adjusted_size ) + extra_cells + 2;
-
-  const cells = allocate_cells( needed_cells );
-  alloc_de&&mand( cells + needed_cells * ONE <= the_next_free_cell );
-
-  alloc_de&&mand(
-    the_first_free_area == 0 || is_safe_area( the_first_free_area )
-  );
-
-  // Skip the refcount and size headers future headers
-  area = cells + 2 * ONE;
-
-  // Pretend it is a busy area and then free it to add it to the heap
-  set_area_free( area );
-  alloc_de&&mand(
-    the_first_free_area == 0 || is_safe_area( the_first_free_area )
-  );
-  set_area_busy( area );
-  set_area_size( area, adjusted_size + extra_cells * size_of_cell );
-  alloc_de&&mand( is_safe_area( area ) );
-  free_area(     area );
-
-  // Retry the allocation, it should work now
-  const allocated_area = allocate_area( s );
-
-  // The result should be the newly added area but without the extra cells
-  alloc_de&&mand_eq( allocated_area, area );
-  alloc_de&&mand_eq(
-    area + to_cell( adjusted_size ),
-    the_first_free_area
-  );
-  alloc_de&&mand_eq(
-    area_size( the_first_free_area ),
-    extra_cells * size_of_cell
-  );
-
-  // Defensive
-  alloc_de&&mand(
-    the_first_free_area == 0 || is_safe_area( the_first_free_area )
-  );
-
-  return allocated_area;
-
-}
-
-
-function resize_area( a : Cell, s : Size ) : Cell {
-  alloc_de&&mand( is_safe_area( a ) );
-  let ii = area_size( a );
-  if( s <= ii ){
-    // ToDo: should split the area and free the extra space
-    return a;
-  }
-  const new_mem = allocate_area( s );
-  while( true ){
-    ii -= size_of_cell;
-    // ToDo: should copy cell if previous area is referenced somewhere?
-    alloc_de&&mand( area_ref_count( a ) <= 1 );
-    move_cell( a + ii * size_of_cell, new_mem + ii * size_of_cell );
-    if( ii == 0 )break;
-  }
-  free_area( a );
-  return new_mem;
-}
-
-function free_area( area : Cell ){
-
-  if( area == 0 ){
-    // Assume it's about the empty text, ""
-    debugger;
-    return;
-  }
-
-  if( de
-  && the_empty_text_cell != 0
-  && area == value( the_empty_text_cell )
-  ){
-    // What! free of the empty text, ""?
-    trace( "Internal err, free of the empty text" );
-    // FATAL( "Internal error, free of the empty text" );
-    return; // ToDo: handle this properly
-  }
-
-  alloc_de&&mand( is_safe_area( area ) );
-  const old_count = area_ref_count( area );
-
-  // Just decrement the reference counter if it's not the last reference
-  if( old_count != 1 ){
-    set_area_ref_count( area, old_count - 1 );
-    return;
-  }
-
-  // The whole area should be full of zeros, ie cleared
-  if( de ){
-    const capacity = area_capacity( area );
-    let ii;
-    for( ii = 0 ; ii < capacity ; ii++ ){
-      mand_empty_cell( area + ii * ONE );
-    }
-  }
-
-  // Add to a "per length" free list if small enough area
-  const size = area_size( area );
-  if( size <= 10 * size_of_cell ){
-    set_area_free( area );
-    set_next_area(
-      area,
-      all_free_lists_by_area_length[ to_cell( size ) ]
-    );
-    all_free_lists_by_area_length[ to_cell( size ) ] = area;
-    // ToDo: this can degenerate when too many small areas are unused.
-    // I should from time to time empty the free lists and add areas to the
-    // global pool, the older areas first to maximize locality.
-    // That is what collect_garbage() does, supposedly.
-    // ToDo: when is collect_garbage() called?
-    return;
-  }
-
-  // Add area in free list
-  // ToDo: insert area in sorted list instead of at the start?
-  // I should do this to coalesce adjacent free areas to avoid fragmentation
-  set_area_free( area );
-  alloc_de&&mand(
-    the_first_free_area == 0 || is_safe_area( the_first_free_area )
-  );
-  set_next_area( area, the_first_free_area );
-  the_first_free_area = area;
-  alloc_de&&mand( is_safe_area( area ) );
-  alloc_de&&mand( is_free_area( area ) );
-}
-
-
-function lock_area( area : Cell ) : void {
-// Increment reference counter of bytes area allocated using allocate_bytes().
-// When free_bytes() is called, that counter is decremented and the area
-// is actually freed only when it reaches zero.
-  if( area == 0 ){
-    // Assume it's about the empty text, "".
-    return;
-  }
-  alloc_de&&mand( is_safe_area( area ) );
-  alloc_de&&mand( is_busy_area( area ) );
-  const old_count = area_ref_count( area );
-  // Increment reference counter
-  const new_count = old_count + 1;
-  set_area_ref_count( area, new_count );
-}
-
-
-function is_last_reference_to_area( area : Cell ) : boolean {
-  // When the last reference disappears the bytes must be freed.
-// To be called by clear_cell() only, on non zero adresses.
-  alloc_de&&mand( is_safe_area( area ) );
-  alloc_de&&mand( is_busy_area( area ) );
-  return area_ref_count( area ) == 1;
-}
-
-
-function is_safe_area( area : Cell ) : boolean {
-// Try to determine if the address points to a valid area allocated
-// using allocates_area() and not already released.
-
-  if( !alloc_de )return true;
-
-  // This helps to debug unbalanced calls to lock_area() and free_area().
-  // zero is ok for both reference counter & size because it never happens
-  if( area == 0 ){
-    return true;
-  }
-
-  // The address must be in the heap
-  if( area < the_very_first_cell
-  ||  area - 2 * ONE >= the_next_free_cell
-  ){
-    FATAL( S()+ "Invalid area, not in the heap, " + C( area ) );
-    return false;
-  }
-
-  // The address must be aligned on a cell boundary
-  if( area % ( size_of_cell / size_of_word ) != 0 ){
-    FATAL( S()+ "Invalid area, not aligned on a cell boundary, " + C( area ) );
-    return false;
-  }
-
-  // The address must be in the heap
-  if( area < the_first_ever_area ){
-    FATAL( S()+ "Invalid area before the first cell, " + C( area ) );
-    return false;
-  }
-
-  if( area - 2 * ONE >= the_next_free_cell ){
-    FATAL( S()+ "Invalid area after the end, " + C( area ) );
-    return false;
-  }
-
-  if( is_busy_area( area ) ){
-
-    // The reference counter must be non zero if busy
-    const reference_counter = area_ref_count( area );
-    if( reference_counter == 0 ){
-      FATAL( S()
-        + "Invalid reference counter for area, " + N( reference_counter )
-        + " " + N( area )
-      );
-      return false;
-    }
-
-    // When one of the 4 most significant bits is set, that's a type id probably
-    if( reference_counter >= ( 1 << 28 ) ){
-      const type = unpack_type( reference_counter );
-      FATAL( S()+ "Invalid counter for area? " + N( type ) + " " + C( area ) );
-      return false;
-    }
-
-  }
-
-  // The size must be bigger than the size of the headers
-  const size = area_size( area );
-  if( size <= 2 * ( size_of_cell / size_of_word ) ){
-    FATAL( S()+ "Invalid size for area, " + N( size ) + " " + C( area ) );
-    return false;
-  }
-
-  // The whole area must be in the heap
-  if( area + to_cell( size ) > the_next_free_cell ){
-    FATAL( S()+
-      "Invalid area, out of heap, size " + N( size ) + ", " + C( area )
-    );
-    return false;
-  }
-
-  // When one of the 4 most significant bits is set, that's a type id probably
-  if( size >= ( 1 << 28 ) ){
-    const type = unpack_type( size );
-    FATAL( S()+ "Invalid counter for area? " + N( type ) + " " + C( area ) );
-    return false;
-  }
-
-  // The size must be a multiple of the size of a cell
-  if( size % ( size_of_cell / size_of_word ) != 0 ){
-    FATAL( S()+ "Invalid size for area " + N( size ) + " " + C( area ) );
-    return false;
-  }
-
-  // The size must be smaller than the heap size
-  if( size > ( the_next_free_cell - the_first_ever_area ) * size_of_cell ){
-    FATAL( S()+ "Invalid size for area " + N( size ) + " " + C( area ) );
-    return false;
-  }
-
-  return true;
-}
-
-
-function increment_object_ref_count( area : Cell ){
-  lock_area( area );
-}
-
-
-function decrement_object_ref_count( area : Cell ){
-  free_area( area );
-}
-
-
-function area_test_suite(){
-  // This was generated by copilot, it is very insufficent
-  const the_area = allocate_area( 10 );
-  de&&mand( is_safe_area( the_area ) );
-  de&&mand( is_busy_area( the_area ) );
-  free_area( the_area );
-  de&&mand( is_free_area( the_area ) );
-  const the_area2 = allocate_area( 10 );
-  de&&mand( is_safe_area( the_area2 ) );
-  de&&mand( is_busy_area( the_area2 ) );
-  lock_area( the_area2 );
-  de&&mand( is_busy_area( the_area2 ) );
-  de&&mand( is_safe_area( the_area2 ) );
-  free_area( the_area2 );
-  de&&mand( is_safe_area( the_area2 ) );
-  de&&mand( is_busy_area( the_area2 ) );
-  free_area( the_area2 );
-  de&&mand( is_free_area( the_area ) );
-}
-
-
 /* -----------------------------------------------------------------------
- *  Reference, type 4, 32 bits to reference a dynamically allocated array
+ *  Reference, 32 bits to reference a dynamically allocated array
  *  of cells, aka a smart pointer to an Inox object.
  */
 
@@ -4736,11 +5463,366 @@ function cell_reference( c : Cell ) : Value {
 
 
 /* -----------------------------------------------------------------------
- *  Proxy opaque object, type 5
+ *  Text type
+ *  Uses LeanString style objects with a char* that
+ *  is the result of some allocate_bytes() call.
+ */
+
+function set_text_cell( c : Cell, txt : ConstText ){
+  if( tlen( txt ) == 0 ){
+    alloc_de&&mand( area_is_busy( the_empty_lean ) );
+    // ToDo: precompute info_text_text and use init_cell()
+    set( c, type_text, tag_text, the_empty_lean );
+    // copy_cell( the_empty_text_cell, c );
+    return;
+  }
+  /**/ const str = lean_new_from_native( txt );
+  /*c{
+    Cell str = to_cell( txt.c_str() );
+    lean_lock( str );
+  }*/
+  set( c, type_text, tag_text, str );
+  de&&mand( cell_looks_safe( c ) );
+  de&&mand( teq( cell_to_text( c ), txt ) );
+}
+
+
+function free_text( oid : Area ){
+  lean_free( oid );
+}
+
+
+/* -----------------------------------------------------------------------------
+ *  Some global cells
+ */
+
+function init_the_empty_text_cell() : Index {
+  the_empty_text_cell = allocate_cell();
+  // ToDo: precompute the_empty_lean to avoid a test in lean_new_empty()
+  const empty_lean_string = lean_new_empty();
+  set(
+    the_empty_text_cell,
+    type_text,
+    tag( "the-empty-text" ),
+    empty_lean_string
+  );
+  // It's only now that testing the area allocator is possible.
+  area_test_suite();
+  return 1;
+}
+let init_the_empty_text_cell_done = init_the_empty_text_cell();
+
+
+// Now it is possible to do some more smoke tests
+
+function lean_string_test() : Index {
+  // Test the string functions
+  const str1 = lean_new_from_native( "Hello" );
+  const str2 = lean_new_from_native( "World" );
+  const str3 = lean_new_from_strcat( str1, str2 );
+  const str4 = lean_new_from_native( "HelloWorld" );
+  if( lean_strcmp( str3, str4 ) != 0 ){
+    FATAL( "lean_strcmp failed" );
+    return 0;
+  }
+  if( lean_strindex( str3, str1 ) != 0 ){
+    FATAL( "lean_strindex failed" );
+    return 0;
+  }
+  if( lean_strindex( str3, str2 ) != 5 ){
+    FATAL( "lean_strindex failed" );
+    return 0;
+  }
+  const str5 = lean_substr( str3, 0, 5 );
+  if( lean_strcmp( str5, str1 ) != 0 ){
+    FATAL( "lean_substr failed" );
+    return 0;
+  }
+  lean_free( str1 );
+  lean_free( str2 );
+  lean_free( str3 );
+  lean_free( str4 );
+  lean_free( str5 );
+  return 1;
+}
+
+const lean_string_test_done = lean_string_test();
+
+/*
+ *  Some more basic tests
+ */
+
+
+/**/function tbad( actual : any, expected : any ) : boolean {
+//c/ bool tbad( int actual, int expected ){
+  // Return true bad, i.e. not as expected
+  if( actual == expected )return false;
+  trace( S()
+    + "tbad: actual: " + N( actual )
+    + " vs expected: " + N( expected )
+  );
+  debugger;
+  return true;
+}
+
+
+/*c{
+bool tbad( const Text& actual, const Text& expected ){
+  if( actual == expected )return false;
+  trace( S()
+    + "tbad: actual: " + actual
+    + " vs expected: " + expected
+  );
+  debugger;
+  if( actual != expected )return false;
+  return true;
+}
+}*/
+
+
+function test_text() : Index {
+
+  // tidx()
+  if( tbad( tidx( "abc", "b" ),     1 ) )return 0;
+  if( tbad( tidx( "abc", "d" ),    -1 ) )return 0;
+  if( tbad( tidx( "abc", "bc" ),    1 ) )return 0;
+  if( tbad( tidx( "abc", "ab" ),    0 ) )return 0;
+  if( tbad( tidx( "abc", "abc" ),   0 ) )return 0;
+  if( tbad( tidx( "abc", "abcd" ), -1 ) )return 0;
+
+  // tidxr()
+  if( tbad( tidxr( "abc", "b" ),     1 ) )return 0;
+  if( tbad( tidxr( "abc", "d" ),    -1 ) )return 0;
+  if( tbad( tidxr( "abc", "bc" ),    1 ) )return 0;
+  if( tbad( tidxr( "abc", "ab" ),    0 ) )return 0;
+  if( tbad( tidxr( "abc", "abc" ),   0 ) )return 0;
+  if( tbad( tidxr( "abc", "abcd" ), -1 ) )return 0;
+  if( tbad( tidxr( "abcabc", "bc" ), 4 ) )return 0;
+
+  // tmid()
+  if( tbad( tmid( "abc", 0, 3 ), "abc" ) )return 0;
+  if( tbad( tmid( "abc", 0, 2 ), "ab"  ) )return 0;
+  if( tbad( tmid( "abc", 1, 2 ), "b"   ) )return 0;
+  if( tbad( tmid( "abc", 1, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", 1, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", 0, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", 0, 1 ), "a"   ) )return 0;
+  if( tbad( tmid( "abc", 0, 4 ), "abc" ) )return 0;
+  if( tbad( tmid( "abc", 1, 4 ), "bc"  ) )return 0;
+  if( tbad( tmid( "abc", 2, 4 ), "c"   ) )return 0;
+  if( tbad( tmid( "abc", 2, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", 2, 0 ), ""    ) )return 0;
+
+  // tmid(), with negative indexes
+  if( tbad( tmid( "abc", -1, 3 ), "c"   ) )return 0;
+  if( tbad( tmid( "abc", -2, 3 ), "bc"  ) )return 0;
+  if( tbad( tmid( "abc", -3, 3 ), "abc" ) )return 0;
+  if( tbad( tmid( "abc", -4, 3 ), "abc" ) )return 0;
+  if( tbad( tmid( "abc", -1, 2 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -2, 2 ), "b"   ) )return 0;
+  if( tbad( tmid( "abc", -3, 2 ), "ab"  ) )return 0;
+  if( tbad( tmid( "abc", -4, 2 ), "ab"  ) )return 0;
+  if( tbad( tmid( "abc", -1, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -2, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -3, 1 ), "a"   ) )return 0;
+  if( tbad( tmid( "abc", -4, 1 ), "a"   ) )return 0;
+  if( tbad( tmid( "abc", -1, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -2, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -2, 1 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -3, 0 ), ""    ) )return 0;
+  if( tbad( tmid( "abc", -4, 0 ), ""    ) )return 0;
+
+  // tcut()
+  if( tbad( tcut( "abc",  3 ), "abc" ) )return 0;
+  if( tbad( tcut( "abc",  2 ), "ab"  ) )return 0;
+  if( tbad( tcut( "abc",  1 ), "a"   ) )return 0;
+  if( tbad( tcut( "abc",  0 ), ""    ) )return 0;
+  if( tbad( tcut( "abc", -1 ), "ab"  ) )return 0;
+  if( tbad( tcut( "abc", -2 ), "a"   ) )return 0;
+  if( tbad( tcut( "abc", -3 ), ""    ) )return 0;
+  if( tbad( tcut( "abc", -4 ), ""    ) )return 0;
+
+  // tbut()
+  if( tbad( tbut( "abc",  3 ), ""    ) )return 0;
+  if( tbad( tbut( "abc",  2 ), "c"   ) )return 0;
+  if( tbad( tbut( "abc",  1 ), "bc"  ) )return 0;
+  if( tbad( tbut( "abc",  0 ), "abc" ) )return 0;
+  if( tbad( tbut( "abc", -1 ), "c"   ) )return 0;
+  if( tbad( tbut( "abc", -2 ), "bc"  ) )return 0;
+  if( tbad( tbut( "abc", -3 ), "abc" ) )return 0;
+  if( tbad( tbut( "abc", -4 ), "abc" ) )return 0;
+  if( tbad( tbut( "abc", -5 ), "abc" ) )return 0;
+
+  // tlow()
+  if( tbad( tlow( "abc" ), "abc" ) )return 0;
+  if( tbad( tlow( "ABC" ), "abc" ) )return 0;
+  if( tbad( tlow( "aBc" ), "abc" ) )return 0;
+  if( tbad( tlow( "AbC" ), "abc" ) )return 0;
+
+  // tup()
+  if( tbad( tup( "abc" ), "ABC" ) )return 0;
+  if( tbad( tup( "ABC" ), "ABC" ) )return 0;
+  if( tbad( tup( "aBc" ), "ABC" ) )return 0;
+  if( tbad( tup( "AbC" ), "ABC" ) )return 0;
+
+  return 1;
+}
+
+// Hack to invoke test_text() at C++ dynamic initialization time
+const test_text_done = test_text();
+
+
+/* -----------------------------------------------------------------------
+ *  Proxy opaque object
  *  These objects are platform provided objects. Access is done using an
  *  indirection table.
  *  ToDo: implement using dynamically allocated bytes.
  *  ToDo: define a base class to be derived by more specific classes.
+ *
+ *  class AbstractProxy {
+ *
+ *    void new_from_value( Cell there, Cell value ){
+ *      // Create a proxy object from a value.
+ *    }
+ *
+ *    void to_value( Cell there ){
+ *      // Serialize the object to a value, ready for from_value().
+ *    }
+ *
+ *    void new_from_stack( Cell there, Cell stack ){
+ *      // Create a proxy object from the stack.
+ *    }
+ *
+ *    void new_from_array( Cell there, Cell array, Length count ){
+ *      // Create a proxy object from an array.
+ *    }
+ *
+ *    void to_stack( Cell stack ){
+ *      // Serialize the object to the stack, ready for new_from_stack().
+ *    }
+ *
+ *    void to_array( Cell there ){
+ *      // Serialize the object to an array, ready for new_from_array().
+ *    }
+ *
+ *    void new_from_queue( Cell there, Cell queue ){
+ *      // Create a proxy object from a queue.
+ *    }
+ *
+ *    void to_queue( Cell queue ){
+ *      // Serialize the object to a queue, ready for from_queue().
+ *    }
+ *
+ *    void when_referenced(){
+ *      // Called when a new reference to the object is created.
+ *    }
+ *
+ *    void when_dereferenced(){
+ *      // Called when a reference to the object disappears
+ *    }
+ *
+ *    void when_last_referenced(){
+ *      // Called when the last reference to the object disappears
+ *    }
+ *
+ *    void* payload(){
+ *     // Return a pointer to the payload of the object.
+ *    }
+ *
+ *    void set_payload( void* payload ){
+ *      // Set the payload of the object, if possible
+ *    }
+ *
+ *    boolean can_set_payload(){
+ *     // Return true if the payload can be set.
+ *    }
+ *
+ *    Tag class_tag(){
+ *      // Return the tag of the class of the object.
+ *    }
+ *
+ *    Text as_text(){
+ *      // Return a text representation of the object.
+ *    }
+ *
+ *    Text dump(){
+ *      // Return a text representation of the object.
+ *    }
+ *
+ *    boolean as_boolean(){
+ *      // Return a boolean representation of the object.
+ *    }
+ *
+ *    void invoke( Tag method ){
+ *      // Invoke a method on the object.
+ *    }
+ *
+ *    void implements( Tag method ){
+ *      // Return true if the object implements the verb.
+ *    }
+ *
+ *    boolean is_primitive( Tag method ){
+ *     // Return true if the method is a a primtive
+ *    }
+ *
+ *    Tag method( Tag method ){
+ *      // Return the name of the verb that implements the method.
+ *    }
+ *
+ *    Cell definition( Tag method ){
+ *      // Return the definition of the verb that implements the method.
+ *    }
+ *
+ *    int hash(){
+ *     // Return a hash of the object.
+ *    }
+ *
+ *    Cell clone(){
+ *     // Return a clone of the object.
+ *    }
+ *
+ *    bool equals( Cell other ){
+ *      // Return true if the object is equal to the other object.
+ *    }
+ *
+ *    int compare( Cell other ){
+ *      // Return -1, 0, 1 depending on order
+ *    }
+ *
+ *    void assign( Cell other ){
+ *      // Assign a new "value" to the object
+ *    }
+ *
+ *    void get_attribute( Tag attribute ){
+ *      // Get an attribute of the object
+ *    }
+ *
+ *    void set_attribute( Tag attribute, Cell value ){
+ *      // Set an attribute of the object
+ *    }
+ *
+ *    void has_attribute( Tag attribute ){
+ *      // Return true if the object has the attribute
+ *    }
+ *    boolean can_set_attribute( Tag attribute ){
+ *      // Return true if the attribute can be set.
+ *    }
+ *
+ *    Length length(){
+ *      // Return the length of the object
+ *    }
+ *
+ *    Cell at( Index index ){
+ *      // Return the element at the index
+ *    }
+ *
+ *    void set_at( Index index, Cell value ){
+ *      // Set the element at the index
+ *    }
+ *
+ *  }
+ *
+ *
  */
 
 // Access to proxied object is opaque, there is an indirection.
@@ -4757,69 +5839,59 @@ function cell_reference( c : Cell ) : Value {
 //c/ static Tag tag_c_string = tag( "c_string" );
 
 function make_proxy( object : any ) : Index {
-  // In Typescript there is map between the id and the object
-  /**/ const proxy = allocate_area( 0 );
-  // In C++, the cell holds a char* to a strdup() of the LeanString object
-  //c/ Cell  proxy = allocate_area( 1 );
-  alloc_de&&mand( is_safe_area( proxy ) );
-  /**/ all_proxied_objects_by_id.set( proxy, object );
-  //c/ set( proxy, type_integer, tag_c_string, (int) object );
-  // de&&mand_eq( value( proxy ), 0 );
-  // de&&mand_eq( info(  proxy ), 0 );
-  // ToDo: cache an _inox_tag into the constructor to avoid call to tag()
-  // const class_name = tag( object.constructor.name );
-  // In Typescript, proxy cell does not actually exists, only the id is used
-  alloc_de&&mand( is_safe_area( proxy ) );
-  alloc_de&&mand( is_busy_area( proxy ) );
-  return proxy;
+  // In C++, the object is a char* that points to a dynamically allocated area
+  /*c{
+    int area = to_cell( object );
+    area_lock( area );
+  }*/
+  // In Typescript there is map between the id and the native object
+  /*!c{*/
+    const area = allocate_area( 0 );
+    all_proxied_objects_by_id.set( area, object );
+  /*}*/
+  return area;
 }
 
 
-function set_proxy_cell( c : Cell, proxy : Index ){
-  alloc_de&&mand( is_safe_area( proxy ) );
+function set_proxy_cell( c : Cell, area : Area ){
+  alloc_de&&mand( area_is_busy( area ) );
   set(
     c,
     type_proxy,
-    /**/ tag( proxied_object_by_id( proxy ).constructor.name ),
+    /**/ tag( proxied_object_by_id( area ).constructor.name ),
     //c/ tag_c_string,
-    proxy
+    area
   );
 }
 
 
-let the_empty_text_proxy = 0;
-
-
-function free_proxy( proxy : Cell ){
+function free_proxy( proxy : Area ){
 // This is called by clear_cell() when reference counter reaches zero
-  de&&mand_neq( proxy, the_empty_text_proxy );
-  alloc_de&&mand( is_safe_area( proxy ) );
-  alloc_de&&mand( is_busy_area( proxy ) );
+  alloc_de&&mand( area_is_busy( proxy ) );
+  // ToDo: should call proxy.when_last_referenced()
   /**/ all_proxied_objects_by_id.delete( proxy );
-  //c/ free( (void*) value( proxy ) );
-  //c/ reset( proxy );
-  // ToDo: debug this
-  // free_area( proxy );
 }
 
 
-function proxied_object_by_id( id : Cell ) : any {
-  alloc_de&&mand( is_safe_area( id ) );
+function proxied_object_by_id( id : Area ) : any {
+  alloc_de&&mand( area_is_busy( id ) );
   /**/ return all_proxied_objects_by_id.get( id );
+  // ToDo: should return a pointer to an AbstractProxy instance
   //c/ return (const void*) value( id );
 }
 
 
-function cell_proxied_object( c : Cell ) : any {
+function cell_proxied_object( c : Area ) : any {
  const area = value( c );
-  alloc_de&&mand( is_safe_area( area ) );
+  alloc_de&&mand( area_is_busy( area ) );
+  // ToDo: should return a pointer to an AbstractProxy instance
   /**/ return proxied_object_by_id( area );
   //c/ return (const void*) value( area );
 }
 
 
-function proxy_to_text( area : Cell ) : Text {
-  alloc_de&&mand( is_safe_area( area ) );
+function proxy_to_text( area : Area ) : Text {
+  alloc_de&&mand( area_is_busy( area ) );
   // Some special case 0 produces the empty text.
   if( !area )return no_text;
   /*!c{*/
@@ -4831,67 +5903,13 @@ function proxy_to_text( area : Cell ) : Text {
       return "";
     }
     let obj = all_proxied_objects_by_id.get( area );
+    // ToDo: should invoke proxy.to_text()
     return obj.toString ? obj.toString() : "";
   /*}{
     de&&mand_cell_name( area, tag_c_string );
     return TxtD( (const char*) value( area ) );
   }*/
 }
-
-
-/* -----------------------------------------------------------------------
- *  Text, type 6
- *  Currently implemented in typescript using a proxy object, a string.
- *  C++ implementation uses a one cell area with strdup() as value.
- *  ToDo: use allocate_area() to implement a local strdup()?
- *  ToDo: use such a local strdup() even in Typescript?
- */
-
-function set_text_cell( c : Cell, txt : ConstText ){
-  if( tlen( txt ) == 0 ){
-    alloc_de&&mand( is_safe_area( value( the_empty_text_cell ) ) );
-    copy_cell( the_empty_text_cell, c );
-    return;
-  }
-  // ToDo: I could cache the proxy object to avoid creating a new one
-  // using a map, const text_cache = new Map< text, proxy >();
-  // If the text is already in the cache, increment the reference counter.
-  /**/ const proxy = make_proxy( txt );
-  //c/ Index proxy = make_proxy( _strdup( txt.c_str() ) );
-  set( c, type_text, tag_text, proxy );
-  de&&mand( cell_looks_safe( c ) );
-  de&&mand( teq( cell_to_text( c ), txt ) );
-}
-
-function free_text( oid : Index ){
-  // In C++, it's a strdup() allocated memory area
-  //c/ free( (void*) value( oid ) );
-  free_proxy( oid );
-}
-
-
-/* -----------------------------------------------------------------------------
- *  ToDo: a custom string implementation.
- *  This is to avoid using the native string implementation.
- *  It should handle UTF-8, UTF-16, UTF-32, etc.
- *  It should be able to handle strings of any length.
- *  It should be able to handle strings of u8, u16, u32, etc.
- *  It is actually more a buffer than a string.
- *  That's not needed initially, but it will be needed later.
- *
- *  For very small strings, 3 chars at most, I could store them in the
- *  address itself with some kind of encoding where the last byte is set to 0?
- *  That would require that such a case never happens when allocate_area()
- *  returns a new area. It would be endian dependent and possible only
- *  when the lowest byte of the address is stored at the highest address,
- *  ie big ending. A big-endian system stores the most significant byte of
- *  a word at the smallest memory address and the least significant byte
- *  at the largest. On little endian, this would require the addresses to be
- *  limited to 20 bits, which is OK as long as 24 bits addressable memory
- *  is OK, ie 16 MB. Another option is to handle short string of 2 chars
- *  at most and have allocate_area() avoid returning an address with the
- *  sentinel byte set to 0.
- */
 
 
 /* -----------------------------------------------------------------------
@@ -4913,6 +5931,7 @@ function free_text( oid : Index ){
  *  memory. That definition is built using regular 64 bits cells.
  *  The definition is called a block.
  *  Verbs are never deallocated, like tags.
+ *  ToDo: does name less? or is "to no-name ... ;" enough?
  */
 
 
@@ -5016,7 +6035,7 @@ function definition( id : Index  ) : Cell {
 }
 
 
-function definition_by_name( n : Text ) : Cell {
+function definition_by_name( n : ConstText ) : Cell {
   if( !tag_exists( n ) ){
     return the_default_verb_definition;
   }
@@ -5453,7 +6472,7 @@ function is_a_reference_type( t : Index ) : boolean {
 }
 
 
-function needs_clear( c : Cell ) : boolean {
+function is_sharable( c : Cell ) : boolean {
   return is_a_reference_type( type( c ) );
 }
 
@@ -5497,6 +6516,7 @@ function needs_clear( c : Cell ) : boolean {
 
 function mand_type( actual : Index, expected : Index ) :boolean {
   if( actual == expected )return true;
+  if( bootstrapping )return mand_eq( actual, expected );
   let auto_msg = S();
   auto_msg += "Bad type, "    + N( actual )   + "/" + type_to_text( actual   );
   auto_msg += " vs expected " + N( expected ) + "/" + type_to_text( expected );
@@ -5507,6 +6527,7 @@ function mand_type( actual : Index, expected : Index ) :boolean {
 
 function mand_name( actual : Index, expected : Index ) : boolean {
   if( actual == expected )return true;
+  if( bootstrapping )return mand_eq( actual, expected );
   let auto_msg = S();
   auto_msg += "Bad name, "    + N( actual )   + " /" + tag_to_text( actual   );
   auto_msg += " vs expected " + N( expected ) + " /" + tag_to_text( expected );
@@ -5566,6 +6587,7 @@ function mand_cell_name( c : Cell, n : Tag ) : boolean{
 // Assert that the type of a cell is the expected type.
   const actual_name = name( c );
   if( actual_name == n )return true;
+  if( bootstrapping )return mand_name( actual_name, n );
   let auto_msg = S();
   auto_msg += "Bad name for cell " + C( c );
   auto_msg += ", expected " + N( n )
@@ -5762,7 +6784,7 @@ function pop_as_text() : Text {
  *  Helpers to push values on the stack
  */
 
-function push_text( t : TxtC ){
+function push_text( t : ConstText ){
   PUSH();
   set_text_cell( TOS, t );
 }
@@ -5806,28 +6828,6 @@ function push_proxy( proxy : Index ){
   PUSH();
   set_proxy_cell( TOS, proxy );
 }
-
-
-/* -----------------------------------------------------------------------------
- *  Some global cells
- */
-const tag_the_empty_text = tag( "the-empty-text" );
-
-function init_the_empty_text_cell() : Index {
-  the_empty_text_cell = allocate_cell();
-  the_empty_text_proxy = make_proxy( "" );
-  set(
-    the_empty_text_cell,
-    type_text,
-    tag_the_empty_text,
-    the_empty_text_proxy
-  );
-  alloc_de&&mand( is_safe_area( value( the_empty_text_cell ) ) );
-  // It's only now that testing the area allocator is possible.
-  area_test_suite();
-  return 1;
-}
-let init_the_empty_text_cell_done = init_the_empty_text_cell();
 
 
 /* ----------------------------------------------------------------------------
@@ -6111,7 +7111,7 @@ const init_root_actor_done = init_root_actor();
 
 function FATAL( message : TxtC ){
   // Simplified version during bootstrap
-  if( in_lean_mode ){
+  if( bootstrapping ){
     trace( S()+ "\nFATAL: " + message + "\n" );
     return;
   }
@@ -6155,7 +7155,7 @@ function primitive_exists( n : Tag ) : boolean {
 let C_source = "#include \"inox.h\"\n#include \"inox.cpp\"\n";
 
 
-function simplify_js_primitive( n : Text, source : Text ){
+function simplify_js_primitive( n : ConstText, source : ConstText ){
 // Simplify the source code of a primitive so that it can compile in C.
 
   false && console.log( "Primitive " + n + " source code is :\n"
@@ -6192,7 +7192,7 @@ function simplify_js_primitive( n : Text, source : Text ){
 // Not on metal
 /*!c{*/
 
-function build_c_function_declaration( ts : Text ){
+function build_c_function_declaration( ts : ConstText ){
 // Build the C function prototype from a TypeScript function prototype
   // Syntax is "function name( arg1 : type1, arg2 : type2, ... ) : rtype {"
   // We want "rtype name( type1 arg1, type2 arg2, ... ){"
@@ -6254,7 +7254,7 @@ function build_targets(){
     // Leave the line untouched if it is a true // comment
     if( line.match( /^\s*\/\/ / ) ){
       // This does not match the //x comments, a space is needed
-      c_source += line + "\n";
+      c_source += line + " C++\n";
       blank_lines = blank_lines + 1;
       continue;
     }
@@ -6268,8 +7268,8 @@ function build_targets(){
     }
 
     // Leave line untouched if it is a true /* comment
-    if( line.match( /^\s*\/\* / ) ){
-      c_source += line + "\n";
+    if( line.match( /^\s*\/\*$/ ) ){
+      c_source += line + " C++\n";
       comment_lines = comment_lines + 1;
       continue;
     }
@@ -6392,7 +7392,11 @@ function build_targets(){
     + len + " total lines, including\n  "
     + comment_lines + " comment lines,\n  "
     + blank_lines + " blank lines,\n  "
-    + nchanges + " changes.\n"
+    + nchanges + " changes.\n\n  "
+    + stat_allocated_areas + " total allocated areas,\n  "
+    + stat_allocated_bytes + " total allocated bytes,\n  "
+    + mem8.length + " bytes in mem8,\n  "
+    + mem64.length + " cells,\n  "
    );
 
   // Now build the AssemblyScript version, much simpler
@@ -6859,7 +7863,6 @@ primitive( "a-list?", primitive_is_a_list );
 /* -----------------------------------------------------------------------------
  *  Forth style data stack manipulations.
  */
-
 
 /*
  *  push primitive - push the void on the data stack
@@ -7572,14 +8575,14 @@ primitive( "text-unquote", primitive_text_unquote );
  *  Some memory integrity checks.
  */
 
-function is_safe_proxy( proxy : Cell ) : boolean {
+function proxy_is_safe( proxy : Cell ) : boolean {
   /**/ return all_proxied_objects_by_id.has( proxy )
-  //c/ return true;
+  //c/ return area_is_safe( proxy );
 }
 
 
-function is_safe_reference( a : Cell ) : boolean {
-  if( !is_safe_area( a ) )return false;
+function reference_is_safe( a : Cell ) : boolean {
+  if( !area_is_safe( a ) )return false;
   return true;
 }
 
@@ -7594,6 +8597,7 @@ function cell_looks_safe( c : Cell ) : boolean {
   let referencee = v;
   let tag = v;
 
+  // ToDo: reorder the checks to be more efficient
   switch( t ){
 
   case type_boolean :
@@ -7607,25 +8611,26 @@ function cell_looks_safe( c : Cell ) : boolean {
     return true;
 
   case type_text :
-    if( !is_safe_proxy( referencee ) ){
+    if( !lean_is_valid( referencee ) ){
       bug( S()
-        + "Invalid proxy for text cell, " + C( referencee )
+        + "Invalid lean string for text cell, " + C( referencee )
         + " at " + C( c)
       );
       debugger;
+      lean_is_valid( referencee );
       return false;
     }
     // ToDo: check it is a text
     return true;
 
   case type_proxy :
-    return is_safe_proxy( referencee );
+    return proxy_is_safe( referencee );
 
   case type_reference :
-    return is_safe_reference( referencee );
+    return reference_is_safe( referencee );
 
   case type_tag :
-    if( ! is_valid_tag( tag ) ){
+    if( ! tag_is_valid( tag ) ){
       bug( S()
         + "Invalid tag for cell, " + C( tag )
         + " at " + C( c )
@@ -7635,6 +8640,9 @@ function cell_looks_safe( c : Cell ) : boolean {
     return true;
 
   case type_integer :
+    return true;
+
+  case type_float :
     return true;
 
   case type_verb :
@@ -7662,7 +8670,8 @@ function cell_to_text( c : Cell ) : Text {
 
   // ToDo: optimize with a switch?
   if( t == type_text ){
-    return proxy_to_text( v );
+    //c/ return LeanString( v );
+    /**/ return lean_to_native( v );
   }else if( t == type_tag ){
     return tag_to_text( v );
   }else if( t == type_boolean ){
@@ -7701,19 +8710,19 @@ function is_a_tag_singleton( c : Cell ) : boolean {
 const tag_block = tag( "block" );
 
 
-function is_a_block_cell( c : Cell ) : boolean {
+function cell_is_a_block( c : Cell ) : boolean {
   return name( c ) == tag_block_header;
 }
 
 
 function is_a_verb_block( c : Cell ) : boolean {
 // True when block is the definition of a verb vs inline code.
-  return is_a_block_cell( c ) && !is_an_inline_block_cell( c );
+  return cell_is_a_block( c ) && !is_an_inline_block_cell( c );
 }
 
 
 function block_dump( ip : Cell ) : Text {
-  de&&mand( is_a_block_cell( ip ) );
+  de&&mand( cell_is_a_block( ip ) );
   const length = block_length( ip );
   let auto_buf = S();
   auto_buf += "Block " + C( ip ) + ", length " + N( length );
@@ -7733,9 +8742,10 @@ function block_dump( ip : Cell ) : Text {
 let cell_dump_entered = false;
 
 function tag_to_dump_text( tag : Value ) : Text {
+  return tag_to_text( tag );
   if( tag == 0 ){
     return "invalid-0-tag";
-  }else if( !is_valid_tag( tag ) ){
+  }else if( !tag_is_valid( tag ) ){
     return "invalid-tag-" + C( tag );
   }else{
     return tag_to_text( tag );
@@ -7744,11 +8754,14 @@ function tag_to_dump_text( tag : Value ) : Text {
 
 
 function dump( c : Cell ) : Text {
+// Return a text representation that is usefull for debugging
 
-  // Never dereference the cell at address 0
-  if( c == 0 ){
-    return "Invalid cell address 0";
-  }
+  // Never dereference the cell at address 0, at least in C++
+  /*c{
+    if( c == 0 ){
+      return "Invalid cell address 0";
+    }
+  }*/
 
   // Detect recursive calls
   if( cell_dump_entered ){
@@ -7780,9 +8793,65 @@ function dump( c : Cell ) : Text {
 
     case type_void :
 
+      if( n == tag_block ){
+        // Block description often comes next
+        // ToDo: check presence of block header
+        if( cell_is_a_block( c + ONE ) ){
+          cell_dump_entered = false;
+          return S()+ "block definition";
+        }
+      }
+
+      if( n != tag_void || v != 0 ){
+        if( tag_is_valid( n ) ){
+          buf += tag_to_text( n ) + " ( primitive )";
+        }else{
+          dump_invalid_cell = c;
+          buf += "Invalid-tag-" + C( n );
+        }
+      }
+
+      if( v == 0 ){
+        // buf += ":<void>";
+      }else{
+        buf += ":<void:" + C( v ) + ">";
+      }
+
+    break;
+
+    case type_boolean :
+
+      if( n != tag_boolean ){
+        buf += tag_to_dump_text( n ) + ":";
+      }
+
+      if( v == 0 || v == 1 ){
+        buf += v ? "true" : "false";
+      }else{
+        dump_invalid_cell = c;
+        buf += "Invalid-boolean-" + N( v );
+      }
+
+    break;
+
+    case type_tag :
+
+      if( n == v ){
+        buf += "/" + tag_to_dump_text( n );
+        if( is_a_tag_singleton( c ) ){
+          buf += " - <SINGLETON>";
+        }
+      }else{
+        buf += tag_to_dump_text( n ) + ":/" + tag_to_dump_text( v );
+      }
+
+    break;
+
+    case type_integer :
+
       if( n == tag_dynamic_ref_count ){
         // Check integrity of busy dynamic area
-        if( !is_safe_area( header_to_area( c ) ) ){
+        if( !area_is_safe( header_to_area( c ) ) ){
           dump_invalid_cell = c;
           buf += "Invalid busy dynamic area, ";
         }else{
@@ -7792,7 +8861,7 @@ function dump( c : Cell ) : Text {
 
       }else if( n == tag_dynamic_next_area ){
         // Check integrity of free dynamic area
-        if( !is_safe_area( header_to_area( c ) ) ){
+        if( !area_is_safe( header_to_area( c ) ) ){
           dump_invalid_cell = c;
           buf += "Invalid dynamic free area, ";
         }else{
@@ -7802,12 +8871,12 @@ function dump( c : Cell ) : Text {
 
       }else if( n == tag_dynamic_area_size ){
         // Check integrity of dynamic area
-        if( !is_safe_area( header_to_area( c - ONE ) ) ){
+        if( !area_is_safe( header_to_area( c - ONE ) ) ){
           dump_invalid_cell = c;
           buf += "Invalid dynamic area, ";
         }else{
           cell_dump_entered = false;
-          if( is_busy_area( header_to_area( c - ONE ) )){
+          if( area_is_busy( header_to_area( c - ONE ) )){
             let length = to_cell( v ) - 2;
             // 0 length is what proxied objects use in Typescript
             // 1 length is what proxied objects use in C++
@@ -7825,13 +8894,6 @@ function dump( c : Cell ) : Text {
               ||  teq( proxy_class_name, "c_string" )
               ){
                 txt = proxy_to_text( proxy_id );
-                if( tlen( txt ) == 0 ){
-                  txt += "<empty>";
-                  if( proxy_id != value( the_empty_text_cell ) ){
-                    dump_invalid_cell = c;
-                    txt += " - ERROR: not the_empty_text_cell";
-                  }
-                }
                 if( tlen( txt ) > 31 ){
                   txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
                 }
@@ -7848,64 +8910,19 @@ function dump( c : Cell ) : Text {
           }
         }
 
-      }else if( n == tag_block ){
-        // Block description often comes next
-        // ToDo: check presence of block header
-        if( is_a_block_cell( c + ONE ) ){
-          cell_dump_entered = false;
-          return S()+ "block definition";
-        }
-      }
-
-      if( n != tag_void || v != 0 ){
-        if( is_valid_tag( n ) ){
-          buf += tag_to_text( n );
-        }else{
-          dump_invalid_cell = c;
-          buf += "Invalid-tag-" + C( n );
-        }
-      }
-      if( v == 0 ){
-        // buf += ":<void>";
-      }else{
-        buf += ":<void:" + C( v ) + ">";
-      }
-    break;
-
-    case type_boolean :
-      if( n != tag_boolean ){
-        buf += tag_to_dump_text( n ) + ":";
-      }
-      if( v == 0 || v == 1 ){
-        buf += v ? "true" : "false";
-      }else{
-        dump_invalid_cell = c;
-        buf += "Invalid-boolean-" + N( v );
-      }
-    break;
-
-    case type_tag :
-      if( n == v ){
-        buf += "/" + tag_to_dump_text( n );
-        if( is_a_tag_singleton( c ) ){
-          buf += " - <SINGLETON>";
-        }
-      }else{
-        buf += tag_to_dump_text( n ) + ":/" + tag_to_dump_text( v );
-      }
-    break;
-
-    case type_integer :
-      if( n == tag_block_header ){
+      }else if( n == tag_block_header ){
         /**/ const block_dump_text = block_dump( c );
         //c/ Text  block_dump_text = block_dump( c );
         cell_dump_entered = false;
         return block_dump_text;
       }
+
       if( n != tag_integer ){
         buf += tag_to_dump_text( n ) + ":";
       }
+
       buf += integer_to_text( v );
+
     break;
 
     case type_reference :
@@ -7917,7 +8934,8 @@ function dump( c : Cell ) : Text {
     case type_proxy :
       /**/ const obj = proxied_object_by_id( v );
       /**/ const proxy_class_name = obj.constructor.name;
-      /**/ //c/ TxtC proxy_class_name( "c_string" );
+      // ToDo: in C++, the instance of AbstractProxy should give the class name
+      /**/ //c/ TxtC proxy_class_name( "invalid-proxy" );
       /**/ buf += tag_to_text( n )
       /**/ + "<proxied-" + proxy_class_name + C( v ) + ">";
     break;
@@ -7941,9 +8959,9 @@ function dump( c : Cell ) : Text {
       /**/ .replace( "\\",  () => "\\\\" )
       buf += "\"" + txt + "\"";
       if( c == the_empty_text_cell ){
-        buf += " - <SINGLETON>";
+        buf += " ( <SINGLETON> )";
       }else if( tlen( txt ) == 0 && v != 0 ){
-        buf += " - <INVALID_EMPTY_TEXT>";
+        buf += " ( <INVALID_EMPTY_TEXT> )";
       }
     break;
 
@@ -7952,6 +8970,8 @@ function dump( c : Cell ) : Text {
       buf += tag_to_dump_text( n );
       if( v != 0 ){
         buf += ":<verb:" + N( v ) + ">";
+      }else{
+        buf += " ( verb )";
       }
     break;
 
@@ -8304,7 +9324,7 @@ function primitive_log(){
       if( domain_id == tag( "eval" ) ){
         /**/ eval_de = false;
         /*c{
-          #ifdef eval_de
+          #ifndef eval_de
             eval_de = false;
           #endif
         }*/
@@ -8312,7 +9332,7 @@ function primitive_log(){
       if( domain_id == tag( "step" ) ){
         /**/ step_de = false;
         /*c{
-          #ifdef step_de
+          #ifndef step_de
             step_de = false;
           #endif
         }*/
@@ -8320,7 +9340,7 @@ function primitive_log(){
       if( domain_id == tag( "run" ) ){
         /**/ run_de = false;
         /*c{
-          #ifdef run_de
+          #ifndef run_de
             run_de = false;
           #endif
         }*/
@@ -8328,7 +9348,7 @@ function primitive_log(){
       if( domain_id == tag( "stack" ) ){
         /**/ stack_de = false;
         /*c{
-          #ifdef stack_de
+          #ifndef stack_de
             stack_de = false;
           #endif
         }*/
@@ -8336,7 +9356,7 @@ function primitive_log(){
       if( domain_id == tag( "token" ) ){
         /**/ token_de = false;
         /*c{
-          #ifdef token_de
+          #ifndef token_de
             token_de = false;
           #endif
         }*/
@@ -8581,7 +9601,7 @@ function tag_to_type( tag : Tag ) : Type {
 }
 
 
-function type_name_to_type( n : Text ) : Type {
+function type_name_to_type( n : ConstText ) : Type {
 // Convert a type text name into a type id in range 0..9 where 9 is invalid
   const idx = symbol_lookup( n );
   if( idx > type_invalid )return type_invalid;
@@ -9123,7 +10143,7 @@ function define_class_binary_operator_primitive(
 
 
 function define_overloaded_binary_operator_primitives(
-  n : Text,
+  n : ConstText,
   fun : BinaryOperatorFunction
 ){
 
@@ -9187,7 +10207,7 @@ function primitive_is_equal(){
       return;
     }
     // If not references, then they're necesseraly different
-    if( !needs_clear( p1 ) ){
+    if( !is_sharable( p1 ) ){
       clear( p2 );
       clear( p1 );
       set( p1, type_boolean, tag_is_equal, 0 );
@@ -9293,7 +10313,7 @@ operator_primitive( "not==?", primitive_is_not_identical );
  *  Generic solution for arithmetic operators
  */
 
-/**/ function binary_math_operator( n : Text, fun : Function ) : void {
+/**/ function binary_math_operator( n : ConstText, fun : Function ) : void {
 /**/ // Build an operator primitive. ToDo: Also built integer.xx, float.xx
 /**/   operator_primitive(
 /**/      n,
@@ -9320,7 +10340,7 @@ operator_primitive( "not==?", primitive_is_not_identical );
 /**/  }
 
 
-/**/  function binary_boolean_operator( n : Text, fun : Function ) : void {
+/**/  function binary_boolean_operator( n : ConstText, fun : Function ) : void {
 /**/  // Build an boolean operator primitive. Also built boolean.
 /**/    operator_primitive(
 /**/      n,
@@ -9469,7 +10489,7 @@ operator_primitive( "XOR",   checked_int_xor );
 
 /*!c{*/
 
-function unary_math_operator( n : Text, fun : Function ) : void {
+function unary_math_operator( n : ConstText, fun : Function ) : void {
   operator_primitive( n, function primitive_unary_operator(){
     const p0 = TOS;
     const r  = fun( value( p0 ) );
@@ -9480,7 +10500,7 @@ function unary_math_operator( n : Text, fun : Function ) : void {
  }
 
 
-/**/ function unary_boolean_operator( n : Text, fun : Function ) : void {
+/**/ function unary_boolean_operator( n : ConstText, fun : Function ) : void {
 /**/   operator_primitive( n, function primitive_unary_boolean_operator(){
 /**/     const p0 = TOS;
 /**/     const r  = fun( value( p0 ) );
@@ -9498,9 +10518,9 @@ function unary_math_operator( n : Text, fun : Function ) : void {
  *  ? operator
  */
 
-const tag_is_truthy = tag( "truthy?" );
+const tag_is_truth = tag( "truth?" );
 
-function primitive_is_truthy(){
+function primitive_is_truth(){
 
   const typ = type( TOS );
 
@@ -9557,29 +10577,31 @@ function primitive_is_truthy(){
 
   }
   set_type( TOS, type_boolean );
-  set_tos_name( tag_is_truthy );
+  set_tos_name( tag_is_truth );
 }
-primitive( "truthy?", primitive_is_truthy );
+primitive( "truth?", primitive_is_truth );
 
-operator_primitive( "?", primitive_is_truthy );
+operator_primitive( "?", primitive_is_truth );
 
 
 /*
  *  something? operator
  */
 
+const tag_is_something = tag( "something?" );
+
 function primitive_is_someting(){
   const typ = type( TOS );
   if( typ == type_void ){
     if( value( TOS ) != 0 ){
-      set_value( TOS, 0 );
+      set( TOS, type_boolean, tag_is_something, 1 );
+    }else{
+      set( TOS, type_boolean, tag_is_something, 0 );
     }
-    set_type( TOS, type_boolean );
     return;
   }
   clear( TOS );
-  set_value( TOS, 1 );
-  set_type( TOS, type_boolean );
+  set( TOS, type_boolean, tag_is_something, 1 );
 }
 primitive( "something?", primitive_is_someting );
 
@@ -9591,6 +10613,7 @@ operator_primitive( "something?", primitive_is_someting );
  */
 
 function primitive_is_void(){
+  // ToDo: should also check the name
   const typ = type( TOS );
   if( typ == type_void ){
     if( value( TOS ) != 0 ){
@@ -9634,18 +10657,20 @@ operator_primitive( "true?", primitive_is_true );
  *  false? operator
  */
 
+const tag_is_false = tag( "false?" );
+
 function primitive_is_false(){
   const typ = type( TOS );
   if( typ == type_boolean ){
     if( value( TOS ) != 0 ){
-      set_value( TOS, 0 );
+      set( TOS, type_boolean, tag_is_false, 0 );
     }else{
-      set_value( TOS, 1 );
+      set( TOS, type_boolean, tag_is_false, 1 );
     }
     return;
   }
   clear( TOS );
-  set_type( TOS, type_boolean );
+  set( TOS, type_boolean, tag_is_false, 0 );
 }
 primitive( "false?", primitive_is_false );
 
@@ -9676,6 +10701,7 @@ function primitive_or(){
   check_de&&mand_boolean( TOS );
   if( value( TOS ) == 0 ){
     set_value( TOS, p2 );
+    set_name(  TOS, name( p2 ) );
   }
 }
 operator_primitive( "or", primitive_or );
@@ -9690,6 +10716,7 @@ function primitive_and(){
   check_de&&mand_boolean( TOS );
   if( value( TOS ) != 0 ){
     set_value( TOS, p2 );
+    set_name(  TOS, name( p2 ) );
   }
 }
 operator_primitive( "and", primitive_and );
@@ -10386,18 +11413,16 @@ primitive( "dump", primitive_dump );
  *  ""? unary operator
  */
 
-const the_empty_text_value = value( the_empty_text_cell );
-// de&&mand_eq( the_empty_text_value, 0 );
 
 const tag_empty_text = tag( "empty?" );
 
 
 function is_empty_text_cell( c : Cell ) : boolean {
-  if( type( c ) != type_text )return false;
-  if( value( c ) == the_empty_text_value )return true;
-  //c/ if( *(char*) value( c ) == 0 )return true;
-  return false;
+  if( value( c ) != the_empty_lean )return false;
+  if( type(  c ) != type_text      )return false;
+  return true;
 }
+
 
 /*
  *  ""? unary operator - true if TOS is the empty text
@@ -10465,7 +11490,7 @@ function inox_machine_code_cell_to_text( c : Cell ) : Text {
     if( get_primitive( n ) == no_operation ){
       return S()+ "Invalid primitive cell " + C( c )
       + " named " + C( n )
-      + " (" + ( is_valid_tag( n ) ? tag_to_text( n ) : no_text ) + ")";
+      + " (" + ( tag_is_valid( n ) ? tag_to_text( n ) : no_text ) + ")";
     }
 
     fun = get_primitive( n );
@@ -10480,7 +11505,7 @@ function inox_machine_code_cell_to_text( c : Cell ) : Text {
       return S()+ name_text + " return ( cell " + C( c )
       + " is verb return 0x0000 )";
     }
-    if( ! is_valid_tag( n ) ){
+    if( ! tag_is_valid( n ) ){
       return S()+ "Invalid verb cell " + C( c )
       + " named " + C( n );
     }
@@ -10495,8 +11520,9 @@ function inox_machine_code_cell_to_text( c : Cell ) : Text {
 }
 
 
-function verb_flags_dump( flags : u32 ) : Text {
-// Return a text that describes the flags of an Inox verb.
+function verb_flags_dump( flags : i32 ) : Text {
+// Return a text that describes the flags of an Inox verb
+  // Note: the flags parameter should be a u32 but i32 makes things easier
   let auto_buf = S();
   if( ( flags & immediate_verb_flag ) == immediate_verb_flag ){
     auto_buf += " immediate";
@@ -11236,11 +12262,11 @@ function make_circular_object_from_js( obj : any, met : Map< string, any> ) : Ce
   const length = keys.length;
 
   // Allocate enough memory to hold all of that
-  const cell = allocate_area( length * size_of_cell );
+  const area = allocate_area( length * size_of_cell );
 
   // First cell is name:length
-  init_cell( cell, length, pack( type_integer, class_name ) );
-  let top = cell + size_of_word;
+  init_cell( area, length, pack( type_integer, class_name ) );
+  let top = area + size_of_word;
 
   // Them come the properties, numeric indexes first, then named
   let ii : Index = 0;
@@ -11312,12 +12338,12 @@ function make_circular_object_from_js( obj : any, met : Map< string, any> ) : Ce
     }else{
       move_cell( c, top );
       set_name( top, name );
-      free_cell( c );
+      cell_free( c );
     }
     top += ONE;
   }
 
-  return cell;
+  return area;
 
 } // make_circular_object_from_js()
 
@@ -11377,8 +12403,8 @@ function                        primitive_make_fixed_object(){
   check_de&&mand( length > 0 && length < 100 );
 
   // Allocate a cell for the class/length and cells for the values
-  const dest = allocate_area( max_length * size_of_cell );
-  if( dest == 0 ){
+  const dest_area = allocate_area( max_length * size_of_cell );
+  if( dest_area == 0 ){
     // ToDo: raise an exception?
     set( TOS, type_tag, tag_out_of_memory, 0 );
     return;
@@ -11389,16 +12415,16 @@ function                        primitive_make_fixed_object(){
   // but that would require to reverse the order of the values on the stack
   let ii;
   for( ii = 0 ; ii < length; ii++ ) {
-    raw_move_cell( POP(), dest + ii * ONE );
+    raw_move_cell( POP(), dest_area + ii * ONE );
   }
 
   // The first element is the named length
-  de&&mand_eq( value( dest ), length );
-  de&&mand_eq( name(  dest ), class_name );
+  de&&mand_eq( value( dest_area ), length );
+  de&&mand_eq( name(  dest_area ), class_name );
 
   // Return the named reference to the object
   // ToDo: should skip the first cell and skip the header as done with areas?
-  set( PUSH(), type_reference, class_name, dest );
+  set( PUSH(), type_reference, class_name, dest_area );
 }
 
 
@@ -11423,29 +12449,29 @@ primitive( "extend-object", primitive_extend_object );
 function                    primitive_extend_object(){
 // Turn a fixed object into an extensible one
 
-  const o = pop_reference();
-  const len = object_length( o );
+  const obj = pop_reference();
+  const len = object_length( obj );
 
   // Silently ignore if alreay extended
-  if( type( o ) == type_reference ){
+  if( type( obj ) == type_reference ){
     return;
   };
 
   // Allocate the extended area
-  const ptr = allocate_area( len * size_of_cell );
-  if( ptr == 0 ){
+  const area = allocate_area( len * size_of_cell );
+  if( area == 0 ){
     // ToDo: raise an exception, return 0?
     FATAL( "out-of-memory" );
   }
 
   // Move the object's attributes to the extended area
-  move_cells( o, ptr, len );
+  move_cells( obj, area, len );
 
   // Change the type of the object's content
-  set( o, type_reference, name( o ), ptr );
+  set( obj, type_reference, name( obj ), area );
 
   // Free the now unused portion of the fixed object's area
-  resize_area( o, 1 * ONE );
+  resize_area( obj, 1 * ONE * size_of_cell );
 
 }
 
@@ -11462,7 +12488,7 @@ function                 primitive_object_get(){
   const obj = TOS;
   let ptr = value( obj );
 
-  // ToDo: Void from void?
+  // Void from void
   if( ptr == 0x0 ){
     de&&mand( info( obj ) == 0 );
     clear( tos );
@@ -11758,37 +12784,47 @@ const tag_stack_top   = tag( "stack-top" );
 primitive( "stack-enter", primitive_stack_enter );
 function                  primitive_stack_enter(){
 // Switch the current actor data stack with the stack of an object
+
   let target = pop_reference();
   if( type( target ) == type_reference ){
     target = get_reference( target );
   }
+
   const length = value( target );
   if( length == 0 ){
     FATAL( "stack-enter, empty stack" );
     return;
   }
+
   CSP += ONE;
   set( CSP, type_reference, tag_stack_base, ACTOR_data_stack );
-  increment_object_ref_count( ACTOR_data_stack );
+  area_lock( ACTOR_data_stack );
+
   ACTOR_data_stack = target;
   CSP += ONE;
   set( CSP, type_integer, tag_stack_limit, ACTOR_data_stack_limit );
+
   ACTOR_data_stack_limit = target + to_cell( area_size( target ) );
   CSP += ONE;
   set( CSP, type_integer, tag_stack_top, TOS );
   TOS = target + length * ONE;
+
 }
 
 
 primitive( "stack-leave", primitive_stack_leave );
 function                  primitive_stack_leave(){
 // Restore the current actor data stack using info from the control stack
+
   TOS = eat_reference( CSP );
   CSP -= ONE;
+
   ACTOR_data_stack_limit = eat_integer( CSP );
   CSP -= ONE;
+
   ACTOR_data_stack = eat_integer( CSP );
   CSP -= ONE;
+
 }
 
 
@@ -11797,7 +12833,6 @@ function                  primitive_stack_leave(){
  */
 
 const tag_data_stack_base  = tag( "data-stack-base" );
-const tag_data_stack_limit = tag( "data-stack-limit" );
 
 primitive( "data-stack-base", primitive_data_stack_base );
 function                      primitive_data_stack_base(){
@@ -11809,6 +12844,8 @@ function                      primitive_data_stack_base(){
 /*
  *  data-stack-limit primitive
  */
+
+const tag_data_stack_limit = tag( "data-stack-limit" );
 
 primitive( "data-stack-limit", primitive_data_stack_limit );
 function                       primitive_data_stack_limit(){
@@ -11858,16 +12895,16 @@ function                      primitive_grow_data_stack(){
     return;
   }
   const new_length = length * 2;
-  const new_stack = allocate_area( new_length * size_of_cell );
-  if( new_stack == 0 ){
+  const new_stack_area = allocate_area( new_length * size_of_cell );
+  if( new_stack_area == 0 ){
     FATAL( "grow-control-stack, out of memory" );
     return;
   }
-  move_cells( ACTOR_data_stack, new_stack, length );
-  free_area( ACTOR_data_stack );
-  ACTOR_data_stack = new_stack;
-  ACTOR_data_stack_limit = new_stack + new_length;
-  TOS = new_stack + current_length;
+  move_cells( ACTOR_data_stack, new_stack_area, length );
+  area_free( ACTOR_data_stack );
+  ACTOR_data_stack = new_stack_area;
+  ACTOR_data_stack_limit = new_stack_area + new_length;
+  TOS = new_stack_area + current_length;
 }
 
 
@@ -11891,7 +12928,7 @@ function                         primitive_grow_control_stack(){
     return;
   }
   move_cells( ACTOR_control_stack, new_stack, length );
-  free_area( ACTOR_control_stack );
+  area_free( ACTOR_control_stack );
   ACTOR_control_stack = new_stack;
   ACTOR_control_stack_limit = new_stack + new_length;
   CSP = new_stack + current_length;
@@ -12158,6 +13195,81 @@ function                 primitive_map_length(){
   set_tos_name( tag_map_length );
 }
 
+
+/* ----------------------------------------------------------------------------
+ *  Type range
+ *  A range is a pair of integers, index + length or index + index.
+ *  ToDo:
+ *    small ranges should be stored in the cell itself
+ *    larger ranges should be stored in a separate area, the heap typically.
+ *  Some possible encodings :
+ *    [ 0 .. 0 ]    - an empty range
+ *    [ -1 .. -1 ]  - the last element of something
+ *    [ -1 .. 0 ]   - some place after the last element of something
+ *    [ 0 .. 1 ]    - the first element of something
+ *    [ 0 .. -1 ]   - the totality of something
+ *    [ n .. n+1 ]  - a range that is the index of a single element
+ *    [ 0 .. n ]    - a range that is a portion at the beginning of something
+ *    [ n .. m ]    - a range that is a portion of something
+ *    [ n .. -l ]   - a range that is a portion at the end of something
+ *    [ -n .. -m ]  - a portion at the end of something
+ *    [ -n .. m ]   - a portion at the end from a start position
+ *    [ -n .. 0 ]   - a portion at the end from the beginning
+ *    This makes a total of less than 16 different ranges, ie 4 bits ids.
+ *    A range may be "bound" to a specific entity, like a text or an array.
+ *    When a range is bound to an integer, the integer is a cursor.
+ *    Wherever an entity is used, a bound range may be used instead.
+ *    A bound range behaves like an iterator when it is incremented.
+ *    Arithmetic of ranges:
+ *      r + n  - move forward in range, if n is negative, move backward
+ *      r - n  - move backward in range, if n is negative, move forward
+ *      a + b  - [ a.start + b.start, a.end + b.end ] ?
+ *      a - b  - [ a.start - b.start, a.end - b.end ] ?
+ *      a * b  - [ min( a.start, b.start ), max( a.end, b.end ) ] ?
+ *      a / b  - [ max( a.start, b.start ), min( a.end, b.end ) ] ?
+ *    To pack a range into a 32 bits word, we need to allocate bits for the
+ *    start position and for either the end or length.
+ *    When a range is bound, 1 bit is used to indicate that it is bound, the
+ *    other bits are the address of the dynamic area where the range is stored
+ *    together with the entity it is bound to. When stored this way, the name
+ *    portion of the cell has 28 bits available. Semantically, the name is
+ *    the name of the entity the range is bound to. This is necessary to
+ *    process ranges as if they were the entity they are bound to, ie to
+ *    use a range in all places where an entity is used.
+ *    When either the start or the end is big, the range is stored in the
+ *    heap with enough space to store the start and the end.
+ *    Ranges can implement slices, ie a portion of an entity.
+ *    In C++, string_view, span and range are related concepts.
+ *    Ranges are qualified references.
+ *
+ *    Packing is an optimization, a first implementation may skip it.
+ *    - range.new
+ *    - range.new-slice( start, end )
+ *    - range.from( start )
+ *    - range.to( end )
+ *    - range.for( length )
+ *    - range.from-to( start, end )
+ *    - range.from-for( start, length )
+ *    - range.to-for( end, length )
+ *    - range.start
+ *    - range.end
+ *    - range.length
+ *    - range.empty?
+ *    - range.contains?( another_range )
+ *    - range.intersects?( another_range )
+ *    - range.extend( another_range )
+ *    - range.restrict( another_range )
+ *    - range.next
+ *    - range.previous
+ *    - range.type
+ *    - range.value
+ *    - range.name
+ *    - range.bound?
+ *    - range.bind( entity )
+ *    - range.unbind
+ *    - range.extract
+ *    - range.inject( something )
+ */
 
 /* ----------------------------------------------------------------------------
  *  Primitives to handle the control stack local variables
@@ -13531,7 +14643,7 @@ abstract class TextStreamIterator {
 
 // When REPL, source code comes from some readline() function
 /**/ let toker_stream  : TextStreamIterator;
-//c/ static int toker_stream = 0;
+//c/ static int toker_stream = -1;
 
 // Source that is beeing tokenized
 /**/ let  toker_text = "";
@@ -13821,7 +14933,7 @@ primitive( "input-until", primitive_input_until );
  *  pushback-token primitive - push back a token in source code stream
  */
 
-function unget_token( t : Index, s : Text ){
+function unget_token( t : Index, s : ConstText ){
   back_token_type = t;
   back_token_text = s;
 }
@@ -13838,7 +14950,7 @@ function primitive_pushback_token(){
 primitive( "pushback-token", primitive_pushback_token );
 
 
-function ch_is_space( ch : Text ) : boolean {
+function ch_is_space( ch : ConstText ) : boolean {
   // ToDo: faster
   return teq( ch, "\n" )
   ||     teq( ch, "\r" )
@@ -13910,7 +15022,7 @@ primitive( "digit?", primitive_is_digit );
 const tag_is_eol = tag( "eol?" );
 
 
-function ch_is_eol( ch : Text ) : boolean {
+function ch_is_eol( ch : ConstText ) : boolean {
   // ToDo: handle crlf better
   if( tneq( ch, "\n" ) && tneq( ch, "\r" ) )return false;
   return true;
@@ -14060,7 +15172,7 @@ function refill_next_ch( ii : Index ){
       next_ch += " ";
     }else{
       /**/ next_ch += toker_text[ ii + jj ];
-      //c/ next_ch += tmid( toker_text, ii + jj, 1 );
+      //c/ next_ch += tmid( toker_text, ii + jj, ii + jj + 1 );
       // Treat lf like a space
       if( ch_is_eol( tmid( next_ch, jj, 1 ) ) ){
         next_ch = tcut( next_ch, jj ) + " ";
@@ -14143,27 +15255,24 @@ let toker_previous_state = 0;
 /* -----------------------------------------------------------------------------
  *  An efficient getline() function.
  *  It uses file descriptors instead of FILE*.
- *  It is synchronous however, blocking the whole process.
+ *  It is synchronous, blocking the whole process.
  *  It is not thread safe.
  *  There is no dynamic memory involved and that comes with a limit to the
  *  line length, MAX_LINE_LENGTH, which is 2048, as per POSIX minimum.
+ *  If a longer line is encountered, it is ignored, as well as the rest of
+ *  the file, ie that line acts like an end of file.
  *  ToDo: make it thread safe.
  *  ToDo: make it asynchronous.
  *  ToDo: have a dynamic buffer when asked.
  *  ToDo: configure the max length.
- *  ToDo: configure the new line delimiter.
- *  This is implemented in C++ to avoid using the C runtime.
+ *  ToDo: configure the new line delimiter, including -1 for none.
+ *  ToDo: more efficient TTY by reading whatever is available instead of one.
+ *  This is implemented in C++ to avoid using the C runtime FILE subsystem.
  *  ToDo: a TypeScript version that would also be compatible with
  *  AssemblyScript
  */
 
 /*c{
-
-#ifdef _WIN32
-  #include <Windows.h>
-#else
-  #include <unistd.h>
-#endif
 
 // The buffer. 2048 is the minimum to be POSIX compliant
 #define MAX_LINE_LENGTH 2048
@@ -14181,44 +15290,58 @@ static char* getline_buf_ptr = NULL;
 // What file descriptor is the buffer for
 static int getline_fd = -1;
 
+// Is it a TTY or a disk file?
 static bool getline_is_tty = false;
 
 // A saved char, needed when nulls are inserted after newlines
 static int getline_safe_char = -1;
 
 void fast_getline_close( int fd ){
-// Should be called by the entity that opened the fd
+// Should be called by the entity that opened the fd and will close it
   // Ignore if not about the current file descriptor
   if( fd >= 0 && fd != getline_fd )return;
+  // Reset the buffer
   getline_buf_length = 0;
   getline_buf_ptr = getline_buf;
   *getline_buf = 0;
   getline_fd = -1;
-  getline_safe_char = 0;
+  getline_safe_char = -1;
+  getline_is_tty = false;
 }
 
 
 void fast_getline_open( int fd ){
-// Should be called by the entity that opened the fd
+// Should be called by the entity that opened the fd (and will close it)
   // Close the current file descriptor, if any
   fast_getline_close( getline_fd );
   getline_fd = fd;
   if( getline_fd < 0 )return;
   // Is it a TTY?
-
+  #ifdef _WIN32
+    // Windows version:
+    getline_is_tty = GetFileType( (HANDLE) fd ) != FILE_TYPE_DISK;
+  #else
+    // Unix version:
+    getline_is_tty = isatty( fd );
+  #endif
 }
 
 
 char* fast_getline_remainder(){
 // Return whatever remains in the buffer, with \n and \0
-  if( getline_buf_length <= 0 )return NULL;
-  // Add a \n
-  getline_buf[ getline_buf_length ] = '\n';
+  if( getline_buf_length == 0 )return NULL;
+  // Add a \n if needed
+  if( getline_buf_ptr[ getline_buf_length - 1 ] != '\n' ){
+    getline_buf_ptr[ getline_buf_length ] = '\n';
+    getline_buf_length++;
+  }
   // Add a \0
-  getline_buf[ getline_buf_length + 1 ] = 0;
+  getline_buf_ptr[ getline_buf_length ] = 0;
   char* result = getline_buf_ptr;
+  // Reset the buffer
   getline_buf_length = 0;
   getline_buf_ptr = getline_buf;
+  getline_safe_char = -1;
   return result;
 }
 
@@ -14230,7 +15353,6 @@ char* fast_getline( int fd ){
 
   // If not the same fd, flush the buffer
   if( fd != getline_fd ){
-    fast_getline_close( getline_fd );
     fast_getline_open( fd );
   }
 
@@ -14254,49 +15376,89 @@ char* fast_getline( int fd ){
 
   // Found it, return the line
   if( nl ){
-    // Update the length
-    getline_buf_length -= nl - getline_buf_ptr;
-    // Change next char into a null but save it first
+    // Reduce the remaining length, including the newline
+    getline_buf_length -= ( nl - getline_buf_ptr ) + 1;
+    // Move remaining ptr past the newline
     getline_buf_ptr = nl + 1;
+    // Add a null to the end of the line but save the char first
     getline_safe_char = *getline_buf_ptr;
     *getline_buf_ptr = 0;
+    // On next call, the saved char will be restored
     return result;
   }
 
   // No newline, refill the buffer
 
-  // First move what remains to the front, including the null terminator
-  memmove( getline_buf, getline_buf_ptr, getline_buf_length + 1 );
+  // First move what remains to the front
+  memmove( getline_buf, getline_buf_ptr, getline_buf_length );
   getline_buf_ptr = getline_buf;
   result = getline_buf;
 
   // Then try to fill the rest
+  int space_to_fill = MAX_LINE_LENGTH - getline_buf_length;
+  de&&mand( space_to_fill >= 0 );
   int more_length = 0;
 
   // Unless the buffer is full?
-  if( getline_buf_length >= MAX_LINE_LENGTH ){
+  if( space_to_fill == 0 ){
     // If so, it's a line that is too big, file is unfit to proceed
     fast_getline_close( getline_fd );
     return NULL;
   }
 
-  // If this is a TTY then read one char at a time, until a newline
+  // If this is a TTY then read one character at a time, until a newline or EOF
   if( getline_is_tty ){
+    int nreads = 0;
+    int count_more = 0;
+    int attempted_size = 1;
     while( true ){
-      more_length = read( fd, getline_buf + getline_buf_length, 1 );
-      if( more_length <= 0 )break;
-      getline_buf_length += more_length;
-      if( getline_buf[ getline_buf_length - 1 ] == '\n' )break;
+      // On Unix, try to read more than one character at a time
+      #ifndef _WIN32
+        nreads = ioctl( fd, FIONREAD, &attempted_size );
+        if( nreads < 0 ){
+          // Exit loop, propagating the error
+          count_more = nreads;
+          break;
+        }
+        // Read at least one characer, blocking
+        if( attempted_size < 1 ){
+          attempted_size = 1;
+        }
+        // Don't read more than the buffer can hold
+        if( attempted_size > space_to_fill ){
+          attempted_size = space_to_fill;
+        }
+      #endif
+      nreads = read(
+        fd,
+        getline_buf + getline_buf_length + count_more,
+        attempted_size
+      );
+      // On error, exit loop, propagating the error
+      if( nreads < 0 ){
+        count_more = nreads;
+        break;
+      }
+      // Exit loop if EOF
+      if( nreads == 0 )break;
+      // Increase total number of characters read
+      count_more += nreads;
+      // Decrease space to fill
+      space_to_fill -= nreads;
+      de&&mand( space_to_fill >= 0 );
+      // Exit loop if some newline is found
+      if( getline_buf[ count_more - 1 ] == '\n' )break;
       // Don't overflow
-      if( getline_buf_length >= MAX_LINE_LENGTH )break;
+      if( space_to_fill == 0 )break;
     }
+    more_length = count_more;
 
   // If not a TTY, read as much as possible
   }else{
     more_length = read(
       fd,
-      getline_buf + getline_buf_length,
-      MAX_LINE_LENGTH - getline_buf_length
+      getline_buf_ptr + getline_buf_length,
+      space_to_fill
     );
   }
 
@@ -14313,16 +15475,18 @@ char* fast_getline( int fd ){
     if( !result ){
       fast_getline_close( getline_fd );
     }
-    // Otherwise return what we have
+    // Return what we have
     return result;
   }
 
-  // Make sure new content is null terminated
-  getline_buf[ getline_buf_length + more_length ] = 0;
+  // There are more characters available now
+  getline_buf_length += more_length;
 
-  // Retry, it should work this time
+  // Make sure new content is null terminated, it may help debugging
+  getline_buf[ getline_buf_length ] = 0;
+
+  // Retry, it should work this time, unless line is too big
   result = fast_getline( fd );
-  de&&mand_neq( (int) result, NULL );
   return result;
 
 }
@@ -14763,11 +15927,12 @@ function process_word_state(){
   // If there was something before the limit, deal with that
   }else if( tlen( toker_buf ) >= 0 ){
 
-    // xx(, xx[ and xx{ are words of a special type.
+    // xx(, xx{, xx[ and xx" are words of a special type.
     // so is xxx: when before a space or /xxx/yyy which is /xxx
     if( teq( toker_ch, "(" )
     ||  teq( toker_ch, '[' )
     ||  teq( toker_ch, '{' )
+    ||  teq( toker_ch, '"' )
     ||  ( teq( toker_ch, ':' ) && teq( tcut( next_ch, 1 ), " " ) )
     || teq( toker_ch, '/' ) && tneq( tcut( toker_buf, 1 ), "/" )
     ){
@@ -15224,7 +16389,7 @@ const tag_object_set          = tag( "object-set"          );
 
 const tag_is_integer_text = tag( "integer-text?" );
 
-function is_integer( buf : Text ) : boolean {
+function is_integer( buf : ConstText ) : boolean {
   /**/ return ! isNaN( parseInt( buf ) );
   /*c{
     // ToDo: bugs when too big
@@ -15257,7 +16422,7 @@ const tag_parse_integer = tag( "parse-integer" );
 const tag_NaN = tag( "NaN" );
 
 
-function text_to_integer( buf : Text ) : Value {
+function text_to_integer( buf : ConstText ) : Value {
   // This function is called after is_integer() has returned true
   /**/ const parsed = parseInt( buf );
   /**/ de&&mand( ! isNaN( parsed ) );
@@ -15492,19 +16657,29 @@ function bug_parse_levels( title : TxtC ) : boolean {
 
 function push_parse_state(){
 // Push the current parse context onto the parse stack
-  // set( tmp, type_integer, tag_depth, parse_depth );
-  // stack_push( parse_stack, tmp );
+
+  // parse_type
   set( the_tmp_cell, type_integer, tag_type, parse_type );
   stack_push( parse_stack, the_tmp_cell );
+
+  // parse_name
   set_text_cell( the_tmp_cell, parse_name );
   set_name( the_tmp_cell, tag_name );
   stack_push( parse_stack, the_tmp_cell );
+
+  // parse_verb
   set( the_tmp_cell, type_integer, tag_verb, parse_verb );
   stack_push( parse_stack, the_tmp_cell );
+
+  // parse_block_start
   set( the_tmp_cell, type_integer, tag_block_start, parse_block_start );
   stack_push( parse_stack, the_tmp_cell );
+
+  // parse_line_no
   set( the_tmp_cell, type_integer, tag_line_no, token_line_no );
   stack_push( parse_stack, the_tmp_cell );
+
+  // parse_column_no
   set( the_tmp_cell, type_integer, tag_column_no, token_column_no );
   stack_push( parse_stack, the_tmp_cell );
 }
@@ -15513,21 +16688,32 @@ function push_parse_state(){
 function pop_parse_state(){
 // Restore the current parse context using the parse stack
   let c;
-  c = stack_pop( parse_stack );  // column_no
+
+  // parse_column_no
+  c = stack_pop( parse_stack );
   parse_column_no = eat_integer( c );
-  c = stack_pop( parse_stack );  // line_no
+
+  // parse_line_no
+  c = stack_pop( parse_stack );
   parse_line_no = eat_integer( c );
-  c = stack_pop( parse_stack );  // block_start
+
+  // parse_block_start
+  c = stack_pop( parse_stack );
   parse_block_start = eat_integer( c );
-  c = stack_pop( parse_stack );  // verb
+
+  // parse_verb
+  c = stack_pop( parse_stack );
   parse_verb = eat_integer( c );
-  c = stack_pop( parse_stack );  // name
+
+  // parse_name
+  c = stack_pop( parse_stack );
   parse_name = cell_to_text( c );
   clear( c );
-  c = stack_pop( parse_stack );  // type
+
+  // parse_type
+  c = stack_pop( parse_stack );
   parse_type = eat_integer( c );
-  // c = stack_pop( parse_stack );  // depth
-  // parse_depth = eat_integer( c );
+
 }
 
 
@@ -16035,25 +17221,25 @@ primitive( "compile-block-end", primitive_compile_block_end );
  *  Helpers to strip prefix and suffix from a verb's name
  */
 
-function operand_X( v : Text ) : Text {
+function operand_X( v : ConstText ) : Text {
 // remove first character, ex .a becomes a
   return tbut( v, 1 );
 }
 
 
-function operand__X( v : Text ) : Text {
+function operand__X( v : ConstText ) : Text {
 // remove firts two characters
   return tbut( v, 2 );
 }
 
 
-function operand_X_( v : Text ) : Text {
+function operand_X_( v : ConstText ) : Text {
 // remove first and last characters
   return tmid( v, 1, -1 );
 }
 
 
-function operandX_( v : Text ) : Text {
+function operandX_( v : ConstText ) : Text {
 // remove last character
   return tcut( v, -1 );
 }
@@ -16070,7 +17256,7 @@ function operandX_( v : Text ) : Text {
  *  Note: , is a very special character, it always behaves as a space.
  */
 
-function is_special_verb( val : Text ) : boolean {
+function is_special_verb( val : ConstText ) : boolean {
 
   // ToDo: parsing verbs should be immediate verb, not special tokens
   if( val == "." || val == ";" )return true;
@@ -16121,6 +17307,12 @@ function is_special_verb( val : Text ) : boolean {
   // xxx{ is for block calls
   if( last_ch  == "{" )return true;
 
+  // xxx" is for smart text
+  if( last_ch  == "\"" )return true;
+
+  // xxx[ is for smart aggreagates, like lists, maps, etc
+  if( last_ch  == "[" )return true;
+
   return false;
 
 }
@@ -16130,14 +17322,14 @@ function is_special_verb( val : Text ) : boolean {
  *  eval primitive
  */
 
-function tok_match( t : Index, s : Text ) : boolean {
+function tok_match( t : Index, s : ConstText ) : boolean {
   if( token_type != t )return false;
   if( tneq( token_text, s ) )return false;
   return true;
 }
 
 
-function tok_word( s : Text ) : boolean {
+function tok_word( s : ConstText ) : boolean {
   return tok_match( token_type_word, s );
 }
 
@@ -16147,7 +17339,7 @@ function tok_type( t : Index ) : boolean {
 }
 
 
-function tok( s : Text ) : boolean {
+function tok( s : ConstText ) : boolean {
   return teq( token_text, s );
 }
 
@@ -16175,7 +17367,7 @@ function primitive_eval(){
   // Maybe an existing verb named like the token's text value
   let verb_id = 0;
 
-  // Name of verb for xxx( ... ) and xxx{ ... } calls
+  // Name of verb for xxx( ... ), xxx{ ... }, xxx[ ... ] and xxx"..." calls
   /**/ let call_verb_name  = "";
   //c/ static Text call_verb_name(   "" );
 
@@ -16399,6 +17591,8 @@ function primitive_eval(){
     // a) The type of nested structure we're currently in:
     //   "call("     - after some xxx( and until the closing ).
     //   "call{"     - after some xxx{ and until the closing }.
+    //   "call["     - after some xxx{ and until the closing ].
+    //   "call""     - after some xxx" and until the closing ".
     //   "subexpr (" - after ( and until the closing ).
     //   "infix"     - after an operator and until another one
     //                 or the end of the enclosing structure.
@@ -16496,6 +17690,7 @@ function primitive_eval(){
 
     // If known verb, run it or add it to the new verb beeing built
     // Unless operators or xxx{
+      // ToDo: quid of xxx[ and xxx" ?
     if( verb_id != 0 && !is_operator && !teq( last_ch, "{" ) ){
       eval_do_machine_code( verb_id );
       continue;
@@ -17035,6 +18230,320 @@ function primitive_the_void(){
 primitive( "the-void", primitive_the_void );
 
 
+/* -----------------------------------------------------------------------------
+ *  A tool to visit the memory.
+ *  It takes a pointer to a function as parameter and will call that function
+ *  for each area in the memory, with information about the nature of the area.
+ *  The function must return a boolean. If it returns true, the visitation
+ *  stops and the function returns true. If it returns false, the visitation
+ *  continues and the function returns false.
+ *  To avoid monopolizing the CPU, the visitation is incremental. It does not
+ *  visit the whole memory at once, but only a part of it.
+ */
+
+// Type for the visitor function, it takes the address of a cell, a tag that
+// describes the nature of the area, and the size of the area in bytes. It
+// returns a boolean, true to stop the visitation, false to continue.
+/**/ type MemoryVisitFunction = ( Cell, Tag, Size ) => boolean;
+//c/ typedef bool (*MemoryVisitFunction)( Cell, Tag, Size );
+
+// The current visitor function
+/**/ let memory_visit_function : MemoryVisitFunction = null;
+//c/ MemoryVisitFunction memory_visit_function       = null;
+
+// The last visited cell
+let memory_visit_last_cell = 0;
+
+// The upper limit to visit, excluded
+let memory_visit_limit = 0;
+
+// How many cells are visited at once, default value
+let memory_visit_default_increment = 1000;
+
+// How many cells are visited at once, current value
+let memory_visit_increment = 0;
+
+// What is left for the current phase
+let memory_visit_left = 0;
+
+// The number of visited areas so far
+let memory_visit_area_count = 0;
+
+// The first void cell in a sequence of void cells
+let memory_visit_void_start = -1;
+
+// Never issue multiple /begin
+let memory_visit_begin_count = 0;
+
+
+function memory_visit_set_increment( i : Count ){
+// Set the number of cells to visit at once
+  memory_visit_increment = i;
+  memory_visit_left = i;
+}
+
+
+function memory_visit_from( cell : Cell ){
+// Start the visitation from a given cell
+  if( cell < the_very_first_cell ){
+    cell = the_very_first_cell;
+  }
+  memory_visit_last_cell = cell - 1 * ONE;
+}
+
+
+function memory_visit_to( cell : Cell ){
+// Stop the visitation at a given cell, excluded
+  if( cell > the_cell_limit ){
+    cell = the_cell_limit;
+  }
+  memory_visit_limit = cell;
+  if( memory_visit_last_cell >= memory_visit_limit ){
+    memory_visit_last_cell = memory_visit_limit - 1 * ONE;
+  }
+}
+
+function memory_visit_setup( f : MemoryVisitFunction ){
+// Set the function to call for each area
+  memory_visit_function = f;
+  memory_visit_from( 0 );
+  memory_visit_to( the_cell_limit );
+  memory_visit_set_increment( memory_visit_default_increment );
+  memory_visit_void_start  = -1;
+  memory_visit_area_count  = 0;
+  memory_visit_begin_count = 0;
+}
+
+
+
+
+const tag_begin              = tag( "begin"             );
+const tag_end                = tag( "end"               );
+const tag_first              = tag( "first"             );
+const tag_last               = tag( "last"              );
+const tag_free               = tag( "free"              );
+const tag_busy               = tag( "busy"              );
+const tag_cell               = tag( "cell"              );
+const tag_rom                = tag( "rom"               );
+//const tag_IP               = tag( "IP"                );
+//const tag_TOS              = tag( "TOS"               );
+//const tag_CSP              = tag( "CSP"               );
+//const tag_data_stack       = tag( "data-stack"        );
+const tag_data_stack_end     = tag( "data-stack-end"    );
+//const tag_control_stack    = tag( "control-stack"     );
+const tag_control_stack_end  = tag( "control-stack-end" );
+
+
+function memory_visit_basic_step() : boolean {
+// Visit a small part of the memory, return true to stop the visitation
+
+  // Done if there is no visitor function
+  if( memory_visit_function == null )return true;
+
+  // Done if no more credit to pursue the visitation
+  if( memory_visit_left == 0 ){
+    // Give some credit for the next phase
+    memory_visit_left = memory_visit_increment;
+    return false;
+  }
+  memory_visit_left = memory_visit_left - 1;
+
+  // Get to next cell
+  const cell = memory_visit_last_cell + 1 * ONE;
+
+  // Don't cross the limit
+  if( cell >= the_cell_limit ){
+    memory_visit_function( memory_visit_last_cell, tag_end, 0 );
+    // Done
+    memory_visit_function = null;
+    return true;
+  }
+
+  memory_visit_last_cell = cell;
+
+  // Default size is size of a cell, ie 8 bytes for now
+  let sz = size_of_cell;
+
+  // Fire #begin if it is the first cell of the round
+  if( memory_visit_left == memory_visit_increment - 1 ){
+    memory_visit_begin_count = memory_visit_begin_count + 1;
+    // Only the first time
+    if( memory_visit_begin_count == 1 ){
+      if( memory_visit_function( cell, tag_begin, 0 ) )return true;
+    }
+  }
+
+  // Fire #first if it is the first cell
+  if( cell == the_very_first_cell ){
+    if( memory_visit_function( cell, tag_first, 0 ) )return true;
+  }
+
+  // Fire #last if it is the last cell
+  if( cell == the_cell_limit - 1 * ONE ){
+    if( memory_visit_function( cell, tag_last, 0 ) )return true;
+  }
+
+  alloc_de&&mand( cell < the_cell_limit );
+
+  // Fire #IP if the is current instruction pointer
+  if( cell == IP ){
+    if( memory_visit_function( cell, tag_IP, sz ) )return true;
+  }
+
+  // Fire #tos if the is current top of stack
+  if( cell == TOS ){
+    if( memory_visit_function( cell, tag_TOS, sz ) )return true;
+  }
+
+  // Fire #csp if the is current control stack pointer
+  if( cell == CSP ){
+    if( memory_visit_function( cell, tag_CSP, sz ) )return true;
+  }
+
+  // Fire #data-stack if the is the base of the current data stack
+  if( cell == ACTOR_data_stack ){
+    if( memory_visit_function( cell, tag_data_stack, sz ) )return true;
+  }
+
+  // Fire #data-stack-end if the is last cell of the data stack
+  if( cell == ACTOR_data_stack_limit - 1 * ONE ){
+    if( memory_visit_function( cell, tag_data_stack_end, sz ) )return true;
+  }
+
+  // Fire #control-stack if the is the base of the current control stack
+  if( cell == ACTOR_control_stack ){
+    if( memory_visit_function( cell, tag_control_stack, sz ) )return true;
+  }
+
+  // Fire #control-stack-end if the is last cell of the control stack
+  if( cell == ACTOR_control_stack_limit - 1 * ONE ){
+    if( memory_visit_function( cell, tag_control_stack_end, sz ) )return true;
+  }
+
+  // Detect consecutive void cells
+  if( info( cell ) == 0 && value( cell ) == 0 ){
+    // Skip consecutive void cells
+    if( memory_visit_void_start == -1 ){
+      memory_visit_void_start = cell;
+    }
+    return false;
+  }
+
+  // Fire #void with the total size of consecutive void cells
+  if( memory_visit_void_start != -1 ){
+    sz = ( cell - memory_visit_void_start ) * size_of_cell;
+    if( memory_visit_function(
+      memory_visit_void_start,
+      tag_void,
+      sz
+    ) ){
+      memory_visit_void_start = -1;
+      return true;
+    }
+    memory_visit_void_start = -1;
+  }
+
+  const potential_area = cell + 2 * ONE;
+
+  if( potential_area < the_cell_limit && area_cell_is_area( potential_area ) ){
+
+    sz = area_size( potential_area );
+
+    // Fire #free if the cell is the start of a free area
+    if( area_is_free( potential_area ) ){
+      if( memory_visit_function( cell, tag_free, sz ) )return true;
+    }
+
+    // Fire #busy if the cell is the start of a busy area
+    if( area_is_busy( potential_area ) ){
+      if( memory_visit_function( cell, tag_busy, sz ) )return true;
+    }
+
+    // Skip the area
+    const ncells = sz / size_of_cell;
+    memory_visit_last_cell = cell + ( ncells - 1 ) * ONE;
+
+  }else{
+
+    // Fire #cell for all "normal" cells
+    if( memory_visit_function( cell, tag_cell, sz ) )return true;
+
+  }
+
+  // Fire #end if it is the last cell for this round
+  if( memory_visit_left == 0 ){
+    // Decrease the begin counter
+    memory_visit_begin_count = memory_visit_begin_count - 1;
+    // Only the last time
+    if( memory_visit_begin_count == 0 ){
+      if( memory_visit_function( cell, tag_end, sz ) ){
+        // Done
+        memory_visit_function = null;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  return false;
+
+}
+
+
+function memory_visit_step() : boolean {
+  if( memory_visit_basic_step() ){
+    // Done
+    return true;
+  }
+  // Not done
+  return false;
+}
+
+
+let cells_to_visit = 0;
+
+function memory_visit_map_visitor( c : Cell, tag : Tag, sz : Size ) : boolean {
+// Visitor function for memory_visit_map()
+  // Skip plain normal cells, unless configured to keep some of them
+  if( tag == tag_cell ){
+    if( cells_to_visit <= 0 )return false;
+    cells_to_visit--;
+  }
+  const auto_dump_text = dump( c );
+  if( sz <= size_of_cell ){
+    trace( S()+ C( c ) + " " + tag_to_dump_text( tag ) + " " + auto_dump_text );
+    return false;
+  }
+  const ncells = sz / size_of_cell;
+  trace( S()+
+    C( c ) + " /" + tag_to_dump_text( tag )
+    + " [" + N( ncells ) + "] " + auto_dump_text
+  );
+  return false;
+}
+
+
+function memory_visit_map(){
+// Visit the whole memory and fire the visitor function for each cell
+  memory_visit_setup( memory_visit_map_visitor );
+  memory_visit_to( the_cell_limit );
+  cells_to_visit = 10000;
+  while( true ){
+    if( memory_visit_step() )break;
+  }
+}
+
+
+/*
+ *  memory-visit primitive - get a view of the memory
+ */
+
+function primitive_memory_visit(){
+  memory_visit_map();
+}
+primitive( "memory-visit", primitive_memory_visit );
+
+
 /* ----------------------------------------------------------------------------
  *  exports
  */
@@ -17147,7 +18656,7 @@ function signal( event : TxtC ){
   // ToDo: run_verb( "signal" );
 }
 
-/**/ function on( event : TxtC, handler : ( e : Text ) => void ){
+/**/ function on( event : TxtC, handler : ( e : ConstText ) => void ){
 //c/ void     on( TxtC event,  void (*handler)( TxtC e ) ){
 // ToDo: register handler for event in the event handler table.
 // Possible events are: "exit", "reset" & "SIGINT"
@@ -17223,13 +18732,24 @@ function primitive_source(){
 }
 /**/ I.primitive( "source", primitive_source );
 
+
+/* -----------------------------------------------------------------------------
+ *  Load the standard library and run the smoke test if appropriate.
+ */
+
 function bootstrap(){
   eval_file( "bootstrap.nox" );
   eval_file( "forth.nox" );
   if( run_de ){
     eval_file( "test/smoke.nox" );
   }
+  primitive_memory_visit();
 }
+
+
+/* -----------------------------------------------------------------------------
+ *  Almost ready, initialize some more globals and run the bootstrap.
+ */
 
 /*c{
 
@@ -17398,8 +18918,7 @@ int repl(){
     if( !line ){
       break;
     }
-    // ToDo: ? add_history( line );
-   trace( evaluate( S() + "~~\n" + line ).c_str() );
+    trace( evaluate( S() + "~~\n" + line ).c_str() );
   }
   return 0;
 }
