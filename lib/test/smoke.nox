@@ -54,16 +54,16 @@ false-while/test
 
 
 to test-times-do
-  times: 3 do: { out( "Time´goes on" ) } ;
+  times: 3 do: { out( "Time goes on" ) } ;
 times-do/test
 
 
-to swap/  with /a /b  fn{ a> >A, b> >B, B> A> }.
+to swap/  with /a /b  /{ a> >A, b> >B, B> A> }.
 
 to test-swap/
   2 3 swap/()
   "2 3 swap/(), top should be 2, is "  prefix out
-  if: <>? 2 then: { out( "Expected 2 but got " prefix ) debugger };
+  if: <> 2 then: { out( "Expected 2 but got " prefix ) debugger };
   "2 3 swap/(), next should be 3, is " prefix out drop
   swap/( 4, 5 )
   "swap/( 4, 5 ), top should be 4, is "  prefix out drop
@@ -199,4 +199,4 @@ and then I need to restore the non literate mode using
   Set-literate( False )
 
 
-out( "End of Iɴᴏx smoke test" )
+out( "End of Inox smoke test" )

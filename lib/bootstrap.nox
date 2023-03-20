@@ -40,8 +40,8 @@ to else{          if-not.        inline
 
 to {}             noop
 to {drop}         /drop definition literal. immediate!
-to range?         dup <=? and{ >=? }
-to range<?        dup <?  and{ >=? }
+to range?         dup <= and{ >= }
+to range<?        dup <  and{ >= }
 
 
 to clear-stacks   clear-data clear-control
@@ -85,12 +85,12 @@ to check-globals
 check-globals
 
 ~~ ToDo: :xx? special form?
-to :success?  name /success =?
-to :failure?  name /failure =?
-to :on?       name /on      =?
-to :off?      name /off     =?
-to :yes?      name /yes     =?
-to :no?       name /no      =?
+to :success?  name-of /success =?
+to :failure?  name-of /failure =?
+to :on?       name-of /on      =?
+to :off?      name-of /off     =?
+to :yes?      name-of /yes     =?
+to :no?       name-of /no      =?
 
 
 ~~ Class hierarchy
@@ -140,13 +140,13 @@ to verb.class                   /verb
 
 to dump  ~| any -- any |~  ~~ Debug dump of top of stack. TOS is preserved.
   dup, dup    ~~ any  any    any
-  class       ~~ any  any   _class
+  class-of    ~~ any  any   _class
   swap, dup   ~~ any _class  any   any
-  type        ~~ any _class  any  _type
+  type-of     ~~ any _class  any  _type
   swap, dup   ~~ any _class _type  any   any
-  name        ~~ any _class _type  any  _name
+  name-of     ~~ any _class _type  any  _name
   swap, dup   ~~ any _class _type _name  any    any
-  value       ~~ any _class _type _name  any   _value
+  value-of    ~~ any _class _type _name  any   _value
   swap        ~~ any _class _type _name _value  any
   out(
       "class: "  & _class
@@ -223,8 +223,8 @@ to ll!           /it 3 upper!
 to from:to:do:
   it{
     it >block, >ii-to, ii!
-    if: ii <=? ii-to> then: {
-      do: { block> run } while: { ii-to> >? ++it! };
+    if: ii <= ii-to> then: {
+      do: { block> run } while: { ii-to> > ++it! };
     };
   }
 
@@ -232,7 +232,7 @@ to from:down-to:do:
   it{
     it >block, >ii-down-to, ii!
     if: ii >=? ii-down-to> then: {
-      do: { block> run } while: { ii-to> >? --it! };
+      do: { block> run } while: { ii-to> > --it! };
     };
   }
 
@@ -240,12 +240,12 @@ to from:to:by:do:
   it{
     it >block, >ii-by, >ii-to, ii!
     if: ii-by> >0? then: {
-      if: ii <=? ii-to> then: {
-        do: { block> run } while: { ii + ii-by>, ii!, ii <=? ii-to> };
+      if: ii <= ii-to> then: {
+        do: { block> run } while: { ii + ii-by>, ii!, ii <= ii-to> };
       };
     } else: {
       if: ii >=? ii-to> then: {
-        do: { block> run } while: { ii + ii-by>, ii!, ii >=? ii-to> };
+        do: { block> run } while: { ii + ii-by>, ii!, ii >= ii-to> };
       };
     };
   };
@@ -338,14 +338,14 @@ to test ~| name |~
   /test-sentinel, over
   "test-" swap text-join, run-name
   ~~ checks that stack is unchanged, ie sentinel is still at the top
-  /test-sentinel <>? { out( "Stack mismatch!" ) debugger } if
+  /test-sentinel <> { out( "Stack mismatch!" ) debugger } if
   "End of test " prefix out
   drop
 
 to debug-test  ~~ Helper for tests that needs to be debugged
   "Testing " prefix out
   dup
-  "test-" swap text-join, debug, run-name, no-debug
+  "test-" swap text-join, debug, run-name, normal-debug
   ~~ ToDo: developer must also check that data stack is unchanged
   "End of debug-test for " prefix out
   drop
@@ -377,14 +377,12 @@ To False  false.
 To True   true.
 
 
-global: /speed-index-loops is: 10000000;
+global: /speed-index-loops is: 1;
 
 to speed-index
-  false fast!
-  debug
-  if: ( true or fast? ) then: {
+  if: fast? then: {
     if: fast? then: {
-      1000000 speed-index-loops!
+      10000000 speed-index-loops!
     } else: {
       2 speed-index-loops!
     };
@@ -398,12 +396,10 @@ to speed-index
     now swap -
     ~~ Delta is how long for additions alone
     -
-    speed-index-loops
-    " times 1 1 + drop in " &
-    swap " ms" & &
-    out
+    speed-index-loops " times 1 1 + drop in " &
+    swap " ms" &
+    & out
   };
-  fast!
 speed-index
 
 ~~ forth.nox comes next

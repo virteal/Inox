@@ -1,60 +1,16 @@
 {
         "version": "0.2.0",
         "configurations": [
-                {
-                        "name": "Launch Inox via NPM",
-                        "request": "launch",
-                        "type": "node",
-                        "runtimeExecutable": "npm",
-                        "runtimeArgs": [
-                                "run-script",
-                                "run"
-                        ],
-                        "skipFiles": [
-                                "<node_internals>/**"
-                        ]
-                },
-                {
-                        "name": "Build & launch inox.js",
-                        "request": "launch",
-                        "type": "node",
-                        "program": "${workspaceFolder}\\builds\\inox.js",
-                        "preLaunchTask": "tsc: build - tsconfig.json",
-                        "skipFiles": [
-                                "<node_internals>/**"
-                        ]
-                },
+                
                 {
                         "name": "Launch node inox.js",
-                        "request": "launch",
                         "type": "node",
+                        "request": "launch",
                         "program": "${workspaceFolder}\\builds\\inox.js",
                         "skipFiles": [
                                 "<node_internals>/**"
                         ],
                         "outputCapture": "std"
-                },
-                {
-                        "name": "C++: build and debug active file",
-                        "type": "cppvsdbg",
-                        "request": "launch",
-                        "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
-                        "args": [],
-                        "stopAtEntry": true,
-                        "cwd": "${fileDirname}",
-                        "environment": [],
-                        "preLaunchTask": "C++: shell build active file"
-                },
-                {
-                        "name": "C++: debug active file",
-                        "type": "cppvsdbg",
-                        "request": "launch",
-                        "program": "${fileDirname}\\${fileBasenameNoExtension}.exe",
-                        "args": [],
-                        "stopAtEntry": false,
-                        "cwd": "${workspaceFolder}",
-                        "environment": [],
-                        "console": "integratedTerminal"
                 },
                 {
                         "name": "C++: debug inox.exe",
