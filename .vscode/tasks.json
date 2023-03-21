@@ -2,9 +2,10 @@
         "tasks": [
                 {
                         "type": "shell",
-                        "label": "C++: shell build debug inox.exe",
+                        "label": "cl.exe: debug inox.exe",
                         "command": "cl.exe",
                         "args": [
+                                "/DINOX_FAST_RUN",
                                 "/DEBUG",
                                 "/W4",
                                 "/nologo",
@@ -40,7 +41,7 @@
                 },
                 {
                         "type": "shell",
-                        "label": "C++: shell build fast inox.exe",
+                        "label": "cl.exe: fast inox.exe",
                         "command": "cl.exe",
                         "args": [
                                 "/W4",
@@ -58,6 +59,7 @@
                                 "/GS-",
                                 "/GR-",
                                 "/DINOX_FAST",
+                                "/D_HAS_EXCEPTIONS=0",
                                 "/EHsc",
                                 "/std:c++latest",
                                 "/Fe${workspaceFolder}\\builds\\inox.exe",
@@ -85,18 +87,14 @@
                 },
                 {
                         "type": "shell",
-                        "label": "C++: shell build inox.cpp.js",
+                        "label": "Cheerp: inox.cpp.js",
                         "command": "C:\\cheerp\\bin\\clang++.exe",
                         "args": [
-                                "-O3",
+                                "-v",
                                 "-Wno-cheerp-unsafe",
                                 "-Wno-cheerp-maybe-slow",
                                 "-Wno-comment",
-                                "-cheerp-bounds-check",
-                                "-cheerp-pretty-code","-cheerp-strict-linking=error","-cheerp-sourcemap-standalone",
-                                "-cheerp-dump-bc",
-                                "-cheerp-no-credits",
-                                "-v",
+                                "-cheerp-pretty-code",
                                 "-target",
                                 "cheerp",
                                 "${workspaceFolder}\\builds\\inox.cpp",
@@ -107,15 +105,18 @@
                                 "cwd": "${workspaceFolder}\\builds"
                         },
                         "problemMatcher": {
-                            "owner": "cheerp",
-                            "fileLocation": ["relative", "${workspaceFolder}\\builds\\"],
-                            "pattern": {
-                                "regexp": "^([^:]+):(\\d+):(\\d+): error: (.+)$",
-                                "file": 1,
-                                "line": 2,
-                                "column": 3,
-                                "message": 4
-                            }
+                                "owner": "cheerp",
+                                "fileLocation": [
+                                        "relative",
+                                        "${workspaceFolder}\\builds\\"
+                                ],
+                                "pattern": {
+                                        "regexp": "^([^:]+):(\\d+):(\\d+): error: (.+)$",
+                                        "file": 1,
+                                        "line": 2,
+                                        "column": 3,
+                                        "message": 4
+                                }
                         },
                         "group": {
                                 "kind": "build",
@@ -134,18 +135,20 @@
                 },
                 {
                         "type": "shell",
-                        "label": "Wasm: shell build inox.cpp.js",
+                        "label": "Cheerp: wasm inox.cpp.js",
                         "command": "C:\\cheerp\\bin\\clang++.exe",
                         "args": [
+                                "-v",
                                 "-O3",
                                 "-Wno-cheerp-unsafe",
                                 "-Wno-cheerp-maybe-slow",
                                 "-Wno-comment",
                                 "-cheerp-bounds-check",
-                                "-cheerp-pretty-code","-cheerp-strict-linking=error","-cheerp-sourcemap-standalone",
+                                "-cheerp-pretty-code",
+                                "-cheerp-strict-linking=error",
+                                "-cheerp-sourcemap-standalone",
                                 "-cheerp-dump-bc",
                                 "-cheerp-no-credits",
-                                "-v",
                                 "-target",
                                 "cheerp-wasm",
                                 "${workspaceFolder}\\builds\\inox.cpp",
@@ -156,15 +159,18 @@
                                 "cwd": "${workspaceFolder}\\builds"
                         },
                         "problemMatcher": {
-                            "owner": "cheerp",
-                            "fileLocation": ["relative", "${workspaceFolder}\\builds\\"],
-                            "pattern": {
-                                "regexp": "^([^:]+):(\\d+):(\\d+): error: (.+)$",
-                                "file": 1,
-                                "line": 2,
-                                "column": 3,
-                                "message": 4
-                            }
+                                "owner": "cheerp",
+                                "fileLocation": [
+                                        "relative",
+                                        "${workspaceFolder}\\builds\\"
+                                ],
+                                "pattern": {
+                                        "regexp": "^([^:]+):(\\d+):(\\d+): error: (.+)$",
+                                        "file": 1,
+                                        "line": 2,
+                                        "column": 3,
+                                        "message": 4
+                                }
                         },
                         "group": {
                                 "kind": "build",
@@ -181,6 +187,91 @@
                         },
                         "detail": "JHR's, compiler: shell clang++.exe"
                 },
+                {
+                        "type": "shell",
+                        "label": "clang: debug inox.exe",
+                        "command": "clang++.exe",
+                        "args": [
+                                "-v",
+                                "-g",
+                                "${workspaceFolder}\\builds\\inox.cpp",
+                                "-o",
+                                "${workspaceFolder}\\builds\\inox.exe"
+                        ],
+                        "options": {
+                                "cwd": "${workspaceFolder}\\builds"
+                        },
+                        "problemMatcher": {
+                                "fileLocation": [
+                                        "relative",
+                                        "${workspaceFolder}\\builds\\"
+                                ],
+                                "pattern": {
+                                        "regexp": "^([^:]+):(\\d+):(\\d+): error: (.+)$",
+                                        "file": 1,
+                                        "line": 2,
+                                        "column": 3,
+                                        "message": 4
+                                }
+                        },
+                        "group": {
+                                "kind": "build",
+                                "isDefault": false
+                        },
+                        "presentation": {
+                                "reveal": "always",
+                                "panel": "dedicated",
+                                "showReuseMessage": true,
+                                "clear": true,
+                                "close": false,
+                                "echo": true,
+                                "focus": true
+                        },
+                        "detail": "JHR's, compiler: shell clang++.exe"
+                },
+                {
+                        "type": "shell",
+                        "label": "clang: fast inox.exe",
+                        "command": "clang++.exe",
+                        "args": [
+                                "-v",
+                                "-O2",
+                                "-DINOX_FAST",
+                                "${workspaceFolder}\\builds\\inox.cpp",
+                                "-o",
+                                "${workspaceFolder}\\builds\\inox.exe"
+                        ],
+                        "options": {
+                                "cwd": "${workspaceFolder}\\builds"
+                        },
+                        "problemMatcher": {
+                                "fileLocation": [
+                                        "relative",
+                                        "${workspaceFolder}\\builds\\"
+                                ],
+                                "pattern": {
+                                        "regexp": "^([^:]+):(\\d+):(\\d+): error: (.+)$",
+                                        "file": 1,
+                                        "line": 2,
+                                        "column": 3,
+                                        "message": 4
+                                }
+                        },
+                        "group": {
+                                "kind": "build",
+                                "isDefault": false
+                        },
+                        "presentation": {
+                                "reveal": "always",
+                                "panel": "dedicated",
+                                "showReuseMessage": true,
+                                "clear": true,
+                                "close": false,
+                                "echo": true,
+                                "focus": true
+                        },
+                        "detail": "JHR's, compiler: shell clang++.exe"
+                }
         ],
         "version": "2.0.0"
 }

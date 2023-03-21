@@ -13,10 +13,17 @@
  *  january  29 2023 by jhr, crossed the 10 000 lines of code frontier
  *  february 27 2023 by jhr, runs in C++, 15Kloc, 95 Mips
  *  march    18 2023 by jhr, almost 20Kloc, 220 Mips, Cheerp C++ to wasn
+ *
+ *  International license:
+ *    Lastest version of WTFPL.
+ *    See https://en.wikipedia.org/wiki/WTFPL
+ *  License pour la France :
+ *    Faites en ce que vous voulez, à vos risques et périls.
  */
 
 /**
  *  @author Jean Hugues Noel Robert
+ *  @license WTFPL
  *  @brief This is the one big source file of the Inox programming language
  *  @mainpage The Inox programming language
  *  Inox is a concatenative script language.
@@ -28,11 +35,11 @@
  */
 
 /// 0: no debug, 1: some debug, 2: more debug, etc
-const INOX_DEBUG_LEVEL = 1;
+const INOX_DEBUG_LEVEL = 0;
 
 /// The initial size of the flat memory where the Inox interpreter will run
 // ToDo: make the size configurable at run time ?
-const INOX_HEAP_SIZE = 64 * 1024; // Minimum is 24
+const INOX_HEAP_SIZE = 64 * 1024; // Minimum is 24 bytes
 
 /// The initital length of the symbol table
 const INOX_SYMBOL_TABLE_SIZE = 2048;
@@ -150,7 +157,7 @@ using namespace std;
 // File open mode, read only
 #define O_RDONLY 1
 
-int open( const char* path, int mode ){
+static int open( const char* path, int mode ){
   // Read only mode is the only mode supported, for now
   if( mode != O_RDONLY )return -1;
   // Windows version to open a file in read only mode
@@ -169,7 +176,7 @@ int open( const char* path, int mode ){
 }
 
 
-int close( int fd ){
+static int close( int fd ){
   // Windows version to close a file
   if( fd <= 0 )return 0;
   HANDLE file_handle = (HANDLE) fd;
@@ -178,7 +185,7 @@ int close( int fd ){
 }
 
 
-int read( int fd, void* buf, int count ){
+static int read( int fd, void* buf, int count ){
   DWORD read_count;
   if( fd < 0 )return -1;
   HANDLE h = (HANDLE) fd;
@@ -193,7 +200,7 @@ int read( int fd, void* buf, int count ){
 }
 
 
-int write( int fd, const void* buf, int count ){
+static int write( int fd, const void* buf, int count ){
   DWORD written_count;
   // Works only for stdout and stderr
   if( fd != 1 && fd != 2 )return -1;
@@ -243,10 +250,10 @@ using namespace std::chrono;
 // the epoch is the time when the program started instead of the some
 // older time that requires a 64 bits integer to express the time now.
 
-std::chrono::milliseconds now( void ){
-  std::chrono::time_point t = high_resolution_clock::now();
-  duration te = t.time_since_epoch();
-  std::chrono::milliseconds te_ms = duration_cast< milliseconds >( te );
+static milliseconds now( void ){
+  auto t = high_resolution_clock::now();
+  auto te = t.time_since_epoch();
+  milliseconds te_ms = duration_cast< milliseconds >( te );
   return te_ms;
 }
 
@@ -256,8 +263,8 @@ std::chrono::milliseconds now( void ){
 /**/  const time_start = now();
 /**/  let   time_started = 0;
 /*c{
-  std::chrono::milliseconds time_start = now();
-  std::chrono::milliseconds time_started;
+  milliseconds time_start = now();
+  milliseconds time_started;
 }*/
 
 
@@ -429,11 +436,116 @@ std::chrono::milliseconds now( void ){
  *  the kitchen. Life is short.
  */
 
-///**/  import    assert from "assert";
-/**/ import { strict as assert } from 'assert';
-//c/ #include <assert.h>
+/* ----------------------------------------------------------------------------
+ *  How to invoke the debugger from the code
+ */
 
-/*
+/*c{
+
+#ifdef _WIN32
+
+  #include <intrin.h>
+  #define debugger __debugbreak()
+
+#else
+
+  static void debugger_function( void ){
+  // Invoke the debugger if there is one, platform dependent
+    // ToDo: test this on Linux and Mac
+    #ifdef __EMSCRIPTEN__
+      emscripten_debugger();
+    #else
+      #ifdef __APPLE__
+        __asm__("int $3\n" : : );
+      #else
+        // ToDo: how to invoke the debugger on other platforms?
+      #endif
+    #endif
+  }
+
+  #define debugger debugger_function()
+
+#endif
+
+}*/
+
+/* ----------------------------------------------------------------------------
+ *  Assertion macros
+ */
+
+/**/ import { strict as assert } from 'assert';
+
+// In C++, custom assert() macro that avoids using any external library
+/*c{
+
+  #define true  1
+  #define false 0
+
+  #ifndef INOX_ASSERT_MAX_LENGTH
+    #define INOX_ASSERT_MAX_LENGTH 512
+  #endif
+
+  static char assert_msg_buffer[ INOX_ASSERT_MAX_LENGTH + 80 ];
+
+  // Forward
+  void breakpoint( void );
+
+  bool failed_assert(
+    TxtC title,
+    TxtC msg,
+    TxtC file,
+    int line,
+    TxtC func
+  ){
+    strcpy( assert_msg_buffer, "Inox. Assertion failed: " );
+    if( title ){
+      strcat( assert_msg_buffer, title );
+      strcat( assert_msg_buffer, ", " );
+    }
+    // Get defensive, truncate the message if it is too long
+    if ( strlen( msg ) > INOX_ASSERT_MAX_LENGTH ) {
+      strncat( assert_msg_buffer, msg, INOX_ASSERT_MAX_LENGTH );
+    }else{
+      strcat( assert_msg_buffer, msg );
+    }
+    strcat( assert_msg_buffer, ", file " );
+    strcat( assert_msg_buffer, file );
+    strcat( assert_msg_buffer, ", line " );
+    // Add the line number, char by char, 6 digits
+    char* next = assert_msg_buffer + strlen( assert_msg_buffer );
+    *next++ = ( line / 100000 ) % 10 + '0';
+    *next++ = ( line / 10000 ) % 10 + '0';
+    *next++ = ( line / 1000 ) % 10 + '0';
+    *next++ = ( line / 100 ) % 10 + '0';
+    *next++ = ( line / 10 ) % 10 + '0';
+    *next++ = ( line / 1 ) % 10 + '0';
+    // Add a null terminator
+    *next = 0;
+    strcat( assert_msg_buffer, ", function " );
+    strcat( assert_msg_buffer, func );
+    strcat( assert_msg_buffer, ".\n" );
+    write( 2, assert_msg_buffer, strlen( assert_msg_buffer ) );
+    breakpoint();
+    abort();
+    return false;
+  }
+
+  #ifdef INOX_FAST
+    #define assert( cond )       true
+    #define assert2( cond, msg ) true
+  #else
+    #define assert( b ) \
+    ( ( b ) ? true : failed_assert( null, #b, __FILE__, __LINE__, __func__ ) )
+    #define assert2( b, msg ) \
+    ( ( b ) ? true : failed_assert( msg,  #b, __FILE__, __LINE__, __func__ ) )
+  #endif
+
+}*/
+
+/**/ const assert2 = assert;
+
+
+/* ----------------------------------------------------------------------------
  *  My de&&bug darling, a debug function that can be disabled for speed.
  *  Usage: de&&bug( a_message );
  *
@@ -699,7 +811,6 @@ std::chrono::milliseconds now( void ){
  *  They should be disabled in production.
  *  They are useful for development and debugging only.
  */
-
 
 /*
  *  'token_de' enables traces about tokenization. This is the first step
@@ -1034,40 +1145,6 @@ function init_debug_level( level : Index ) : Index {
 
 
 /* ----------------------------------------------------------------------------
- *  How to invoke the debugger from the code
- */
-
-/*c{
-
-#ifdef _WIN32
-
-  #include <intrin.h>
-  #define debugger __debugbreak()
-
-#else
-
-  void debugger_function( void ){
-  // Invoke the debugger if there is one, platform dependent
-    // ToDo: test this on Linux and Mac
-    #ifdef __EMSCRIPTEN__
-      emscripten_debugger();
-    #else
-      #ifdef __APPLE__
-        __asm__("int $3\n" : : );
-      #else
-        // ToDo: how to invoke the debugger on other platforms?
-      #endif
-    #endif
-  }
-
-  #define debugger debugger_function()
-
-#endif
-
-}*/
-
-
-/* ----------------------------------------------------------------------------
  *  Forward declarations to please C++. The functions are defined later.
  *  In TypeScript references to functions can be used before they are defined.
  *  Note: in Inox, verbs must be defined before they are used.
@@ -1075,87 +1152,88 @@ function init_debug_level( level : Index ) : Index {
 
 // Forward declarations to please C++
 /*c{
-bool  mand_eq( Value, Value );
-bool  mand_neq( Value, Value );
-bool  mand_type( Type, Type );
-bool  mand_cell_type( Cell, Type );
-bool  mand_cell_name( Cell, Tag );
-bool  mand_empty_cell( Cell );
-bool  mand_tos_is_in_bounds( void );
-bool  mand_csp_is_in_bounds( void );
-bool  trace( char* );
-void  trace_context( TxtC );
-void  FATAL( TxtC msg );
-int   init_cell_allocator( void );
-Cell  allocate_cell( void );
-Cell  allocate_cells( Count );
-void  cell_free( Cell );
-void  cells_free( Cell, Count );
-int   init_area_allocator( void );
-Size  area_aligned_size( Size );
-Area  allocate_area( Count );
-bool  area_is_shared( Cell );
-void  area_lock( Area );
-void  area_free( Area );
-void  lean_lock( Area );
-bool  area_is_safe( Area );
-bool  area_is_busy( Area );
-Size  area_size( Area );
-void  area_turn_free( Area, Area );
-void  area_turn_busy( Area, Size );
-void  area_init_busy( Area, Size );
-void  area_set_size( Area, Size );
-Count area_length( Area );
-void  set_next_cell( Cell, Cell );
-Cell  tag( TxtC );
-bool  tag_is_valid( Tag );
-bool  is_a_tag_cell( Cell );
-bool  is_a_tag_singleton( Cell );
-bool  is_a_reference_cell( Cell );
-bool  is_a_reference_type( Type );
-void  init_cell( Cell, Value, Info );
+static bool  mand_eq( Value, Value );
+static bool  mand_neq( Value, Value );
+static bool  mand_type( Type, Type );
+static bool  mand_cell_type( Cell, Type );
+static bool  mand_cell_name( Cell, Tag );
+static bool  mand_empty_cell( Cell );
+static bool  mand_tos_is_in_bounds( void );
+static bool  mand_csp_is_in_bounds( void );
+static bool  mand_stacks_are_in_bounds( void );
+static bool  trace( char* );
+static void  trace_context( TxtC );
+static void  FATAL( TxtC msg );
+static int   init_cell_allocator( void );
+static Cell  allocate_cell( void );
+static Cell  allocate_cells( Count );
+static void  cell_free( Cell );
+static void  cells_free( Cell, Count );
+static int   init_area_allocator( void );
+static Size  area_aligned_size( Size );
+static Area  allocate_area( Count );
+static bool  area_is_shared( Cell );
+static void  area_lock( Area );
+static void  area_free( Area );
+static void  lean_lock( Area );
+static bool  area_is_safe( Area );
+static bool  area_is_busy( Area );
+static Size  area_size( Area );
+static void  area_turn_free( Area, Area );
+static void  area_turn_busy( Area, Size );
+static void  area_init_busy( Area, Size );
+static void  area_set_size( Area, Size );
+static Count area_length( Area );
+static void  set_next_cell( Cell, Cell );
+static Cell  tag( TxtC );
+static bool  tag_is_valid( Tag );
+static bool  is_a_tag_cell( Cell );
+static bool  is_a_tag_singleton( Cell );
+static bool  is_a_reference_cell( Cell );
+static bool  is_a_reference_type( Type );
+static void  init_cell( Cell, Value, Info );
 #define set( c, t, n, v )  init_cell( c, v, pack( t, n ) )
-void  move_cell( Cell, Cell );
-void  clear( Cell );
-Index object_length( Area );
-void  object_free( Area );
-void  text_free( Cell );
-void  proxy_free( Index );
-Area  reference_of( Cell );
-bool  is_sharable( Cell );
-Cell  stack_preallocate( Length );
-Count stack_length( Cell );
-bool  stack_is_extended( Cell );
-void  stack_push( Cell, Cell );
-void  stack_put( Cell, Index, Cell );
-void  stack_put_copy( Cell, Index, Cell );
-Cell  stack_at( Cell, Index );
-void  stack_extend( Cell, Length );
-bool  cell_looks_safe( Cell );
-void  set_return_cell( Cell );
-Cell  PUSH( void );
-Cell  POP( void );
-void  push_integer( Value );
-Cell  make_proxy( any );
-void  set_proxy_cell( Cell, Cell );
-void  primitive_clear_control( void );
-void  primitive_clear_data( void );
-Cell  definition_of( Tag );
-Tag   type_to_tag( Type );
-Type  tag_to_type( Tag );
-Count block_length( Cell );
-void  primitive_if( void );
-void  primitive_run( void );
-void  primitive_noop( void );
-void  set_style( TxtC );
-void  eval_do_literal( void );
-void  eval_do_machine_code( Tag );
-void  eval_quote_next_token( void );
-bool  eval_is_expecting_the_verb_name( void );
-void  process_comment_state( void );
-void  process_word_state( void );
-bool  parsing( Index );
-Primitive get_primitive( Tag );
+static void  move_cell( Cell, Cell );
+static void  clear( Cell );
+static Index object_length( Area );
+static void  object_free( Area );
+static void  text_free( Cell );
+static void  proxy_free( Index );
+static Area  reference_of( Cell );
+static bool  is_sharable( Cell );
+static Cell  stack_preallocate( Length );
+static Count stack_length( Cell );
+static bool  stack_is_extended( Cell );
+static void  stack_push( Cell, Cell );
+static void  stack_put( Cell, Index, Cell );
+static void  stack_put_copy( Cell, Index, Cell );
+static Cell  stack_at( Cell, Index );
+static void  stack_extend( Cell, Length );
+static bool  cell_looks_safe( Cell );
+static void  set_return_cell( Cell );
+static Cell  PUSH( void );
+static Cell  POP( void );
+static void  push_integer( Value );
+static Cell  make_proxy( any );
+static void  set_proxy_cell( Cell, Cell );
+static void  primitive_clear_control( void );
+static void  primitive_clear_data( void );
+static Cell  definition_of( Tag );
+static Tag   type_to_tag( Type );
+static Type  tag_to_type( Tag );
+static Count block_length( Cell );
+static void  primitive_if( void );
+static void  primitive_run( void );
+static void  primitive_noop( void );
+static void  set_style( TxtC );
+static void  eval_do_literal( void );
+static void  eval_do_machine_code( Tag );
+static void  eval_quote_next_token( void );
+static bool  eval_is_expecting_the_verb_name( void );
+static void  process_comment_state( void );
+static void  process_word_state( void );
+static bool  parsing( Index );
+static Primitive get_primitive( Tag );
 
 }*/
 
@@ -1175,6 +1253,7 @@ Primitive get_primitive( Tag );
 
 /*c{
   #ifdef __CHEERP__
+    #undef INOX_HEAP_SIZE
     #define INOX_HEAP_SIZE   1024 * 1024  // 1 MB
   #endif
 }*/
@@ -1264,7 +1343,7 @@ let all_symbol_cells_length = 0;
 
 /*c{
 
-bool trace( char* msg ){
+static bool trace( char* msg ){
   if( !can_log )return true;
   // 1 is stdout
   int len = strlen( msg );
@@ -1279,7 +1358,7 @@ bool trace_c_str( char* msg ){
 }
 
 // Ultra safe version of trace() that can be used in any context
-bool trace_const_c_str( const char* msg ){
+static bool trace_const_c_str( const char* msg ){
   write( 1, msg, strlen( msg ) );
   return true;
 }
@@ -1287,8 +1366,12 @@ bool trace_const_c_str( const char* msg ){
 }*/
 
 
+/**/ let bootstrapping         = true;
+//c/ static bool bootstrapping = true;
+
 function breakpoint(){
   debugger;
+  if( bootstrapping )return;
   trace_context( "BREAKPOINT\n" );
   debugger;
 }
@@ -1302,29 +1385,14 @@ function breakpoint(){
  */
 
 
-function mand( condition : boolean ) : boolean {
-// de&&mand( a_condition ), aka asserts. Return true if assertion fails.
-  // ToDo: should raise an exception?
-  if( condition )return true;
-  breakpoint();
-  assert( false );
-  return false;
-};
-
-
-/**/function mand2( condition : boolean, msg : TxtC ) : boolean {
-//c/ bool    mand2( bool condition,      char* msg ){
-// Like mand() but with a message
-  if( condition )return true;
-  bug( msg );
-  breakpoint();
-  assert( false );
-  return false;
-}
+/**/ const   mand  = ( b    ) => ( assert(  b    ), true );
+/**/ const   mand2 = ( b, m ) => ( assert(  b, m ), true );
+//c/ #define mand(     b    )    ( assert(  b    )       )
+//c/ #define mand2(    b, m )    ( assert2( b, m )       )
 
 // Hack to avoid a strange recursion
 /*c{
-bool mand2_c_str( bool condition, char* msg ){
+static bool mand2_c_str( bool condition, char* msg ){
   return mand2( condition, msg );
 }
 }*/
@@ -1336,6 +1404,120 @@ bool mand2_c_str( bool condition, char* msg ){
  */
 
 /**/ de&&bug( "Inox is starting." );
+
+
+/* -----------------------------------------------------------------------------
+ *  Endianess. Sometimes, rarely, code depends on the order of bytes in memory.
+ *  It is the case for the RUN() function that must be highly optimized.
+ *  For that function, and similar ones that depend on the order of bytes, code
+ *  is duplicated, with a special version for each endianess.
+ *  For example, regarding the byte order for an Inox value, the order is:
+ *    - cell's value, 4 bytes, a 32 bits integer
+ *    - cell's type and named, 4 bits for the type, 28 bits for the name.
+ *  Currently, the type is stored in the 4 most significant bits, and the name
+ *  in the 28 least significant bits. The name is an index in the symbol table.
+ *  Question: in which byte is the type stored? It has to be in range [4,7]
+ *  because range [0,3] is for the value. So, if the machine is little endian,
+ *  the type is in the 4th byte, and if it is big endian, the type is in the
+ *  7th byte. That's quite a difference, and that's why we need to know the
+ *  endianess of the machine.
+ *  The current implementation only works for little endian machines. That
+ *  is the case for x86 and x86_64, but not for ARM. So, for ARM, we need to
+ *  change the order of bytes in the type/name field. This is done in the
+ *  functions pack_info() and unpack_info() together with the functions
+ *  type_of() and name_of().
+ */
+
+/*c{
+  #ifndef INOX_IS_BIG_ENDIAN
+    #define INOX_IS_LITTLE_ENDIAN 1
+  #else
+    #define INOX_IS_LITTLE_ENDIAN 0
+  #endif
+}*/
+
+/*ts{*/
+const INOX_IS_LITTLE_ENDIAN = 1;
+/*}*/
+
+
+
+function is_little_endian() : Index {
+// Return 1 if the machine is little endian, 0 if it is big endian
+
+  // Typescript version
+  /*ts{*/
+    let u32 = new Uint32Array( [ 0x11223344 ] );
+    let u8  = new Uint8Array( u32.buffer );
+    if( u8[ 0 ] === 0x44 ){
+      return 1;
+    }else{
+      return 0;
+    }
+  /*}*/
+
+  // C version
+  /*c{
+
+    u32 v32           = 0x12345678;
+    u8* p32           = (u8*) &v32;
+    u8  first_byte_32 = p32[ 0 ];
+
+    // Where is the highest byte in a 32 bits integer?
+    Index highest_byte_position_in_32 = 0;
+    for( int ii = 0; ii < 8; ii++ ){
+      if( p32[ ii ] == 0x12 ){
+        highest_byte_position_in_32 = ii;
+        break;
+      }
+    }
+
+    u64 v64           = 0x1122334455667788;
+    u8* p64           = (u8*) &v64;
+    u8  first_byte_64 = p64[ 0 ];
+
+    // Where is the highest byte in a 64 bits integer?
+    Index highest_byte_position_in_64 = 0;
+    for( int ii = 0; ii < 8; ii++ ){
+      if( p64[ ii ] == 0x11 ){
+        highest_byte_position_in_64 = ii;
+        break;
+      }
+    }
+
+    bool is_little_endian = first_byte_32 == 0x78;
+
+    assert( !is_little_endian || highest_byte_position_in_32 == 3 );
+    assert(  is_little_endian || highest_byte_position_in_32 == 0 );
+    assert( !is_little_endian || highest_byte_position_in_64 == 7 );
+    assert(  is_little_endian || highest_byte_position_in_64 == 0 );
+
+    // Funny fact: when is_little_endian, at the end there is, guess what?
+    // ... the highest byte. So it does not end little, it ends big.
+    // That's rather confusing, but it's the way it is.
+
+    if( is_little_endian ){
+      assert( first_byte_64 == 0x88 );
+      return 1;
+    }else{
+      assert( first_byte_64 == 0x11 );
+      return 0;
+    }
+  }*/
+
+}
+
+
+function check_endianess() : Index {
+  const it_is = is_little_endian();
+  if( it_is != INOX_IS_LITTLE_ENDIAN ){
+    FATAL(
+      "Inox does not support big endian machines yet."
+    );
+  }
+  return 1;
+}
+const check_endianes_done = check_endianess();
 
 
 /* -----------------------------------------------------------------------------
@@ -1758,12 +1940,9 @@ function test_pack(){
 //c/ #define type_invalid      12
 
 
-// When some IP is store in the control stack, it is stored as an integer
-// ToDo: store as a verb instead?
-/**/  const type_ip = type_integer;
-// /**/ const type_ip = type_verb
-//c/  #define type_ip type_integer
-// //c/ #define type_ip type_verb
+// When some IP is store in the control stack, it is stored as a verb
+/**/ const   type_ip = type_verb
+//c/ #define type_ip   type_verb
 
 
 /* -----------------------------------------------------------------------------
@@ -1825,10 +2004,6 @@ function test_pack(){
  *  C style strings. See https://en.wikipedia.org/wiki/Sentinel_value
  */
 
-
-/**/ let bootstrapping         = true;
-//c/ static bool bootstrapping = true;
-
 // To avoid some infinite loops in assertion failure tracing
 let mand_entered = 0;
 
@@ -1863,10 +2038,10 @@ const offset_of_area_size = ONE;
 
 
 // There is a special empty string
-//c/ Cell lean_init_empty( void ); // Forward
+//c/ static Cell lean_init_empty( void ); // Forward
 const the_empty_lean = lean_init_empty();
 
-//c/ Cell lean_allocate_cells_for_bytes( Length ); // Forward
+//c/ static Cell lean_allocate_cells_for_bytes( Length ); // Forward
 
 function lean_init_empty() : Cell {
   de&&mand( bootstrapping );
@@ -1875,8 +2050,8 @@ function lean_init_empty() : Cell {
 }
 
 
-//c/ bool lean_is_valid( Cell ); // Forward
-//c/ Length lean_strlen( Cell ); // Forward
+//c/ static bool lean_is_valid( Cell ); // Forward
+//c/ static Length lean_strlen( Cell ); // Forward
 
 function lean_is_empty( area : Area ) : boolean {
   if( area == the_empty_lean ){
@@ -1916,7 +2091,7 @@ function lean_to_header( area : Area ) : Area {
 }
 
 
-//c/ Value lean_unchecked_byte_at( Cell, Index ); // Forward
+//c/ static Value lean_unchecked_byte_at( Cell, Index ); // Forward
 
 function lean_is_valid( area : Area ) : boolean {
 // Check that a cell is a valid lean string
@@ -2050,7 +2225,7 @@ function lean_byte_at_from( dst : Area, d_i : Index, src : Area, s_i : Index ){
   //c/ *(char*) ( to_ptr( dst) + d_i )  = *(char*) ( to_ptr( src ) + s_i );
 }
 
-//c/ Size area_payload_size( Cell ); // Forward
+//c/ static Size area_payload_size( Cell ); // Forward
 
 function lean_strlen( area : Area ) : Length {
 // Return the length of a lean string
@@ -2223,7 +2398,7 @@ function lean_streq( area1 : Area, area2 : Area ) : boolean {
 
 
 /*c{
-bool lean_streq_with_c_str( Cell cell1, TxtC str ){
+static bool lean_streq_with_c_str( Cell cell1, TxtC str ){
 // Compare a lean string with a native string
 
   if( cell1 == the_empty_lean ){
@@ -2662,43 +2837,43 @@ class LeanString {
 // Now that LeanString is defined, some needed overloaded functions are possible
 
 // Overloaded binary + operator for "xxx" + LeanString
-LeanString operator+( TxtC str1, const LeanString& str2 ){
+static LeanString operator+( TxtC str1, const LeanString& str2 ){
   MutText r = str1;
   r += str2;
   return r;
 }
 
 
-bool mand2( bool b1, const Text& msg ){
-  return mand2_c_str( b1, msg.mut_c_str() );
-}
+// static bool mand2( bool b1, const Text& msg ){
+//  return mand2_c_str( b1, msg.mut_c_str() );
+// }
 
 
-int lean_strcmp( const LeanString& str1, TxtC str2 ){
+static int lean_strcmp( const LeanString& str1, TxtC str2 ){
   return strcmp( str1.c_str(), str2 );
 }
 
 
-bool trace( const LeanString& str ){
+static bool trace( const LeanString& str ){
   trace_c_str( str.mut_c_str() );
   return true;
 }
 
 
 // Now that LeanString is defined, some needed forward declarations are possible
-Text  dump( Cell );
-Text  short_dump( Cell );
-Text  stacks_dump( void );
-void  set_text_cell( Cell, ConstText );
-Text  cell_to_text( Cell );
-Text  tag_to_text( Tag );
-Text  type_to_text( Index );
-Text  proxy_to_text( Cell );
-Text  integer_to_text( Value );
-Text  verb_to_text_definition( Tag );
-Text  type_to_text( Index );
-Text  inox_machine_code_cell_to_text( Cell );
-Text  extract_line( TxtC, Index );
+static Text  dump( Cell );
+static Text  short_dump( Cell );
+static Text  stacks_dump( void );
+static void  set_text_cell( Cell, ConstText );
+static Text  cell_to_text( Cell );
+static Text  tag_to_text( Tag );
+static Text  type_to_text( Index );
+static Text  proxy_to_text( Cell );
+static Text  integer_to_text( Value );
+static Text  verb_to_text_definition( Tag );
+static Text  type_to_text( Index );
+static Text  inox_machine_code_cell_to_text( Cell );
+static Text  extract_line( TxtC, Index );
 }*/
 
 /*
@@ -2719,7 +2894,7 @@ Text  extract_line( TxtC, Index );
  */
 
 /*
- *  S() - start of text concatenation operations.
+ *  S() start of text concatenation operations.
  *  Note: in many cases the C++ type inference mechanism is enough to avoid
  *  the S() call but there are still a few cases where it is apparently needed.
  */
@@ -2735,7 +2910,7 @@ Text  extract_line( TxtC, Index );
 
 /**/ function N( n : number ){ return "" + n; }
 /*c{
-  Text N( int n ){
+  static Text N( int n ){
     // Copilot generated code
     static char reversed[ 32 ];
     char buf[ 32 ];
@@ -2780,7 +2955,7 @@ function C( c : Cell ) : Text {
 
 /**/ function F( fn : Function ){ return fn.name }
 // ToDo: C++ should search the symbol table to get the name of the function
-//c/ Text _F( const void* fn ){ return N( (int) fn ); }
+//c/ static Text _F( const void* fn ){ return N( (int) fn ); }
 //c/ #define F( fn ) _F( (const void*) (int) fn )
 
 
@@ -2789,7 +2964,7 @@ function C( c : Cell ) : Text {
  */
 
 /**/ function P( p : any ){ return N( p ); }
-//c/ Text P( const void* p ){ return N( (int) p ); }
+//c/ static Text P( const void* p ){ return N( (int) p ); }
 
 
 /*
@@ -2799,8 +2974,8 @@ function C( c : Cell ) : Text {
  */
 
 /**/ function tlen( s : Text ){ return s.length; }
-//c/ int tlen( const Text& s ){ return s.length(); }
-//c/ int tlen( TxtC s ){ return strlen( s ); }
+//c/ static int tlen( const Text& s ){ return s.length(); }
+//c/ static int tlen( TxtC s ){ return strlen( s ); }
 
 
 /*
@@ -2813,7 +2988,7 @@ function C( c : Cell ) : Text {
 
 /*c{
 
-Text tbut( const Text& s, int n ){
+static Text tbut( const Text& s, int n ){
   if( n >= 0 ){
     if( (unsigned int) n >= s.length() )return no_text;
     return s.substr( n, s.length() );
@@ -2835,7 +3010,7 @@ Text tbut( const Text& s, int n ){
 
 /**/ function tcut( s : Text, n : number ){ return s.slice( 0, n ); }
 /*c{
-Text tcut( const Text& s, int n ){
+static Text tcut( const Text& s, int n ){
   if( n >= 0 ){
     if( (unsigned int) n >= s.length() )return s;
     return s.substr( 0, n );
@@ -2862,7 +3037,7 @@ Text tcut( const Text& s, int n ){
 
 /*c{
 
-Text tmid( const Text& t, int start, int end ){
+static Text tmid( const Text& t, int start, int end ){
   int len = t.length();
   if( start < 0 ){
     start = len + start;
@@ -2892,7 +3067,7 @@ Text tmid( const Text& t, int start, int end ){
 /**/ function tlow( s : Text ){ return s.toLowerCase(); }
 
 /*c{
-Text tlow( const Text& s ){
+static Text tlow( const Text& s ){
   Text r;
   for( unsigned int ii = 0; ii < s.length(); ii++ ){
     // ToDo: very slow
@@ -2917,7 +3092,7 @@ Text tlow( const Text& s ){
 /**/ function tup( s : Text ){ return s.toUpperCase(); }
 
 /*c{
-Text tup( const Text& s ){
+static Text tup( const Text& s ){
   Text r;
   for( unsigned int ii = 0; ii < s.length(); ii++ ){
     // ToDo: very slow
@@ -2948,7 +3123,7 @@ function teq( s1 : Text, s2 : Text ) : boolean {
 
 /*c{
 
-bool teq( const Text& s1, const Text& s2 ) {
+static bool teq( const Text& s1, const Text& s2 ) {
   return s1 == s2;
 }
 
@@ -2958,28 +3133,28 @@ bool teq( const Text& s1, const char* s2 ) {
 }
 
 
-bool teq( const char* s1, const Text& s2 ) {
+static bool teq( const char* s1, const Text& s2 ) {
   return s2 == s1;
 }
 
 
-bool teq( const Text& s1, char s2 ) {
+static bool teq( const Text& s1, char s2 ) {
   if( s1.empty() )return s2 == 0;
   return s1.length() == 1 && s1.c_str()[ 0 ] == s2;
 }
 
 
-bool teq( const char* s1, const char* s2 ) {
+static bool teq( const char* s1, const char* s2 ) {
   return strcmp( s1, s2 ) == 0;
 }
 
 
-bool teq( char s1, char s2 ) {
+static bool teq( char s1, char s2 ) {
   return s1 == s2;
 }
 
 
-bool teq( char s1, const char* s2 ) {
+static bool teq( char s1, const char* s2 ) {
   return s2[ 0 ] == s1 && s2[ 1 ] == 0;
 }
 
@@ -3001,37 +3176,37 @@ function tneq( s1 : Text, s2 : Text ) : boolean {
 // C++ overloaded functions, depending on string representation
 /*c{
 
-bool tneq( const Text& s1, const Text& s2 ) {
+static bool tneq( const Text& s1, const Text& s2 ) {
   return s1 != s2;
 }
 
 
-bool tneq( const Text& s1, const char* s2 ) {
+static bool tneq( const Text& s1, const char* s2 ) {
   return strcmp( s1.c_str(), s2 ) != 0;
 }
 
 
-bool tneq( const char* s1, const Text& s2 ) {
+static bool tneq( const char* s1, const Text& s2 ) {
   return s2 != s1;
 }
 
 
-bool tneq( const char* s1, const char* s2 ) {
+static bool tneq( const char* s1, const char* s2 ) {
   return strcmp( s1, s2 ) != 0;
 }
 
 
-bool tneq( const char* s1, char s2 ) {
+static bool tneq( const char* s1, char s2 ) {
   return s1[ 0 ] != s2 || s1[ 1 ] != 0;
 }
 
 
-bool tneq( char s1, char s2 ) {
+static bool tneq( char s1, char s2 ) {
   return s1 != s2;
 }
 
 
-bool tneq( char s1, const char* s2 ) {
+static bool tneq( char s1, const char* s2 ) {
   return s2[ 0 ] != s1 || s2[ 1 ] != 0;
 }
 
@@ -3039,7 +3214,7 @@ bool tneq( char s1, const char* s2 ) {
 
 
 /*
- *  tidx() - index of substring in text, -1 if not found
+ *  tidx() index of substring in text, -1 if not found
  */
 
 function tidx( s : ConstText, sub : ConstText ) : Index {
@@ -3049,7 +3224,7 @@ function tidx( s : ConstText, sub : ConstText ) : Index {
 
 
 /*
- *  tidxr() - last index of substring in text, -1 if not found
+ *  tidxr() last index of substring in text, -1 if not found
  */
 
 function tidxr( s : ConstText, sub : ConstText ) : Index {
@@ -3116,7 +3291,7 @@ function mand_neq( a : i32, b : i32 ) : boolean {
 
 /*c{
 
-Index init_cell_allocator(){
+static Index init_cell_allocator(){
   the_very_first_cell = to_cell( (int) ( (u64*) calloc( INOX_HEAP_SIZE, 1 ) ) );
   the_cell_limit = the_very_first_cell + to_cell( INOX_HEAP_SIZE );
   return 1;
@@ -4678,26 +4853,26 @@ let all_symbol_cells_capacity = 0;
 // The global array of all symbol texts, an array of strings
 // In TypeScript, those are strings, in C++, it's LearnString objects
 /**/ let all_symbol_texts : Array< string >;
-//c/ Text* all_symbol_texts = 0;
+//c/ static Text* all_symbol_texts = 0;
 
 // The associated array of definitions, if any
 /**/ let    all_definitions : Array< Cell >;
-//c/ Cell*  all_definitions = (Cell*) 0;
+//c/ static Cell*  all_definitions = (Cell*) 0;
 
 // It becomes a stack object during the bootstrap
 let all_definitions_stack = 0;
 
 // The associated array of primitives, if any
 /**/ let all_primitives : Array< Primitive >;
-//c/ Primitive* all_primitives = (Primitive*) 0;
+//c/ static Primitive* all_primitives = (Primitive*) 0;
 
 // It becomes a stack object during the bootstrap
 let all_primitives_stack = 0;
 
 // TypeScript grows arrays automatically, C++ does not
 // ToDo: get rid of this once upgrade_symbols() works
-//c/ Length all_primitives_capacity  = 0;
-//c/ Length all_definitions_capacity = 0;
+//c/ static Length all_primitives_capacity  = 0;
+//c/ static Length all_definitions_capacity = 0;
 
 //c/ Tag tag( TxtC );
 
@@ -4745,7 +4920,7 @@ function init_symbols() : Index {
       "float",      // 5
       "reference",  // 6
       "proxy",      // 7
-      "string",     // 8
+      "text",       // 8
       "flow",       // 9
       "list",       // 10
       "invalid",    // 11 - room for future types
@@ -4782,7 +4957,7 @@ function init_symbols() : Index {
     all_symbol_texts[  5 ] = "float";
     all_symbol_texts[  6 ] = "reference";
     all_symbol_texts[  7 ] = "proxy";
-    all_symbol_texts[  8 ] = "string";
+    all_symbol_texts[  8 ] = "text";
     all_symbol_texts[  9 ] = "flow";
     all_symbol_texts[ 10 ] = "list";
     all_symbol_texts[ 11 ] = "invalid";
@@ -4873,7 +5048,6 @@ function upgrade_symbols(){
   // ToDo: all_primitives_stack  = new_primitives;
 
   // From now one, the symbols are handled as normal objects
-
 
 }
 
@@ -5050,8 +5224,8 @@ function register_definition( t : Tag, c : Cell ){
 
 
 // ToDo: is this usefull?
-/**/ function no_operation()       : void { /* Does nothing */ }
-//c/ void     no_operation( void )        {                    }
+/**/ function    no_operation()       : void { /* Does nothing */ }
+//c/ static void no_operation( void )        {                    }
 
 
 function  get_primitive( t : Tag ) : Primitive {
@@ -5852,7 +6026,7 @@ const lean_string_test_done = lean_string_test();
 
 
 /*c{
-bool tbad( const Text& actual, const Text& expected ){
+static bool tbad( const Text& actual, const Text& expected ){
   if( actual == expected )return false;
   trace( S()
     + "tbad: actual: " + actual
@@ -6497,7 +6671,7 @@ static Count cache_hits = 0;
 static Count cache_misses = 0;
 
 
-void cache_method( Tag klass, Tag method, Cell def ){
+static void cache_method( Tag klass, Tag method, Cell def ){
   // ToDo: implement using some better hash function
   const hashcode = ( ( klass << 13 ) + method ) % METHOD_CACHE_LENGTH;
   class_cache[      hashcode ] = klass;
@@ -6506,7 +6680,7 @@ void cache_method( Tag klass, Tag method, Cell def ){
 }
 
 
-Cell find_method( Tag class_tag, Tag method_tag ){
+static Cell find_method( Tag class_tag, Tag method_tag ){
   // Try in cache first
   const hashcode = ( ( class_tag << 13 ) + method_tag ) % METHOD_CACHE_LENGTH;
   if( class_cache[  hashcode ] == class_tag
@@ -6995,7 +7169,7 @@ function mand_verb_cell( c : Cell ) : boolean {
 }
 
 
-function  eat_raw_value( c : Cell ) : Index {
+function eat_raw_value( c : Cell ) : Index {
   // Like value_of() but also clear the cell, assuming it is not a reference
   const v = value_of( c );
   reset( c );
@@ -7003,41 +7177,41 @@ function  eat_raw_value( c : Cell ) : Index {
 }
 
 
-function  get_tag( c : Cell ) : Index {
+function get_tag( c : Cell ) : Index {
 // Like value_of() but check that the cell is a tag
   check_de&&mand_tag_cell( c );
   return value_of( c );
 }
 
-function  get_integer( c : Cell ) : Index {
+function get_integer( c : Cell ) : Index {
 // Like value_of() but check that the cell is an integer
   check_de&&mand_integer( c );
   return value_of( c );
 }
 
 
-function  eat_tag( c : Cell ) : Tag {
+function eat_tag( c : Cell ) : Tag {
 // Like eat_raw_value() but check that the cell is a tag
   check_de&&mand_tag( c );
   return eat_raw_value( c );
 }
 
 
-function  eat_integer( c : Cell ) : Index {
+function eat_integer( c : Cell ) : Index {
 // Like eat_raw_value() but check that the cell is an integer
   check_de&&mand_integer( c );
   return eat_raw_value( c );
 }
 
 
-function  eat_boolean( c : Cell ) : Index {
+function eat_boolean( c : Cell ) : Index {
 // Like eat_raw_value() but check that the cell is a boolean
   check_de&&mand_boolean( c );
   return eat_raw_value( c );
 }
 
 
-function  eat_value( c : Cell ) : Index {
+function eat_value( c : Cell ) : Index {
 // Like value_of() but also clear the cell
   const v = value_of( c );
   clear( c );
@@ -7045,40 +7219,40 @@ function  eat_value( c : Cell ) : Index {
 }
 
 
-function  pop_raw_value() : Value {
+function pop_raw_value() : Value {
 // Like eat_raw_value() but pop the cell from the stack
   return eat_raw_value( POP() );
 }
 
 
-function  pop_value() : Value {
+function pop_value() : Value {
 // Like eat_value() but pop the cell from the stack
   return eat_value( POP() );
 }
 
 
-function  pop_block() : Cell {
+function pop_block() : Cell {
 // Pop a block from the stack
   check_de&&mand_block( TOS );
   return pop_raw_value();
 }
 
 
-function  pop_tag() : Tag {
+function pop_tag() : Tag {
 // Pop a tag from the stack
   check_de&&mand_tag( TOS );
   return pop_raw_value();
 }
 
 
-function  pop_integer() : Value {
+function pop_integer() : Value {
 // Pop an integer from the stack
   check_de&&mand_integer( TOS );
   return pop_raw_value();
 }
 
 
-function  pop_boolean() : Index {
+function pop_boolean() : Index {
   check_de&&mand_boolean( TOS );
   return pop_raw_value();
 }
@@ -7093,7 +7267,7 @@ function pop_verb() : Tag {
 }
 
 
-function  get_boolean( c : Cell ) : Index {
+function get_boolean( c : Cell ) : Index {
 // Like value_of() but check that the cell is a boolean
   check_de&&mand_boolean( c );
   return value_of( c );
@@ -7107,20 +7281,20 @@ function mand_reference( c : Cell ) : boolean {
 }
 
 
-function  pop_reference() : Cell {
+function pop_reference() : Cell {
   check_de&&mand_reference( TOS );
   return pop_raw_value();
 }
 
 
-function  eat_reference( c : Cell ) : Cell {
+function eat_reference( c : Cell ) : Cell {
 // Like eat_value() but check that the cell is a reference
   check_de&&mand_reference( c );
   return eat_value( c );
 }
 
 
-function  reference_of( c : Cell ) : Cell {
+function reference_of( c : Cell ) : Cell {
 // Like value_of() but check that the cell is a reference
   check_de&&mand_reference( c );
   return value_of( c );
@@ -7700,7 +7874,8 @@ function build_targets(){
     // Else, do some replacements
 
     // Turn const INOX_XXX_XXX into #define INOX_XXX_XXX
-    replace(  /^const +INOX_([A-Z0-9_]+ += +.+);(.*)$/, "#define INOX_$1 $2" );
+    replace(  /^const +INOX_([A-Z0-9_]+) += +(.+);(.*)$/,
+      "#define INOX_$1 $2$3" );
 
     // Turn "let auto_" into C++ local automatic variables
     // This takes advantage of C++ type inference
@@ -7720,18 +7895,18 @@ function build_targets(){
     replace( /^const /, "static i32 " );
 
     // //c/ lines are C++ specific lines
-    replace( /^(\s*)\/\/c\/ (.*)$/, "$1$2  //c/ line" );
+    replace( /^(\s*)\/\/c\/ (.*)$/, "$1$2" );
 
     // start of TypeScript version, ie / *ts{* /
     replace( begin + "ts{" + end,   " " + begin + "ts{" );
 
-    // start of C++ version, ie /*c{
+    // start of C++ version, ie / *c{
     replace( begin + "c{", " " + begin + "c{" + end );
 
-    // end of TypeScript, start of C++, ie /*}{
+    // end of TypeScript, start of C++, ie / *}{
     replace( begin + "}{", " //" + begin + "}{" + end );
 
-    // end of TypeScript, ie /*}
+    // end of TypeScript, ie / *}
     replace( begin + "}", "//}" );
 
     // end of C++, ie }* /
@@ -7814,6 +7989,35 @@ function build_targets(){
 
   // Done, write the AssemblyScript source code
   require( "fs" ).writeFileSync( "builds/inox.as.ts", as_source, "utf8" );
+
+  // Build the html help file that lists all primitives
+  let html_source = "<html><head><title>Inox primitives</title></head><body>";
+
+  // Make a table of all primitives
+  html_source += "<table border=1>\n<tr><th>Primitive</th><th>Code</th></tr>";
+
+  // Scan the TypeScript source code for all primitives
+  let found;
+  let count_primitives = 0;
+  for( ii = 0 ; ii < ts.length ; ii++ ){
+    line = ts[ ii ];
+    // /^  *\*  ([^\( ]+) - (.*)$/
+    found = line.match( /^  *\*  ([^\( ]+) - (.*)$/ );
+    if( found ){
+      count_primitives++;
+      let name  = found[ 1 ];
+      let brief = found[ 2 ];
+      html_source += "\n<tr><td>" + name + "</td><td>" + brief + "</td></tr>";
+    }
+  }
+
+  // Close the table
+  html_source += "\n</table>"
+  + "\n<p>Found " + count_primitives + " primitives.</p>"
+  + "</body></html>\n";
+
+  // Done, write the html source code
+  require( "fs" ).writeFileSync( "builds/inox.html", html_source, "utf8" );
 
   // ToDo: build the Java version!
 
@@ -7914,7 +8118,20 @@ function operator_primitive( n : TxtC, fn : Primitive ){
  */
 
 /*
- *  a-primitive? primitive - true if TOS tag is also the name of a primitive
+ *  little-endian? - true if the machine is little endian
+ */
+
+const tag_is_little_endian = tag( "little-endian?" );
+
+function primitive_is_little_endian(){
+  PUSH();
+  set( TOS, type_boolean, tag_is_little_endian, check_endianes_done );
+}
+primitive( "little-endian?", primitive_is_little_endian );
+
+
+/*
+ *  a-primitive? - true if TOS tag is also the name of a primitive
  */
 
 const tag_is_a_primitive = tag( "a-primitive?" );
@@ -7928,7 +8145,7 @@ primitive( "a-primitive?", primitive_is_a_primitive );
 
 
 /*
- *  return primitive - jump to return address
+ *  return - jump to return address
  */
 
 function primitive_return(){
@@ -7982,7 +8199,7 @@ function trace_context( msg : TxtC ){
 
 
 /*
- *  actor primitive - push a reference to the current actor
+ *  actor - push a reference to the current actor
  */
 
 /**/ function set_tos_name( n : Tag ){ set_name( TOS, n ); }
@@ -7998,7 +8215,7 @@ primitive( "actor", primitive_actor );
 
 
 /*
- *  switch-actor primitive - non preemptive thread switch
+ *  switch-actor - non preemptive thread switch
  */
 
 function primitive_switch_actor(){
@@ -8008,7 +8225,7 @@ primitive( "switch-actor", primitive_switch_actor );
 
 
 /*
- *  make-actor primitive - create a new actor with an initial IP
+ *  make-actor - create a new actor with an initial IP
  */
 
 
@@ -8021,7 +8238,7 @@ primitive( "make-actor", primitive_make_actor );
 
 
 /*
- *  breakpoint primitive - to break into the debugger
+ *  breakpoint - to break into the debugger
  */
 
 function primitive_breakpoint(){
@@ -8031,14 +8248,14 @@ primitive( "breakpoint", primitive_breakpoint );
 
 
 /*
- *  memory-dump primitive
+ *  memory-dump - output a dump of the whole memory
  */
 
 primitive( "memory-dump", memory_dump );
 
 
 /*
- *  cast primitive - change the type of a value, unsafe
+ *  cast - change the type of a value, unsafe
  */
 
 function primitive_cast(){
@@ -8053,7 +8270,7 @@ primitive( "cast", primitive_cast );
 
 
 /*
- *  rename primitive - change the name of the NOS value
+ *  rename - change the name of the NOS value
  */
 
 function primitive_rename(){
@@ -8068,7 +8285,7 @@ const tag_rename = tag( "rename" );
 
 
 /*
- *  goto primitive - jump to some absolue IP position, a branch
+ *  goto - jump to some absolue IP position, a branch
  */
 
 function primitive_goto(){
@@ -8084,7 +8301,7 @@ primitive( "goto", primitive_goto );
 
 
 /*
- *  a-void? primitive - true if TOS is a void type of cell
+ *  a-void? - true if TOS is a void type of cell
  */
 
 function is_a_void_cell( c : Cell ) : boolean {
@@ -8274,7 +8491,7 @@ primitive( "a-list?", primitive_is_a_list );
  */
 
 /*
- *  push primitive - push the void on the data stack
+ *  push - push the void on the data stack
  */
 
 function primitive_push(){
@@ -8294,7 +8511,7 @@ primitive( "drop", primitive_drop );
 
 
 /*
- *  drops primitive - drops n cells from the data stack
+ *  drops - drops n cells from the data stack
  */
 
 function primitive_drops(){
@@ -8310,7 +8527,7 @@ primitive( "drops", primitive_drops );
 
 
 /*
- *  dup primitive - duplicates the top of the data stack
+ *  dup - duplicates the top of the data stack
  */
 
 function primitive_dup(){
@@ -8321,7 +8538,7 @@ primitive( "dup", primitive_dup );
 
 
 /*
- *  2dup primitive - duplicates the top two cells of the data stack
+ *  2dup - duplicates the top two cells of the data stack
  */
 
 function primitive_2dup(){
@@ -8333,7 +8550,7 @@ primitive( "2dup", primitive_2dup );
 
 
 /*
- *  ?dup primitive - duplicates the top of the data stack if it is not zero
+ *  ?dup - duplicates the top of the data stack if it is not zero
  */
 
 function primitive_dup_if(){
@@ -8346,7 +8563,7 @@ primitive( "?dup", primitive_dup_if );
 
 
 /*
- *  dups primitive - duplicates n cells from the data stack
+ *  dups - duplicates n cells from the data stack
  */
 
 function primitive_dups(){
@@ -8362,7 +8579,7 @@ primitive( "dups", primitive_dups );
 
 
 /*
- *  overs primitive - pushes n cells from the data stack
+ *  overs - pushes n cells from the data stack
  *  ie : 2OVER 2 overs ;
  */
 
@@ -8380,7 +8597,7 @@ primitive( "overs", primitive_overs );
 
 
 /*
- *  2over primitive - pushes the third and fourth cells from TOS
+ *  2over - pushes the third and fourth cells from TOS
  */
 
 function primitive_2over(){
@@ -8393,7 +8610,7 @@ primitive( "2over", primitive_2over );
 
 
 /*
- *  nip primitive -
+ *  nip -
  */
 
 function primitive_nip(){
@@ -8405,7 +8622,7 @@ primitive( "nip", primitive_nip );
 
 
 /*
- *  tuck primitive - pushes the second cell from the top of the stack
+ *  tuck - pushes the second cell from the top of the stack
  */
 
 function primitive_tuck(){
@@ -8419,7 +8636,7 @@ primitive( "tuck", primitive_tuck );
 
 
 /*
- *  swap primitive - swaps the top two cells of the data stack
+ *  swap - swaps the top two cells of the data stack
  *  ie a b -- b a
  */
 
@@ -8434,7 +8651,7 @@ primitive( "swap", primitive_swap );
 
 
 /*
- *  swaps primitive - swaps the top n cells of the data stack
+ *  swaps - swaps the top n cells of the data stack
  */
 
 function primitive_swaps(){
@@ -8454,7 +8671,7 @@ primitive( "swaps", primitive_swaps );
 
 
 /*
- *  2swap primitive - swaps the top four cells of the data stack
+ *  2swap - swaps the top four cells of the data stack
  *  ie a1 a2 b1 b2 -- b1 b2 a1 a2
  */
 
@@ -8473,7 +8690,7 @@ primitive( "2swap", primitive_2swap );
 
 
 /*
- *  over primitive - pushes the second cell from the top of the stack
+ *  over - pushes the second cell from the top of the stack
  */
 
 function primitive_over(){
@@ -8488,7 +8705,7 @@ primitive( "over", primitive_over );
 
 
 /*
- *  rotate primitive - rotates the top three cells of the data stack
+ *  rotate - rotates the top three cells of the data stack
  */
 
 function primitive_rotate(){
@@ -8504,7 +8721,7 @@ primitive( "rotate", primitive_rotate );
 
 
 /*
- *  roll primitive - rotates n cells from the top of the stack
+ *  roll - rotates n cells from the top of the stack
  */
 
 function primitive_roll(){
@@ -8522,7 +8739,7 @@ primitive( "roll", primitive_roll );
 
 
 /*
- *  pick primitive - pushes the nth cell from the top of the stack
+ *  pick - pushes the nth cell from the top of the stack
  */
 
 function primitive_pick(){
@@ -8534,7 +8751,7 @@ primitive( "pick", primitive_pick );
 
 
 /*
- *  data-depth primitive - pushes the depth of the data stack
+ *  data-depth - pushes the depth of the data stack
  */
 
 const tag_depth = tag( "depth" );
@@ -8548,7 +8765,7 @@ primitive( "data-depth", primitive_data_depth );
 
 
 /*
- *  clear-data primitive - clears the data stack
+ *  clear-data - clears the data stack
  */
 
 function primitive_clear_data(){
@@ -8564,7 +8781,7 @@ primitive( "clear-data", primitive_clear_data );
 
 
 /*
- *  data-dump primitive - dumps the data stack
+ *  data-dump - dumps the data stack
  */
 
 function primitive_data_dump(){
@@ -8586,7 +8803,7 @@ primitive( "data-dump", primitive_data_dump );
 
 
 /*
- *  control-depth primitive - pushes the depth of the control stack
+ *  control-depth - pushes the depth of the control stack
  */
 
 function primitive_control_depth(){
@@ -8599,7 +8816,7 @@ primitive( "control-depth", primitive_control_depth );
 
 
 /*
- *  clear-control primitive - clears the control stack
+ *  clear-control - clears the control stack
  */
 
 const tag_clear_control = tag( "clear-control" );
@@ -8618,7 +8835,7 @@ primitive( "clear-control", primitive_clear_control );
 
 
 /*
- *  control-dump primitive - dumps the control stack
+ *  control-dump - dumps the control stack
  */
 
 function primitive_control_dump(){
@@ -8649,7 +8866,7 @@ primitive( "control-dump", primitive_control_dump );
 
 
 /*
- *  text-quote primitive - turns a string into a valid text literal
+ *  text-quote - turns a string into a valid text literal
  */
 
 function HEX( n : Value ) : Text {
@@ -8731,7 +8948,7 @@ primitive( "text-quote", primitive_text_quote );
   // ToDo: better handling of errors
   static bool parse_int_error = false;
 
-  int parseInt( const Text& s, int base ){
+  static int parseInt( const Text& s, int base ){
     parse_int_error = true;
     int result = 0;
     for( unsigned int ii = 0 ; ii < s.length() ; ii++ ){
@@ -8783,7 +9000,7 @@ primitive( "text-quote", primitive_text_quote );
 
 
 /*
- *  text-to-integer primitive - converts a text literal to an integer
+ *  text-to-integer - converts a text literal to an integer
  */
 
 function checked_text_to_integer( txt : TxtC ) : Value {
@@ -8801,7 +9018,7 @@ function checked_text_to_integer( txt : TxtC ) : Value {
 
 
 /*
- *  text-to-integer primitive - converts a text literal into an integer
+ *  text-to-integer - converts a text literal into an integer
  *  ToDo: should not FATAL on error
  */
 
@@ -8815,7 +9032,7 @@ primitive( "text-to-integer", primitive_text_to_integer );
 
 
 /*
- *  text-hex-to-integer primitive - converts a text literal to an integer
+ *  text-hex-to-integer - converts a text literal to an integer
  *  ToDo: should not FATAL on error
  */
 
@@ -8842,7 +9059,7 @@ primitive( "text-hex-to-integer", primitive_text_hex_to_integer );
 
 
 /*
- *  text-octal-to-integer primitive - converts a text literal to an integer
+ *  text-octal-to-integer - converts a text literal to an integer
  *  ToDo: should not FATAL on error
  */
 
@@ -8869,7 +9086,7 @@ primitive( "text-octal-to-integer", primitive_text_octal_to_integer );
 
 
 /*
- *  text-binary-to-integer primitive - converts a text literal to an integer
+ *  text-binary-to-integer - converts a text literal to an integer
  *  ToDo: should not FATAL on error
  */
 
@@ -8896,7 +9113,7 @@ primitive( "text-binary-to-integer", primitive_text_binary_to_integer );
 
 
 /*
- *  integer-to-hex primitive - converts an integer to an hexadecimal text
+ *  integer-to-hex - converts an integer to an hexadecimal text
  */
 
 function primitive_integer_to_hex(){
@@ -8912,7 +9129,7 @@ primitive( "integer-to-hex", primitive_integer_to_hex );
 
 
 /*
- *  integer-to-octal primitive - convert an integer to an octal text
+ *  integer-to-octal - convert an integer to an octal text
  */
 
 function primitive_integer_to_octal(){
@@ -8941,7 +9158,7 @@ primitive( "integer-to-octal", primitive_integer_to_octal );
 
 
 /*
- *  integer-to-binary primitive - converts an integer to a binary text
+ *  integer-to-binary - converts an integer to a binary text
  */
 
 function primitive_integer_to_binary(){
@@ -8961,7 +9178,7 @@ function primitive_integer_to_binary(){
 
 
 /*
- *  text-unquote primitive - turns a JSON text into a text
+ *  text-unquote - turns a JSON text into a text
  */
 
 function text_unquote( txt : TxtC ) : Text {
@@ -9661,7 +9878,7 @@ function stacks_dump() : Text {
 
 
 /*
- *  debugger primitive - invoke host debugger, if any
+ *  debugger - invoke host debugger, if any
  */
 
 function primitive_debugger(){
@@ -9671,7 +9888,7 @@ primitive( "debugger", primitive_debugger );
 
 
 /*
- *  debug primitive - activate lots of traces
+ *  debug - activate lots of traces
  */
 
 function primitive_debug(){
@@ -9681,17 +9898,18 @@ primitive( "debug", primitive_debug );
 
 
 /*
- *  normal-debug primitive - deactivate lots of traces, keep type checking
+ *  normal-debug - deactivate lots of traces, keep type checking
  */
 
 function primitive_normal_debug(){
   normal_debug();
+  init_debug_level( INOX_DEBUG_LEVEL );
 }
 primitive( "normal-debug", primitive_normal_debug );
 
 
 /*
- *  log primitive - enable/disable traces and checks
+ *  log - enable/disable traces and checks
  */
 
 function primitive_log(){
@@ -9826,7 +10044,7 @@ primitive( "log", primitive_log );
 
 
 /*
- *  fast! primitive - Switch to "fast mode", return previous state
+ *  fast! - Switch to "fast mode", return previous state
  */
 
 const tag_is_fast = tag( "fast?" );
@@ -9847,7 +10065,7 @@ primitive( "fast!", primitive_set_fast );
 
 
 /*
- *  fast? primitive - Return current state for "fast mode"
+ *  fast? - Return current state for "fast mode"
  */
 
 function primitive_is_fast(){
@@ -9858,7 +10076,7 @@ primitive( "fast?", primitive_is_fast );
 
 
 /*
- *  noop primitive - No operation - does nothing
+ *  noop - No operation - does nothing
  */
 
 function save_ip( label : Tag ){
@@ -9872,11 +10090,10 @@ primitive( "noop", primitive_noop );
 
 
 /*
- *  assert-checker primitive - internal
+ *  assert-checker - internal
  */
 
 function primitive_assert_checker(){
-
 // This primitive gets called after an assertion block has been executed.
 
   // Expect assertions to provide a boolean result!
@@ -9904,13 +10121,12 @@ let assert_checker_definition = 0;
 
 
 /*
- *  assert primitive - assert a condition, based on the result of a block
+ *  assert - assert a condition, based on the result of a block
  */
 
 const tag_assert = tag( "assert" );
 
 function  primitive_assert(){
-
 // Assert that a condition is true, based on the result of a block
 
   // Do not execute the assertion block, if fast mode is on
@@ -9953,7 +10169,7 @@ const pack_proxy     = pack( type_proxy,      tag_proxy     );
 const pack_verb      = pack( type_verb,       tag_verb      );
 
 /*
- *  type-of primitive - Get type of the TOS value, as a tag
+ *  type-of - Get type of the TOS value, as a tag
  */
 
 function primitive_type_of(){
@@ -9965,7 +10181,7 @@ primitive( "type-of", primitive_type_of );
 
 
 /*
- *  name-of primitive - Get the name of the TOS value, a tag
+ *  name-of - Get the name of the TOS value, a tag
  */
 
 function primitive_name_of(){
@@ -9977,7 +10193,7 @@ primitive( "name-of", primitive_name_of );
 
 
 /*
- *  value-of primitive - Get the raw integer value of the TOS value
+ *  value-of - Get the raw integer value of the TOS value
  */
 
 function primitive_value_of(){
@@ -9989,7 +10205,7 @@ primitive( "value-of", primitive_value_of );
 
 
 /*
- *  info-of primitive - Get the packed type and name of the TOS value
+ *  info-of - Get the packed type and name of the TOS value
  */
 
 function primitive_info_of(){
@@ -10001,7 +10217,7 @@ primitive( "info-of", primitive_info_of );
 
 
 /*
- *  pack-info primitive - Pack type and name into an integer
+ *  pack-info - Pack type and name into an integer
 */
 
 function primitive_pack_info(){
@@ -10018,7 +10234,7 @@ primitive( "pack-info", primitive_pack_info );
 
 
 /*
- *  unpack-type primitive - Unpack type from an integer, see pack-info
+ *  unpack-type - Unpack type from an integer, see pack-info
  */
 
 function primitive_unpack_type(){
@@ -10033,7 +10249,7 @@ primitive( "unpack-type", primitive_unpack_type );
 
 
 /*
- *  unpack-name primitive - Unpack name from an integer, see pack-info
+ *  unpack-name - Unpack name from an integer, see pack-info
 */
 
 function primitive_unpack_name(){
@@ -10114,7 +10330,7 @@ function cell_class_tag( c : Cell ) : Tag {
 }
 
 /*
- *  class-of primitive - Get the most specific type name (as a tag)
+ *  class-of - Get the most specific type name (as a tag)
  */
 
 const tag_class = tag( "class" );
@@ -10874,7 +11090,7 @@ binary_math_operator( "XOR",   ( a, b ) => a ^   b ); // binary xor
 
 /*c{
 
-void check_int_parameters( int* a, int* b ){
+static void check_int_parameters( int* a, int* b ){
   const p2 = POP();
   const p1 = TOS;
   if( check_de ){
@@ -10893,25 +11109,25 @@ void check_int_parameters( int* a, int* b ){
   *b = eat_raw_value( p2 );
 }
 
-void checked_int_minus( void ){
+static void checked_int_minus( void ){
   int a, b;
   check_int_parameters( &a, &b );
   set_value( TOS, a - b );
 }
 
-void checked_int_multiply( void ){
+static void checked_int_multiply( void ){
   int a, b;
   check_int_parameters( &a, &b );
   set_value( TOS, a * b );
 }
 
-void checked_int_divide( void ){
+static void checked_int_divide( void ){
   int a, b;
   check_int_parameters( &a, &b );
   set_value( TOS, a / b );
 }
 
-void checked_int_modulo( void ){
+static void checked_int_modulo( void ){
   int a, b;
   check_int_parameters( &a, &b );
   set_value( TOS, a % b );
@@ -10923,31 +11139,31 @@ void checked_int_power( void ){
   set_value( TOS, (Value) pow( a, b ) );
 }
 
-void checked_int_left_shift( void ){
+static void checked_int_left_shift( void ){
   int a, b;
   check_int_parameters( &a, &b );
   set_value( TOS, a << b );
 }
 
-void checked_int_right_shift( void ){
+static void checked_int_right_shift( void ){
   int a, b;
   check_int_parameters( &a, &b );
   set_value( TOS, a >> b );
 }
 
-void checked_int_and( void ){
+static void checked_int_and( void ){
   int a, b;
   check_int_parameters( &a, &b );
   set_value( TOS, a & b );
 }
 
-void checked_int_or( void ){
+static void checked_int_or( void ){
   int a, b;
   check_int_parameters( &a, &b );
   set_value( TOS, a | b );
 }
 
-void checked_int_xor( void ){
+static void checked_int_xor( void ){
   int a, b;
   check_int_parameters( &a, &b );
   set_value( TOS, a ^ b );
@@ -11252,25 +11468,25 @@ unary_boolean_operator(   ">=0?",  ( x )    => ( x >=  0 ) ? 1 : 0 );
 
 /*c{
 
-void checked_int_is_greater_than(){
+static void checked_int_is_greater_than(){
   int a, b;
   check_int_parameters( &a, &b );
   push_boolean( a > b );
 }
 
-void checked_int_is_less_than(){
+static void checked_int_is_less_than(){
   int a, b;
   check_int_parameters( &a, &b );
   push_boolean( a < b );
 }
 
-void checked_int_is_greater_or_equal(){
+static void checked_int_is_greater_or_equal(){
   int a, b;
   check_int_parameters( &a, &b );
   push_boolean( a >= b );
 }
 
-void checked_int_is_less_or_equal(){
+static void checked_int_is_less_or_equal(){
   int a, b;
   check_int_parameters( &a, &b );
   push_boolean( a <= b );
@@ -11282,42 +11498,42 @@ operator_primitive(  "<",   checked_int_is_less_than );
 operator_primitive(  ">=",  checked_int_is_greater_or_equal );
 operator_primitive(  "<=",  checked_int_is_less_or_equal );
 
-void checked_int_is_equal_to_1(){
+static void checked_int_is_equal_to_1(){
   const x = pop_integer();
   push_boolean( x == 1 );
 }
 
-void checked_int_is_equal_to_minus_1(){
+static void checked_int_is_equal_to_minus_1(){
   const x = pop_integer();
   push_boolean( x == -1 );
 }
 
-void checked_int_is_equal_to_0(){
+static void checked_int_is_equal_to_0(){
   const x = pop_integer();
   push_boolean( x == 0 );
 }
 
-void checked_int_is_not_equal_to_0(){
+static void checked_int_is_not_equal_to_0(){
   const x = pop_integer();
   push_boolean( x != 0 );
 }
 
-void checked_int_is_less_than_0(){
+static void checked_int_is_less_than_0(){
   const x = pop_integer();
   push_boolean( x < 0 );
 }
 
-void checked_int_is_less_or_equal_to_0(){
+static void checked_int_is_less_or_equal_to_0(){
   const x = pop_integer();
   push_boolean( x <= 0 );
 }
 
-void checked_int_is_greater_than_0(){
+static void checked_int_is_greater_than_0(){
   const x = pop_integer();
   push_boolean( x > 0 );
 }
 
-void checked_int_is_greater_or_equal_to_0(){
+static void checked_int_is_greater_or_equal_to_0(){
   const x = pop_integer();
   push_boolean( x >= 0 );
 }
@@ -11351,22 +11567,22 @@ unary_math_operator( "abs",      ( x ) => x > 0   ?  x : -x );
 
 /*c{
 
-void checked_int_not(){
+static void checked_int_not(){
   const x = pop_integer();
   push_integer( ~x );
 }
 
-void checked_int_negative(){
+static void checked_int_negative(){
   const x = pop_integer();
   push_integer( -x );
 }
 
-void checked_int_sign(){
+static void checked_int_sign(){
   const x = pop_integer();
   push_integer( x < 0 ? -1 : 1 );
 }
 
-void checked_int_abs(){
+static void checked_int_abs(){
   const x = pop_integer();
   push_integer( x > 0 ? x : -x );
 }
@@ -11384,7 +11600,7 @@ operator_primitive( "abs",      checked_int_abs      );
  */
 
 /*
- *  is-a-float? primitive - check if a value is a float
+ *  is-a-float? - check if a value is a float
  */
 
 function primitive_is_a_float(){
@@ -11395,7 +11611,7 @@ primitive( "is-a-float?", primitive_is_a_float );
 
 
 /*
- *  to-float primitive - convert something into a float
+ *  to-float - convert something into a float
  */
 
 function push_float( f : Float ){
@@ -11409,7 +11625,7 @@ function push_float( f : Float ){
 }
 
 /*
- *  to-float primitive - convert something into a float
+ *  to-float - convert something into a float
  */
 
 function primitive_to_float(){
@@ -11445,7 +11661,7 @@ primitive( "to-float", primitive_to_float );
 
 
 /*
- *  float-to-integer primitive - convert a float to an integer
+ *  float-to-integer - convert a float to an integer
  */
 
 function pop_float() : Float {
@@ -11468,7 +11684,7 @@ primitive( "float-to-integer", primitive_float_to_integer );
 
 
 /*
- *  float-to-text primitive - convert a float to a text
+ *  float-to-text - convert a float to a text
  */
 
 function primitive_float_to_text(){
@@ -11480,9 +11696,9 @@ function primitive_float_to_text(){
     char buf[32];  // buffer for result
 
     // handle special cases: NaN, infinity, zero
-    if (std::isnan(auto_f)) {
+    if ( isnan(auto_f)) {
       memcpy(buf, "nan", 4 );
-    } else if (std::isinf(auto_f)) {
+    } else if ( isinf(auto_f)) {
       if (auto_f > 0) {
         memcpy(buf, "inf", 4 );
       } else {
@@ -11541,7 +11757,7 @@ function primitive_float_to_text(){
 
 
 /*
- *  float-add primitive - add two floats
+ *  float-add - add two floats
  */
 
 function primitive_float_add(){
@@ -11553,7 +11769,7 @@ primitive( "float-add", primitive_float_add );
 
 
 /*
- *  float-subtract primitive - subtract two floats
+ *  float-subtract - subtract two floats
  */
 
 function primitive_float_subtract(){
@@ -11565,7 +11781,7 @@ primitive( "float-subtract", primitive_float_subtract );
 
 
 /*
- *  float-multiply primitive - multiply two floats
+ *  float-multiply - multiply two floats
  */
 
 function primitive_float_multiply(){
@@ -11577,7 +11793,7 @@ primitive( "float-multiply", primitive_float_multiply );
 
 
 /*
- *  float-divide primitive - divide two floats
+ *  float-divide - divide two floats
  */
 
 function primitive_float_divide(){
@@ -11589,196 +11805,196 @@ primitive( "float-divide", primitive_float_divide );
 
 
 /*
- *  float-remainder primitive - remainder of two floats
+ *  float-remainder - remainder of two floats
  */
 
 function primitive_float_remainder(){
   const auto_f2 = pop_float();
   const auto_f1 = pop_float();
   /**/ const auto_f = auto_f1 % auto_f2;
-  //c/ auto  auto_f = std::fmod( auto_f1, auto_f2 );
+  //c/ auto  auto_f = fmod( auto_f1, auto_f2 );
   push_float( auto_f );
 }
 primitive( "float-remainder", primitive_float_remainder );
 
 
 /*
- *  float-power primitive - power of two floats
+ *  float-power - power of two floats
  */
 
 function primitive_float_power(){
   const auto_f2 = pop_float();
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.pow( auto_f1, auto_f2 );
-  //c/ auto  auto_f = std::pow( auto_f1, auto_f2 );
+  //c/ auto  auto_f = pow( auto_f1, auto_f2 );
   push_float( auto_f );
 }
 
 
 /*
- *  float-sqrt primitive - square root of a float
+ *  float-sqrt - square root of a float
  */
 
 function primitive_float_sqrt(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.sqrt( auto_f1 );
-  //c/ auto  auto_f = std::sqrt( auto_f1 );
+  //c/ auto  auto_f = sqrt( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-sqrt", primitive_float_sqrt );
 
 
 /*
- *  float-sin primitive - sine of a float
+ *  float-sin - sine of a float
  */
 
 function primitive_float_sin(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.sin( auto_f1 );
-  //c/ auto  auto_f = std::sin( auto_f1 );
+  //c/ auto  auto_f = sin( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-sin", primitive_float_sin );
 
 
 /*
- *  float-cos primitive - cosine of a float
+ *  float-cos - cosine of a float
  */
 
 function primitive_float_cos(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.cos( auto_f1 );
-  //c/ auto  auto_f = std::cos( auto_f1 );
+  //c/ auto  auto_f = cos( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-cos", primitive_float_cos );
 
 
 /*
- *  float-tan primitive - tangent of a float
+ *  float-tan - tangent of a float
  */
 
 function primitive_float_tan(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.tan( auto_f1 );
-  //c/ auto  auto_f = std::tan( auto_f1 );
+  //c/ auto  auto_f = tan( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-tan", primitive_float_tan );
 
 
 /*
- *  float-asin primitive - arc sine of a float
+ *  float-asin - arc sine of a float
  */
 
 function primitive_float_asin(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.asin( auto_f1 );
-  //c/ auto  auto_f = std::asin( auto_f1 );
+  //c/ auto  auto_f = asin( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-asin", primitive_float_asin );
 
 
 /*
- *  float-acos primitive - arc cosine of a float
+ *  float-acos - arc cosine of a float
  */
 
 function primitive_float_acos(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.acos( auto_f1 );
-  //c/ auto  auto_f = std::acos( auto_f1 );
+  //c/ auto  auto_f = acos( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-acos", primitive_float_acos );
 
 
 /*
- *  float-atan primitive - arc tangent of a float
+ *  float-atan - arc tangent of a float
  */
 
 function primitive_float_atan(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.atan( auto_f1 );
-  //c/ auto  auto_f = std::atan( auto_f1 );
+  //c/ auto  auto_f = atan( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-atan", primitive_float_atan );
 
 
 /*
- *  float-log primitive - natural logarithm of a float
+ *  float-log - natural logarithm of a float
  */
 
 function primitive_float_log(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.log( auto_f1 );
-  //c/ auto  auto_f = std::log( auto_f1 );
+  //c/ auto  auto_f = log( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-log", primitive_float_log );
 
 
 /*
- *  float-exp primitive - exponential of a float
+ *  float-exp - exponential of a float
  */
 
 function primitive_float_exp(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.exp( auto_f1 );
-  //c/ auto  auto_f = std::exp( auto_f1 );
+  //c/ auto  auto_f = exp( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-exp", primitive_float_exp );
 
 
 /*
- *  float-floor primitive - floor of a float
+ *  float-floor - floor of a float
  */
 
 function primitive_float_floor(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.floor( auto_f1 );
-  //c/ auto  auto_f = std::floor( auto_f1 );
+  //c/ auto  auto_f = floor( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-floor", primitive_float_floor );
 
 
 /*
- *  float-ceiling primitive - ceiling of a float
+ *  float-ceiling - ceiling of a float
  */
 
 function primitive_float_ceiling(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.ceil( auto_f1 );
-  //c/ auto  auto_f = std::ceil( auto_f1 );
+  //c/ auto  auto_f = ceil( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-ceiling", primitive_float_ceiling );
 
 
 /*
- *  float-round primitive - round a float
+ *  float-round - round a float
  */
 
 function primitive_float_round(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.round( auto_f1 );
-  //c/ auto  auto_f = std::round( auto_f1 );
+  //c/ auto  auto_f = round( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-round", primitive_float_round );
 
 
 /*
- *  float-truncate primitive - truncate a float
+ *  float-truncate - truncate a float
  */
 
 function primitive_float_truncate(){
   const auto_f1 = pop_float();
   /**/ const auto_f = Math.trunc( auto_f1 );
-  //c/ auto  auto_f = std::trunc( auto_f1 );
+  //c/ auto  auto_f = trunc( auto_f1 );
   push_float( auto_f );
 }
 primitive( "float-truncate", primitive_float_truncate );
@@ -11805,7 +12021,7 @@ operator_primitive( "&", primitive_text_join );
 
 
 /*
- *  text-cut primitive - extract a cut of a text, remove a suffix
+ *  text-cut - extract a cut of a text, remove a suffix
  */
 
 function primitive_text_cut(){
@@ -11817,7 +12033,7 @@ primitive( "text-cut", primitive_text_cut );
 
 
 /*
- *  text-length primitive - length of a text
+ *  text-length - length of a text
  */
 
 function primitive_text_length(){
@@ -11828,7 +12044,7 @@ primitive( "text-length", primitive_text_length );
 
 
 /*
- *  text-but primitive - remove a prefix from a text, keep the rest
+ *  text-but - remove a prefix from a text, keep the rest
  */
 
 function               primitive_text_but(){
@@ -11840,7 +12056,7 @@ primitive( "text-but", primitive_text_but );
 
 
 /*
- *  text-mid primitive - extract a part of the text
+ *  text-mid - extract a part of the text
  */
 
 function primitive_text_mid(){
@@ -11853,7 +12069,7 @@ primitive( "text-mid", primitive_text_mid );
 
 
 /*
- *  text-low primitive - convert a text to lower case
+ *  text-low - convert a text to lower case
  */
 
 function primitive_text_low(){
@@ -11864,7 +12080,7 @@ primitive( "text-low", primitive_text_low );
 
 
 /*
- *  text-up primitive - convert a text to upper case
+ *  text-up - convert a text to upper case
  */
 
 function primitive_text_up(){
@@ -11875,7 +12091,7 @@ primitive( "text-up", primitive_text_up );
 
 
 /*
- *  text=? primitive - compare two texts
+ *  text=? - compare two texts
  */
 
 function primitive_text_eq(){
@@ -11887,7 +12103,7 @@ primitive( "text=?", primitive_text_eq );
 
 
 /*
- *  text<>? primitive - compare two texts
+ *  text<>? - compare two texts
  */
 
 function primitive_text_neq(){
@@ -11899,7 +12115,7 @@ primitive( "text<>?", primitive_text_neq );
 
 
 /*
- *  text-find primitive - find a piece in a text
+ *  text-find - find a piece in a text
  */
 
 function primitive_text_find(){
@@ -11911,7 +12127,7 @@ primitive( "text-find", primitive_text_find );
 
 
 /*
- *  text-find-last primitive - find a piece in a text
+ *  text-find-last - find a piece in a text
  */
 
 function primitive_text_find_last(){
@@ -11923,7 +12139,7 @@ primitive( "text-find-last", primitive_text_find_last );
 
 
 /*
- *  text-line primitive - extract a line from a text
+ *  text-line - extract a line from a text
  */
 
 function  primitive_text_line(){
@@ -11935,7 +12151,7 @@ primitive( "text-line", primitive_text_line );
 
 
 /*
- *  as-text primitive - textual representation
+ *  as-text - textual representation
  */
 
 function primitive_as_text(){
@@ -11946,7 +12162,7 @@ primitive( "as-text", primitive_as_text );
 
 
 /*
- *  dump primitive - textual representation, debug style
+ *  dump - textual representation, debug style
  */
 
 function primitive_dump(){
@@ -12150,7 +12366,7 @@ function verb_to_text_definition( id : Index ) : Text {
  */
 
 /*
- *  peek primitive - Get the value of a cell, using a cell's address.
+ *  peek - Get the value of a cell, using a cell's address.
  *  This is very low level, it's the Forth @ word (fetch).
  *  Peek/Poke is BASIC style, it's not Forth style.
  */
@@ -12162,16 +12378,17 @@ primitive( "peek", primitive_peek );
 
 
 /*
- *  poke primitive - Set the value of a cell, using a cell's address.
+ *  poke - Set the value of a cell, using a cell's address.
  *  This is very low level, it's the Forth ! word (store).
  */
 
-primitive( "poke", primitive_poke );
-function           primitive_poke(){
+function primitive_poke(){
   const address = pop_integer();
   const tos = POP();
   move_cell( tos, address );
 }
+primitive( "poke", primitive_poke );
+
 
 
 /*
@@ -12260,7 +12477,7 @@ primitive( "defined?", primitive_is_defined );
 
 
 /*
- *  make-global primitive - Create a global variable and two verbs to
+ *  make-global - Create a global variable and two verbs to
  *  get/set it. Getter is named like the variable, setter is named like
  *  the variable with a "!" suffix.
  */
@@ -12320,7 +12537,7 @@ primitive( "make-global", primitive_make_global );
 
 
 /*
- *  make-local primitive - Create a local variable in the control stack
+ *  make-local - Create a local variable in the control stack
  */
 
 function primitive_make_local(){
@@ -12516,7 +12733,7 @@ primitive( "run-with-parameters", primitive_run_with_parameters );
 
 
 /*
- *  local primitive - copy a control variable to the data stack
+ *  local - copy a control variable to the data stack
  */
 
 function primitive_local(){
@@ -12539,7 +12756,7 @@ primitive( "local", primitive_local );
 
 
 /*
- *  set-local primitive - assign a value to a local variable
+ *  set-local - assign a value to a local variable
  */
 
 function primitive_set_local(){
@@ -12634,7 +12851,7 @@ primitive( "size-of-cell", primitive_size_of_cell );
 /**/   nth   : Index
 /**/ ) : Cell {
 /*c{
-Cell cell_lookup(
+static Cell cell_lookup(
   Cell start,
   Cell end,
   Tag  tag,
@@ -12677,7 +12894,7 @@ Cell cell_lookup(
 
 
 /*
- *  lookup primitive - find a variable in a memory area.
+ *  lookup - find a variable in a memory area.
  *  The memory area is defined by a start and end pointer.
  *  The variable is defined by a tag.
  *  The nth variable is found.
@@ -12718,7 +12935,7 @@ primitive( "upper-local", primitive_upper_local );
 
 
 /*
- *  upper-data primitive - get a data variable in the nth upper frame, or void
+ *  upper-data - get a data variable in the nth upper frame, or void
  */
 
 function primitive_upper_data(){
@@ -12735,7 +12952,7 @@ primitive( "upper-data", primitive_upper_data );
 
 
 /*
- *  set-upper-local primitive - set a local variable in the nth upper frame
+ *  set-upper-local - set a local variable in the nth upper frame
  */
 
 function primitive_set_upper_local(){
@@ -12753,7 +12970,7 @@ primitive( "set-upper-local", primitive_set_upper_local );
 
 
 /*
- *  set-upper-data primitive -
+ *  set-upper-data -
  */
 
 function primitive_set_upper_data(){
@@ -12770,7 +12987,7 @@ function primitive_set_upper_data(){
 
 
 /*
- *  without-data primitive - remove down to a data variable in the data stack
+ *  without-data - remove down to a data variable in the data stack
  */
 
 function primitive_without_data(){
@@ -13137,7 +13354,7 @@ function                 primitive_object_set(){
  */
 
 /*
- *  stack-push primitive - push a value onto a stack object
+ *  stack-push - push a value onto a stack object
  */
 
 function primitive_stack_push(){
@@ -13154,7 +13371,7 @@ primitive( "stack-push", primitive_stack_push );
 
 
 /*
- *  stack-drop primitive - drop the top of a stack object
+ *  stack-drop - drop the top of a stack object
  */
 
 function primitive_stack_drop(){
@@ -13174,7 +13391,7 @@ primitive( "stack-drop", primitive_stack_drop );
 
 
 /*
- *  stack-drop-nice primitive - drop the tof of a stack object, unless empty
+ *  stack-drop-nice - drop the tof of a stack object, unless empty
  */
 
 function primitive_stack_drop_nice(){
@@ -13192,7 +13409,7 @@ primitive( "stack-drop-nice", primitive_stack_drop_nice );
 
 
 /*
- *  stack-fetch primitive - get the nth entry of a stack object
+ *  stack-fetch - get the nth entry of a stack object
  */
 
 function primitive_stack_fetch(){
@@ -13211,7 +13428,7 @@ primitive( "stack-fetch", primitive_stack_fetch );
 
 
 /*
- *  stack-fetch-nice primitive - get the nth entry of a stack object, or void
+ *  stack-fetch-nice - get the nth entry of a stack object, or void
  */
 
 function primitive_stack_fetch_nice(){
@@ -13231,7 +13448,7 @@ primitive( "stack-fetch-nice", primitive_stack_fetch_nice );
 
 
 /*
- *  stack-length primitive - get the depth of a stack object
+ *  stack-length - get the depth of a stack object
  */
 
 function primitive_stack_length(){
@@ -13246,7 +13463,7 @@ primitive( "stack-length", primitive_stack_length );
 
 
 /*
- *  stack-capacity primitive - get the capacity of a stack object
+ *  stack-capacity - get the capacity of a stack object
  */
 
 const tag_stack_capacity = tag( "stack-capacity" );
@@ -13260,7 +13477,7 @@ primitive( "stack-capacity", primitive_stack_capacity );
 
 
 /*
- *  stack-dup primitive - duplicate the top of a stack object
+ *  stack-dup - duplicate the top of a stack object
  */
 
 function primitive_stack_dup(){
@@ -13270,7 +13487,7 @@ primitive( "stack-dup", primitive_stack_dup );
 
 
 /*
- *  stack-clear primitive - clear a stack object
+ *  stack-clear - clear a stack object
  */
 
 function primitive_stack_clear(){
@@ -13288,7 +13505,7 @@ primitive( "stack-clear", primitive_stack_clear );
 
 
 /*
- *  stack-swap primitive - swap the top two values of a stack object
+ *  stack-swap - swap the top two values of a stack object
  */
 
 function primitive_stack_swap(){
@@ -13307,7 +13524,7 @@ primitive( "stack-swap", primitive_stack_swap );
 
 
 /*
- *  stack-swap-nice primitive - like swap but ok if stack is too short
+ *  stack-swap-nice - like swap but ok if stack is too short
  */
 
 function primitive_stack_swap_nice(){
@@ -13323,7 +13540,7 @@ primitive( "stack-swap-nice", primitive_stack_swap_nice );
 
 
 /*
- *  stack-enter primitive - swith stack to the stack of an object
+ *  stack-enter - swith stack to the stack of an object
  */
 
 const tag_stack_base  = tag( "stack-base" );
@@ -13362,7 +13579,7 @@ primitive( "stack-enter", primitive_stack_enter );
 
 
 /*
- *  stack-leave primitive - revert to the previous data stack
+ *  stack-leave - revert to the previous data stack
  */
 
 function primitive_stack_leave(){
@@ -13381,7 +13598,7 @@ primitive( "stack-leave", primitive_stack_leave );
 
 
 /*
- *  data-stack-base primitive - return the base address of the data stack
+ *  data-stack-base - return the base address of the data stack
  */
 
 const tag_data_stack_base  = tag( "data-stack-base" );
@@ -13394,7 +13611,7 @@ primitive( "data-stack-base", primitive_data_stack_base );
 
 
 /*
- *  data-stack-limit primitive - upper limit of the data stack
+ *  data-stack-limit - upper limit of the data stack
  */
 
 const tag_data_stack_limit = tag( "data-stack-limit" );
@@ -13407,7 +13624,7 @@ primitive( "data-stack-limit", primitive_data_stack_limit );
 
 
 /*
- *  control-stack-base primitive - base address b of the control stack
+ *  control-stack-base - base address b of the control stack
  */
 
 const tag_control_stack_base  = tag( "control-stack-base" );
@@ -13420,7 +13637,7 @@ primitive( "control-stack-base", primitive_control_stack_base );
 
 
 /*
- *  control-stack-limit primitive - upper limit s of the control stack
+ *  control-stack-limit - upper limit s of the control stack
  */
 
 const tag_control_stack_limit = tag( "control-stack-limit" );
@@ -13433,7 +13650,7 @@ primitive( "control-stack-limit", primitive_control_stack_limit );
 
 
 /*
- *  grow-data-stack primitive - double the data stack if 80% full
+ *  grow-data-stack - double the data stack if 80% full
  */
 
 function  primitive_grow_data_stack(){
@@ -13460,7 +13677,7 @@ primitive( "grow-data-stack", primitive_grow_data_stack );
 
 
 /*
- *  grow-control-stack primitive - double the control stack if 80% full
+ *  grow-control-stack - double the control stack if 80% full
  */
 
 function primitive_grow_control_stack(){
@@ -13827,7 +14044,7 @@ primitive( "map-length", primitive_map_length );
  */
 
 /*
- *  without-local primitive - clear the control stack downto to specified local
+ *  without-local - clear the control stack downto to specified local
  */
 
 function primitive_without_local(){
@@ -13847,7 +14064,7 @@ primitive( "without-local", primitive_without_local );
 
 
 /*
- *  return-without-locals primitive - like return but with some cleanup
+ *  return-without-locals - like return but with some cleanup
  */
 
 function primitive_return_without_locals(){
@@ -14046,7 +14263,7 @@ primitive( "run-method-by-tag", primitive_run_method_by_tag );
 
 
 /*
- *  run-with-it primitive - like run but with an "it" local variable
+ *  run-with-it - like run but with an "it" local variable
  */
 
 function primitive_run_with_it(){
@@ -14092,11 +14309,13 @@ primitive( "words-per-cell", primitive_words_per_cell );
  *  CSP primitive
  */
 
-primitive( "CSP", primitive_CSP );
-function          primitive_CSP(){
+
+const tag_CSP = tag( "CSP" );
+
+function primitive_CSP(){
   set( PUSH(), type_integer, tag_CSP, CSP );
 }
-const tag_CSP = tag( "CSP" );
+primitive( "CSP", primitive_CSP );
 
 
 /*
@@ -14292,11 +14511,6 @@ init_inox_execution_context();
 /*}*/
 
 
-function mand_stacks_are_in_bounds() : boolean {
-  return mand_tos_is_in_bounds() && mand_csp_is_in_bounds();
-}
-
-
 function RUN(){
 // This is the one function that needs to run fast.
 // It should be optimized by hand depending on the target CPU.
@@ -14312,12 +14526,35 @@ function RUN(){
   let i;
   let t;
   let n;
+  /*c{
+    #ifdef INOX_FAST
+      #define INOX_FAST_RUN
+    #endif
+    #ifdef INOX_FAST_RUN
+      #undef  INOX_FAST_RUN
+      #define INOX_FAST_RUN true
+     #else
+      #define INOX_FAST_RUN false
+    #endif
+    u64 w64;
+    // #define RUN_DEBUG
+    #ifdef RUN_DEBUG
+      u32 debug_info;
+      u32 debug_type;
+      i32 debug_value;
+      u32 debug_name;
+    #endif
+  }*/
 
   // ToDo: fast_ip, fast_csp, fast_tos when hand optimized machine code?
-  // let fast_ip  = IP;
-  // let fast_csp = CSP;
-  // let fast_tos = TOS;
-
+  /*c{
+    #define RUN_FAST_FAST
+    #ifdef RUN_FAST_FAST
+      let fast_ip  = IP;
+      let fast_csp = CSP;
+      let fast_tos = TOS;
+    #endif
+  }*/
 
   //c/ goto loop;
   //c/ break_loop: if( 0 )
@@ -14329,214 +14566,473 @@ function RUN(){
     // if( must_stop )break;
 
     // ToDo: there should be a method to break this loop
+    // ie remaining_instructions_credit = 0;
+    // primitive that change IP should use that mechanism
+    // That way, checking IP in the tight loop is not needed anymore
     while( remaining_instructions_credit-- ){
 
       // The non debug loop is realy short
       // It should be hand optimized in machine code
-      if( !de ){
-        if( !IP ){
-          // IP  = fast_ip;
-          // CSP = fast_csp;
-          // TOS = fast_tos;
+      if(
+        !de
+        //c/ || INOX_FAST_RUN
+      ){
+
+        if(
+          /*c{
+            #ifdef RUN_FAST_FAST
+              !fast_ip
+            #else
+              !IP
+            #endif
+          }*/
+          /**/ !IP
+        ){
           /**/ break loop;
           //c/ goto break_loop;
         }
+
+        // Fast C++ version, using a 64 bits read
+        /*c{
+
+          #ifdef RUN_DEBUG
+            bug( S()
+              + "\nRUN_DEBUG IP: "
+              + inox_machine_code_cell_to_text( IP )
+              + stacks_dump()
+            );
+            debug_info  = info_of(  IP );
+            debug_type  = type_of(  IP );
+            debug_name  = name_of(  IP );
+            debug_value = value_of( IP );
+          #endif
+
+          // Read 64 bits at once, faster that reading 32 bits twice
+          w64 = *(u64*)(
+            #ifdef RUN_FAST_FAST
+              fast_ip
+            #else
+              IP
+            #endif
+          << 3 );
+
+          // void:void is a special case, return to the caller
+          if( w64 == 0 ){
+
+            #ifdef RUN_DEBUG
+              mand_eq( debug_type,  type_void );
+              mand_eq( debug_name,  tag_void );
+              mand_eq( debug_value, 0 );
+            #endif
+
+            // The new IP is at the top of the control stack
+            #ifdef RUN_FAST_FAST
+              fast_ip = *(Cell*)( fast_csp << 3 );
+            #else
+              IP      = *(Cell*)( CSP      << 3 );
+            #endif
+
+            #ifdef RUN_DEBUG
+              mand_eq( IP, value_of( CSP ) );
+              mand_eq( type_of( CSP ), type_ip );
+            #endif
+
+            // Clear the top of the control stack
+            // ToDo: really necessary?
+            // *(u64*)( CSP << 3 ) = 0;
+
+            #ifdef RUN_DEBUG
+              mand_eq( tag_void, 0 );
+              mand_eq( name_of( CSP ), tag_void );
+              mand_eq( type_of( CSP ), type_void );
+              mand_eq( value_of( CSP ), 0 );
+            #endif
+
+            // Pop operation on the control stack
+            #ifdef RUN_FAST_FAST
+              fast_csp--;
+            #else
+              CSP--;
+            #endif
+
+            // All done
+            continue;
+          }
+
+          #if INOX_IS_LITTLE_ENDIAN
+            t = w64 >> 60;
+          #else
+            #error "Not implemented"
+          #endif
+          #ifdef RUN_DEBUG
+            mand_eq( t, debug_type );
+          #endif
+
+          // Primitives
+          if( t == 0 ){
+
+            // By default, the next instruction is the next one
+            #ifdef RUN_FAST_FAST
+              fast_ip++;
+            #else
+              IP++;
+            #endif
+
+            #ifdef RUN_DEBUG
+              mand_eq( w64 >> 32, debug_info );
+              mand_eq( w64 >> 32, debug_name );
+            #endif
+
+            // Note: primitives can change IP
+            #ifdef RUN_FAST_FAST
+              IP  = fast_ip;
+              CSP = fast_csp;
+              TOS = fast_tos;
+            #endif
+            all_primitives[ w64 >> 32 ]();
+            #ifdef RUN_FAST_FAST
+              fast_ip  = IP;
+              fast_csp = CSP;
+              fast_tos = TOS;
+            #endif
+
+            // All done
+            continue;
+
+          // Verbs
+          }else if( t == type_verb ){
+
+            // Make room for the return address
+            #ifdef RUN_FAST_FAST
+              fast_csp++;
+            #else
+              CSP++;
+            #endif
+
+            // Setup return address, named to help debugging
+            *(u64*)(
+              #ifdef RUN_FAST_FAST
+                fast_csp
+              #else
+                CSP
+              #endif
+            << 3 ) = (
+              #ifdef RUN_FAST_FAST
+                fast_ip
+              #else
+                IP
+              #endif
+            + 1 ) | w64 & 0xffffffff00000000;
+
+            #ifdef RUN_DEBUG
+              mand_eq( value_of( CSP ), IP + 1 );
+              mand_eq( name_of(  CSP ), debug_name );
+              mand_eq( type_of(  CSP ), debug_type );
+              mand_eq( value_of( IP  ), w64 & 0xffffffff );
+            #endif
+
+            #if INOX_IS_LITTLE_ENDIAN
+              #ifdef RUN_FAST_FAST
+                fast_ip
+              #else
+                IP
+              #endif
+              = w64 & 0xffffffff;
+            #else
+              #error "Not implemented"
+            #endif
+
+            #ifdef RUN_DEBUG
+              mand_eq( IP, debug_value );
+            #endif
+
+            // All done
+            continue;
+
+          // Literals
+          }else{
+
+            // Make room for the literal on the data stack
+            #ifdef RUN_FAST_FAST
+              fast_tos++;
+            #else
+              TOS++;
+            #endif
+
+            // Raw copy
+            #if INOX_IS_LITTLE_ENDIAN
+              *(u64*)(
+                #ifdef RUN_FAST_FAST
+                  fast_tos
+                #else
+                  TOS
+                #endif
+              << 3 ) = w64;
+            #else
+              #error "Not implemented"
+            #endif
+
+            #ifdef RUN_DEBUG
+              mand_eq( value_of( TOS ), value_of( IP ) );
+              mand_eq( info_of(  TOS ), info_of(  IP ) );
+              mand_eq( name_of(  TOS ), name_of(  IP ) );
+            #endif
+
+            // Increment the reference counter when needed
+            if( t >= type_reference ){
+
+              #ifdef RUN_DEBUG
+                mand( t == type_reference || t == type_text );
+                mand( is_sharable( IP ) );
+              #endif
+
+              #if INOX_IS_LITTLE_ENDIAN
+                #ifdef RUN_DEBUG
+                  mand_eq( (u32) w64, value_of( TOS ) );
+                #endif
+                // The reference counter is before the value, before the size
+                ( *(u32*)( ( ( (u32) w64 ) - 2 * ONE ) << 3 ) )++;
+              #else
+                #error "Not implemented"
+              #endif
+
+              #ifdef RUN_DEBUG
+                mand_eq(
+                  name_of( value_of( TOS ) - 2 * ONE ),
+                  tag_dynamic_ref_count
+                );
+              #endif
+
+            }else{
+              #ifdef RUN_DEBUG
+                mand( !is_sharable( IP ) );
+              #endif
+            }
+
+            // Double check
+            #ifdef RUN_DEBUG
+              mand_eq( value_of( TOS ), value_of( IP ) );
+              mand_eq( info_of(  TOS ), info_of(  IP ) );
+              mand_eq( name_of(  TOS ), name_of(  IP ) );
+            #endif
+
+            // Move to next instruction
+            #ifdef RUN_FAST_FAST
+              fast_ip++;
+            #else
+              IP++;
+            #endif
+
+            // All done
+            continue;
+          }
+
+          // Never reached
+          assert( false );
+          continue;
+
+        }*/
+
+        /*ts{*/
+          i = info_of( IP );
+          if( i == 0x0000 ){
+            // fast_ip = value_of( CSP );
+            IP  = value_of( CSP );
+            reset( CSP );
+            CSP -= ONE;
+            continue;
+          }
+          t = unpack_type( i );
+          // If primitive
+          if( t == type_primitive ){
+            // fast_ip += ONE;
+            // IP  = fast_ip;
+            IP += ONE;
+            // CSP = fast_csp;
+            // TOS = fast_tos;
+            get_primitive( i )();
+            // fast_ip  = IP;
+            // fast_csp = CSP;
+            // fast_tos = TOS;
+          // If Inox defined word
+          }else if( t == type_verb ){
+            // fast_csp += ONE;
+            CSP += ONE;
+            n = unpack_name( i );
+            // ToDo: should avoid pack() here, ie push a verb onto csp
+            init_cell( CSP, IP + ONE, pack( type_ip, n ) );
+            // IP = definition_of( n );
+            IP = value_of( IP );
+          // If literal
+          }else{
+            // fast_tos += ONE;
+            TOS += ONE;
+            // ToDo: should inline copy_cell() here
+            copy_cell( IP, TOS );
+            IP += ONE;
+          }
+          continue;
+        /*}*/
+
+      // The debug mode version has plenty of checks and traces
+      }else{
+
+        // ToDo: use an exception to exit the loop,
+        // together with some primitive_exit_run()
+        /**/ if( !IP )break loop;
+        //c/ if( !IP )goto break_loop;
+
         i = info_of( IP );
+
+        if( verbose_stack_de ){
+          bug( S()
+            + "\nRUN IP: "
+            + inox_machine_code_cell_to_text( IP )
+            + stacks_dump()
+          );
+        }else if( run_de ){
+          bug( S()
+            + "\nRUN IP: "
+            + inox_machine_code_cell_to_text( IP )
+          );
+        }
+
+  if( step_de )debugger;
+
+        // Special "next" code, 0x0000, is a jump to the return address.
         if( i == 0x0000 ){
-          // fast_ip = value_of( CSP );
-          IP  = value_of( CSP );
-          reset( CSP );
+          if( run_de ){
+            bug( S()
+              + "run, return to " + C( IP )
+              + " of " + tag_to_text( name_of( CSP ) )
+            );
+          }
+          // ToDo: check underflow?
+          IP = eat_ip( CSP );
           CSP -= ONE;
           continue;
         }
+
+        // What type of code this is, primitive, Inox verb or literal
         t = unpack_type( i );
-        // If primitive
-        if( t == type_primitive /* 0 */ ){
-          // fast_ip += ONE;
-          // IP  = fast_ip;
-          IP += ONE;
-          // CSP = fast_csp;
-          // TOS = fast_tos;
-          get_primitive( i )();
-          // fast_ip  = IP;
-          // fast_csp = CSP;
-          // fast_tos = TOS;
-        // If Inox defined word
-        }else if( t == type_verb ){
-          // fast_csp += ONE;
+
+        // Call to another verb, the name of the cell names it
+        if( t == type_verb ){
+          // Push return address into control stack, named to help debugging
           CSP += ONE;
-          n = unpack_name( i );
-          // ToDo: should avoid pack() here, ie push a verb onto csp
-          init_cell( CSP, IP + ONE, pack( type_integer, n ) );
-          // IP = definition_of( n );
+          set( CSP, type_ip, unpack_name( i ), IP + ONE );
+          // ToDo: set type to Act?
+          // IP = definition_of( unpack_name( i ) );
           IP = value_of( IP );
-        // If literal
-        }else{
-          // fast_tos += ONE;
-          TOS += ONE;
-          // ToDo: should inline copy_cell() here
-          copy_cell( IP, TOS );
+          // bug( verb_to_text_definition( unpack_name( verb ) ) );
+          continue;
+        }
+
+        // Call to a primitive, the name of the cell names it
+        // ToDo: use a type instead of tricking the void type?
+        if( t == type_void ){
+
           IP += ONE;
-        }
-        continue;
-      }
 
-      // The debug mode version has plenty of checks and traces
+          // Some debug tool to detect bad control stack or IP manipulations
+          let verb_id = i;
+          if( run_de && i != 61 ){  // quote is special
 
-      // ToDo: use an exception to exit the loop,
-      // together with some primitive_exit_run()
-      /**/ if( !IP )break loop;
-      //c/ if( !IP )goto break_loop;
+            let old_csp = CSP;
+            let old_ip  = IP;
 
-      i = info_of( IP );
+            if( get_primitive( i ) == no_operation ){
+              FATAL(
+                "Run. Primitive function not found for id " + N( i )
+                + ", name " + tag_to_dump_text( verb_id )
+              );
+            }else{
+              fun = get_primitive( i );
+              fun();
+            }
 
-      if( verbose_stack_de ){
-        bug( S()
-          + "\nRUN IP: "
-          + inox_machine_code_cell_to_text( IP )
-          + stacks_dump()
-        );
-      }else if( run_de ){
-        bug( S()
-          + "\nRUN IP: "
-          + inox_machine_code_cell_to_text( IP )
-        );
-      }
+            if( CSP != old_csp
+            && i != tag( "return" )
+            && i != tag( "run" )
+            && i != tag( "if" )
+            && i != tag( "if-else" )
+            && i != tag( "if-not" )
+            && i != tag( "run-name" )
+            && i != tag( "run-tag" )
+            && i != tag( "run-method-by-name" )
+            && i != tag( "while-1" )
+            && i != tag( "while-2" )
+            && i != tag( "while-3" )
+            && i != tag( "until-3" )
+            && i != tag( "loop" )
+            && i != tag( "break" )
+            && i != tag( "with-it" )
+            && i != tag( "without-it" )
+            && i != tag( "from-local" )
+            && i != tag( "make-local" )
+            && i != tag( "without-local" )
+            && i != tag( "sentinel" )
+            && i != tag( "jump" )
+            && i != tag( "run-with-parameters" )
+            && i != tag( "return-without-parameters" )
+            && i != tag( "run-with-it" )
+            && i != tag( "return-without-it" )
+            && i != tag( "clear-control" )
+            && i != tag( "clear-data" )
+            && i != tag( "assert" )
+            && i != tag( "assert-checker" )
+            ){
+              if( CSP < old_csp ){
+                bug( S()
+                  + "??? small CSP, excess calls,"
+                  + N( ( old_csp - CSP ) / ONE )
+                );
+              }else{
+                bug( S()
+                  + "??? big CSP, excess returns"
+                  + N( ( CSP - old_csp ) / ONE )
+                );
+              }
+              de&&bug( S()
+                + "Due to " + F( fun )
+                + ", " + inox_machine_code_cell_to_text( old_ip )
+              );
+              debugger;
+              // CSP = old_csp;
+            }
+            if( IP && IP != old_ip ){
+              bug( S()
+                + "run, IP change, was " + C( old_ip - ONE )
+                + ", due to "
+                + inox_machine_code_cell_to_text( old_ip - ONE )
+              );
+            }
+            if( IP == 0 ){
+              bug( S()+ "run, IP 0 due to " + F( fun ) );
+              // break loop;  // That's not supposed to be a way to exit the loop
+            }
 
-if( step_de )debugger;
-
-      // Special "next" code, 0x0000, is a jump to the return address.
-      if( i == 0x0000 ){
-        if( run_de ){
-          bug( S()
-            + "run, return to " + C( IP )
-            + " of " + tag_to_text( name_of( CSP ) )
-          );
-        }
-        // ToDo: check underflow?
-        IP = eat_ip( CSP );
-        CSP -= ONE;
-        continue;
-      }
-
-      // What type of code this is, primitive, Inox verb or literal
-      t = unpack_type( i );
-
-      // Call to another verb, the name of the cell names it
-      if( t == type_verb ){
-        // Push return address into control stack, named to help debugging
-        CSP += ONE;
-        set( CSP, type_ip, unpack_name( i ), IP + ONE );
-        // ToDo: set type to Act?
-        // IP = definition_of( unpack_name( i ) );
-        IP = value_of( IP );
-        // bug( verb_to_text_definition( unpack_name( verb ) ) );
-        continue;
-      }
-
-      // Call to a primitive, the name of the cell names it
-      // ToDo: use a type instead of tricking the void type?
-      if( t == type_void /* 0 */ ){
-
-        IP += ONE;
-
-        // Some debug tool to detect bad control stack or IP manipulations
-        let verb_id = i;
-        if( run_de && i != 61 ){  // quote is special
-
-          let old_csp = CSP;
-          let old_ip  = IP;
-
-          if( get_primitive( i ) == no_operation ){
-            FATAL(
-              "Run. Primitive function not found for id " + N( i )
-              + ", name " + tag_to_dump_text( verb_id )
-            );
           }else{
             fun = get_primitive( i );
             fun();
           }
 
-          if( CSP != old_csp
-          && i != tag( "return" )
-          && i != tag( "run" )
-          && i != tag( "if" )
-          && i != tag( "if-else" )
-          && i != tag( "if-not" )
-          && i != tag( "run-name" )
-          && i != tag( "run-tag" )
-          && i != tag( "run-method-by-name" )
-          && i != tag( "while-1" )
-          && i != tag( "while-2" )
-          && i != tag( "while-3" )
-          && i != tag( "until-3" )
-          && i != tag( "loop" )
-          && i != tag( "break" )
-          && i != tag( "with-it" )
-          && i != tag( "without-it" )
-          && i != tag( "from-local" )
-          && i != tag( "make-local" )
-          && i != tag( "without-local" )
-          && i != tag( "sentinel" )
-          && i != tag( "jump" )
-          && i != tag( "run-with-parameters" )
-          && i != tag( "return-without-parameters" )
-          && i != tag( "run-with-it" )
-          && i != tag( "return-without-it" )
-          && i != tag( "clear-control" )
-          && i != tag( "clear-data" )
-          && i != tag( "assert" )
-          && i != tag( "assert-checker" )
-          ){
-            if( CSP < old_csp ){
-              bug( S()
-                + "??? small CSP, excess calls,"
-                + N( ( old_csp - CSP ) / ONE )
-              );
-            }else{
-              bug( S()
-                + "??? big CSP, excess returns"
-                + N( ( CSP - old_csp ) / ONE )
-              );
-            }
-            de&&bug( S()
-              + "Due to " + F( fun )
-              + ", " + inox_machine_code_cell_to_text( old_ip )
-            );
-            debugger;
-            // CSP = old_csp;
-          }
-          if( IP && IP != old_ip ){
-            bug( S()
-              + "run, IP change, was " + C( old_ip - ONE )
-              + ", due to "
-              + inox_machine_code_cell_to_text( old_ip - ONE )
-            );
-          }
-          if( IP == 0 ){
-            bug( S()+ "run, IP 0 due to " + F( fun ) );
-            // break loop;  // That's not supposed to be a way to exit the loop
-          }
-
-        }else{
-          fun = get_primitive( i );
-          fun();
+          continue;
         }
 
-        continue;
-      }
+        // Else, push literal
+        check_de&&mand( TOS < ACTOR_data_stack_limit );
+        TOS += ONE;
+        copy_cell( IP, TOS );
+        // ToDo: optimize by inlining copy_cell()
+        // set_cell_value( TOS, cell_value( IP ) );
+        // set_cell_info(  TOS, verb );
+        // if( is_reference_cell( IP ) ){
+        //   increment_object_refcount( cell_value( IP ) );
+        // }
+        IP += ONE;
 
-      // Else, push literal
-      check_de&&mand( TOS < ACTOR_data_stack_limit );
-      TOS += ONE;
-      copy_cell( IP, TOS );
-      // ToDo: optimize by inlining copy_cell()
-      // set_cell_value( TOS, cell_value( IP ) );
-      // set_cell_info(  TOS, verb );
-      // if( is_reference_cell( IP ) ){
-      //   increment_object_refcount( cell_value( IP ) );
-      // }
-      IP += ONE;
+      } // de
 
     }  // while( credit-- > 0 )
 
@@ -14557,7 +15053,7 @@ if( step_de )debugger;
 const tag_eval = tag( "eval" );
 
 /**/ function run_eval(){
-//c/ void run_eval( void ){
+//c/ static void run_eval( void ){
 
   IP = definition_by_name( "eval" );
   de&&mand( !! IP );
@@ -14591,7 +15087,7 @@ const tag_eval = tag( "eval" );
 
 // Name of current style, "inox" or "forth" typically
 /**/ let  the_style = "";
-//c/ Text the_style( "" );
+//c/ static Text the_style( "" );
 
 
 // TypeScript version uses a Map of Map objects
@@ -14706,7 +15202,7 @@ let lisp_aliases       = make_style( "lisp"       );
 
 
 /*
- *  inox-dialect primitive - switch to the Inox dialect
+ *  inox-dialect - switch to the Inox dialect
  */
 
 function primitive_inox_dialect(){
@@ -14717,7 +15213,7 @@ primitive( "inox-dialect", primitive_inox_dialect );
 
 
 /*
- *  dialect primitive - query current dialect text name
+ *  dialect - query current dialect text name
  */
 
 const tag_dialect = tag( "dialect" );
@@ -14730,7 +15226,7 @@ primitive( "dialect", primitive_dialect );
 
 
 /*
- *  forth-dialect primitive - switch to the Forth dialect
+ *  forth-dialect - switch to the Forth dialect
  */
 
 primitive( "forth-dialect", primitive_forth_dialect );
@@ -14740,7 +15236,7 @@ function                    primitive_forth_dialect(){
 
 
 /*
- *  set-dialect primitive - set current dialect
+ *  set-dialect - set current dialect
  */
 
 function primitive_set_dialect(){
@@ -14750,7 +15246,7 @@ primitive( "set-dialect", primitive_set_dialect );
 
 
 /*
- *  alias primitive - add an alias to the current dialect
+ *  alias - add an alias to the current dialect
  */
 
 function primitive_alias(){
@@ -14762,7 +15258,7 @@ primitive( "alias", primitive_alias );
 
 
 /*
- *  dialect-alias primitive - add an alias to a dialect
+ *  dialect-alias - add an alias to a dialect
  */
 
 function primitive_dialect_alias(){
@@ -14775,7 +15271,7 @@ primitive( "dialect-alias", primitive_dialect_alias );
 
 
 /*
- *  import-dialect primitive - import a dialect into the current one
+ *  import-dialect - import a dialect into the current one
  */
 
 function primitive_import_dialect(){
@@ -14828,7 +15324,7 @@ immediate_primitive( "}inox", primitive_leave_immediate_mode );
 
 
 /*
- *  literal primitive - add a literal to the Inox verb beeing defined,
+ *  literal - add a literal to the Inox verb beeing defined,
  *  or to a block.
  */
 
@@ -14840,7 +15336,7 @@ primitive( "literal", primitive_literal );
 
 
 /*
- *  machine-code primitive - add a machine code id to the verb beeing defined,
+ *  machine-code - add a machine code id to the verb beeing defined,
  *  or to a block.
  */
 
@@ -14851,7 +15347,7 @@ primitive( "machine-code", primitive_do_machine_code );
 
 
 /*
- *  inox primitive - add next token as code for the verb beeing defined,
+ *  inox - add next token as code for the verb beeing defined,
  *  or to a block.
  */
 
@@ -14866,7 +15362,7 @@ primitive( "inox", primitive_inox );
 
 
 /*
- *  quote primitive - push next instruction instead of executing it.
+ *  quote - push next instruction instead of executing it.
  *  Must be inlined. It then move IP past the next instruction, ie it skips it.
  */
 
@@ -14886,7 +15382,7 @@ primitive( "quote", primitive_quote );
  */
 
 /*
- *  immediate primitive - make the last defined verb immediate
+ *  immediate - make the last defined verb immediate
  */
 
 function primitive_immediate(){
@@ -14896,7 +15392,7 @@ primitive( "immediate", primitive_immediate );
 
 
 /*
- *  hidden primitive - make the last defined verb hidden
+ *  hidden - make the last defined verb hidden
  *  ToDo: implement this and definition linked lists
  */
 
@@ -14907,7 +15403,7 @@ primitive( "hidden", primitive_hidden );
 
 
 /*
- *  operator primitive - make the last defined verb an operator
+ *  operator - make the last defined verb an operator
  */
 
 function primitive_operator(){
@@ -14917,7 +15413,7 @@ primitive( "operator", primitive_operator );
 
 
 /*
- *  inline primitive - make the last defined verb inline
+ *  inline - make the last defined verb inline
  */
 
 function primitive_inline(){
@@ -14927,7 +15423,7 @@ primitive( "inline", primitive_inline );
 
 
 /*
- *  last-token primitive - return the last tokenized item
+ *  last-token - return the last tokenized item
  */
 
 function primitive_last_token(){
@@ -14937,7 +15433,7 @@ primitive( "last-token", primitive_last_token );
 
 
 /*
- *  tag primitive - make a tag, from a text typically
+ *  tag - make a tag, from a text typically
  */
 
 function primitive_tag(){
@@ -14949,7 +15445,7 @@ primitive( "tag", primitive_tag );
 
 
 /*
- *  run-tag primitive - run a verb by tag
+ *  run-tag - run a verb by tag
  */
 
 function run_verb( verb_id : Index ){
@@ -14967,7 +15463,7 @@ primitive( "run-tag", primitive_run_tag );
 
 
 /*
- *  run-name primitive - run a verb by text name
+ *  run-name - run a verb by text name
  */
 
 function primitive_run_name(){
@@ -14984,7 +15480,7 @@ primitive( "run-name", primitive_run_name );
 
 
 /*
- *  run-verb primitive - run a verb by verb id
+ *  run-verb - run a verb by verb id
  *  ToDo: unify with run-tag
  */
 
@@ -14997,7 +15493,7 @@ primitive( "run-verb", primitive_run_verb );
 
 
 /*
- *  definition primitive - get the definition of a verb
+ *  definition - get the definition of a verb
  *  It returns the address of the first compiled code of the verb.
  *  There is a header in the previous cell, with length and flags.
  */
@@ -15025,7 +15521,7 @@ primitive( "definition", primitive_definition );
 
 
 /*
- *  run primitive - run a block or a verb definition
+ *  run - run a block or a verb definition
  */
 
 const tag_run = tag( "run" );
@@ -15045,7 +15541,7 @@ primitive( "run", primitive_run );
 
 
 /*
- *  run-definition primitive - run a verb definition
+ *  run-definition - run a verb definition
  */
 
 function primitive_run_definition(){
@@ -15059,7 +15555,7 @@ primitive( "run-definition", primitive_run_definition );
 
 
 /*
- *  block primitive - push the start address of the block at IP
+ *  block - push the start address of the block at IP
  */
 
 
@@ -15080,7 +15576,7 @@ function block_flags( ip : Index ) : Index {
 
 
 /*
- *  block primitive - push the start address of the block at IP.
+ *  block - push the start address of the block at IP.
  *  Must be inlined. It then advances IP to skip the block definition.
  */
 
@@ -15437,7 +15933,7 @@ function tokenizer_restart( source : TxtC ){
 
 
 /*
- *  start-input primitive - start reading from a given source code
+ *  start-input - start reading from a given source code
  */
 
 function primitive_inox_start_input(){
@@ -15448,7 +15944,7 @@ primitive( "start-input", primitive_inox_start_input );
 
 
 /*
- *  input primitive - get next character in source code, or ""
+ *  input - get next character in source code, or ""
  */
 
 function tokenizer_next_character() : Text {
@@ -15468,7 +15964,7 @@ primitive( "input", primitive_inox_input );
 
 
 /*
- *  input-until primitive - get characters until a given delimiter
+ *  input-until - get characters until a given delimiter
  */
 
 const tag_token = tag( "token" );
@@ -15498,7 +15994,7 @@ primitive( "input-until", primitive_input_until );
 
 
 /*
- *  pushback-token primitive - push back a token in source code stream
+ *  pushback-token - push back a token in source code stream
  */
 
 function unget_token( t : Index, s : ConstText ){
@@ -15528,7 +16024,7 @@ function ch_is_space( ch : ConstText ) : boolean {
 
 
 /*
- *  whitespace? primitive - true if TOS is a whitespace character
+ *  whitespace? - true if TOS is a whitespace character
  */
 
 const tag_is_whitespace = tag( "whitespace?" );
@@ -15546,7 +16042,7 @@ function                  primitive_inox_is_whitespace(){
 
 
 /*
- *  next-character primitive - get next character in source code, or ""
+ *  next-character - get next character in source code, or ""
  */
 
 const tag_next_character = tag( "next-character" );
@@ -15561,7 +16057,7 @@ primitive( "next-character", primitive_next_character );
 
 
 /*
- *  digit? primitive - true if the top of stack is a digit character
+ *  digit? - true if the top of stack is a digit character
  */
 
 const tag_is_digit = tag( "digit?" );
@@ -15864,7 +16360,7 @@ static bool getline_is_tty = false;
 // A saved char, needed when nulls are inserted after newlines
 static int getline_safe_char = -1;
 
-void fast_getline_close( int fd ){
+static void fast_getline_close( int fd ){
 // Should be called by the entity that opened the fd and will close it
   // Ignore if not about the current file descriptor
   if( fd >= 0 && fd != getline_fd )return;
@@ -15878,7 +16374,7 @@ void fast_getline_close( int fd ){
 }
 
 
-void fast_getline_open( int fd ){
+static void fast_getline_open( int fd ){
 // Should be called by the entity that opened the fd (and will close it)
   // Close the current file descriptor, if any
   fast_getline_close( getline_fd );
@@ -15895,7 +16391,7 @@ void fast_getline_open( int fd ){
 }
 
 
-char* fast_getline_remainder(){
+static char* fast_getline_remainder(){
 // Return whatever remains in the buffer, with \n and \0
   if( getline_buf_length == 0 )return NULL;
   // Add a \n if needed
@@ -15914,7 +16410,7 @@ char* fast_getline_remainder(){
 }
 
 
-char* fast_getline( int fd ){
+static char* fast_getline( int fd ){
 
   // The result
   char* result = NULL;
@@ -16918,7 +17414,7 @@ let dummy_test_tokenizer = test_tokenizer();
 
 
 /*
- *  set-literate primitive - set the tokenizer to literate style
+ *  set-literate - set the tokenizer to literate style
  */
 
 function primitive_set_literate(){
@@ -17076,6 +17572,11 @@ function mand_csp_is_in_bounds() : boolean {
   de&&mand( CSP <  ACTOR_control_stack_limit );
   de&&mand( CSP >= ACTOR_control_stack       );
   return true;
+}
+
+
+function mand_stacks_are_in_bounds() : boolean {
+  return mand_tos_is_in_bounds() && mand_csp_is_in_bounds();
 }
 
 
@@ -17898,7 +18399,7 @@ function parsing( node_type : Index ) : boolean {
 }
 
 /*
- *  eval primitive - evaluate a source code text
+ *  eval - evaluate a source code text
  */
 
 function primitive_eval(){
@@ -18665,7 +19166,7 @@ primitive( "eval", primitive_eval );
  */
 
 /*
- *  trace primitive - output text to console.log(), preserve TOS
+ *  trace - output text to console.log(), preserve TOS
  */
 
 function primitive_trace(){
@@ -18713,7 +19214,7 @@ let init_alias_done = init_alias();
 
 
 /*
- *  ascii-character primitive - return one character text from TOS integer
+ *  ascii-character - return one character text from TOS integer
  */
 
 const tag_ascii = tag( "ascii" );
@@ -18734,7 +19235,7 @@ primitive( "ascii-character", primitive_ascii_character );
 
 
 /*
- *  ascii-code primitive - return ascii code of first character of TOS as text
+ *  ascii-code - return ascii code of first character of TOS as text
  */
 
 function primitive_ascii_code(){
@@ -18747,14 +19248,14 @@ primitive( "ascii-code", primitive_ascii_code );
 
 
 /*
- *  now primitive - return number of milliseconds since start
+ *  now - return number of milliseconds since start
  */
 
 const tag_now = tag( "now" );
 
 /*c{
 int int_now( void ){
-  auto delta = std::chrono::milliseconds( now() - time_start );
+  auto delta = milliseconds( now() - time_start );
   long long count = ( long long ) delta.count();
   return static_cast< int >( count );
 }
@@ -18783,7 +19284,7 @@ primitive( "instructions", primitive_instructions );
 
 
 /*
- *  the-void primitive - push a void cell
+ *  the-void - push a void cell
  */
 
 function primitive_the_void(){
@@ -18811,7 +19312,7 @@ primitive( "the-void", primitive_the_void );
 
 // The current visitor function
 /**/ let memory_visit_function : MemoryVisitFunction = null;
-//c/ MemoryVisitFunction memory_visit_function       = null;
+//c/ static MemoryVisitFunction memory_visit_function       = null;
 
 // The last visited cell
 let memory_visit_last_cell = 0;
@@ -19087,7 +19588,7 @@ function memory_visit_map(){
 
 
 /*
- *  memory-visit primitive - get a view of the memory
+ *  memory-visit - get a view of the memory
  */
 
 function primitive_memory_visit(){
@@ -19121,7 +19622,7 @@ function evaluate( source_code : TxtC ) : Text {
 /**/   json_event,
 /**/   source_code
 /**/ ) : string {
-//c/ Text processor( TxtC json_state, TxtC json_event, TxtC source_code ){
+//c/ static Text processor( TxtC json_state, TxtC json_event, TxtC source_code ){
 
   // ToDo: restore state and provide event from json encoded values
   // The idea there is about code that can execute in a stateless manner
@@ -19303,7 +19804,7 @@ function bootstrap(){
 
 /*c{
 
-void init_globals(){
+static void init_globals(){
 
   // In C++ calls to register primitives using primitive() cannot be done
   // until now, as a result the definition of the verbs that call those
@@ -19370,7 +19871,7 @@ function repl(){
   I.evaluate( "~| redefine output stream |~ to basic-out repl-out." );
 
   // Define . Forth word, which writes TOS on stdout
-  I.evaluate( "( . writes TOS on stdout )  : .  out ;" );
+  I.evaluate( "( . writes TOS on stdout ) : .  out ;" );
 
   // Start the REPL, welcome!
   process.stdout.write( "Inox\n" );
@@ -19447,19 +19948,19 @@ if( require && require.main === module ){
 
 /*c{
 
-void TODO( const char* message ){
+static void TODO( const char* message ){
   Text buf( "TODO: " );
   buf += message;
   buf += "\n";
   write( 2, buf.c_str(), buf.length() );
 }
 
-// void add_history( TxtC line ){
+// static void add_history( TxtC line ){
 //  TODO( "add_history: free the history when the program exits" );
 // }
 
 
-int repl(){
+static int repl(){
   char* line;
   while( true ){
     trace( "ok " );
@@ -19474,7 +19975,7 @@ int repl(){
 }
 
 
-int main( int argc, char *argv[] ){
+int main( int argc, char* argv[] ){
   init_globals();
   // ToDo: fill some global ENV object
   // ToDo: ? push ENV object & arguments onto the data stack

@@ -1,0 +1,179 @@
+<html><head><title>Inox primitives</title></head><body><table border=1>
+<tr><th>Primitive</th><th>Code</th></tr>
+<tr><td>little-endian?</td><td>true if the machine is little endian</td></tr>
+<tr><td>a-primitive?</td><td>true if TOS tag is also the name of a primitive</td></tr>
+<tr><td>return</td><td>jump to return address</td></tr>
+<tr><td>actor</td><td>push a reference to the current actor</td></tr>
+<tr><td>switch-actor</td><td>non preemptive thread switch</td></tr>
+<tr><td>make-actor</td><td>create a new actor with an initial IP</td></tr>
+<tr><td>breakpoint</td><td>to break into the debugger</td></tr>
+<tr><td>memory-dump</td><td>output a dump of the whole memory</td></tr>
+<tr><td>cast</td><td>change the type of a value, unsafe</td></tr>
+<tr><td>rename</td><td>change the name of the NOS value</td></tr>
+<tr><td>goto</td><td>jump to some absolue IP position, a branch</td></tr>
+<tr><td>a-void?</td><td>true if TOS is a void type of cell</td></tr>
+<tr><td>push</td><td>push the void on the data stack</td></tr>
+<tr><td>drops</td><td>drops n cells from the data stack</td></tr>
+<tr><td>dup</td><td>duplicates the top of the data stack</td></tr>
+<tr><td>2dup</td><td>duplicates the top two cells of the data stack</td></tr>
+<tr><td>?dup</td><td>duplicates the top of the data stack if it is not zero</td></tr>
+<tr><td>dups</td><td>duplicates n cells from the data stack</td></tr>
+<tr><td>overs</td><td>pushes n cells from the data stack</td></tr>
+<tr><td>2over</td><td>pushes the third and fourth cells from TOS</td></tr>
+<tr><td>tuck</td><td>pushes the second cell from the top of the stack</td></tr>
+<tr><td>swap</td><td>swaps the top two cells of the data stack</td></tr>
+<tr><td>swaps</td><td>swaps the top n cells of the data stack</td></tr>
+<tr><td>2swap</td><td>swaps the top four cells of the data stack</td></tr>
+<tr><td>over</td><td>pushes the second cell from the top of the stack</td></tr>
+<tr><td>rotate</td><td>rotates the top three cells of the data stack</td></tr>
+<tr><td>roll</td><td>rotates n cells from the top of the stack</td></tr>
+<tr><td>pick</td><td>pushes the nth cell from the top of the stack</td></tr>
+<tr><td>data-depth</td><td>pushes the depth of the data stack</td></tr>
+<tr><td>clear-data</td><td>clears the data stack</td></tr>
+<tr><td>data-dump</td><td>dumps the data stack</td></tr>
+<tr><td>control-depth</td><td>pushes the depth of the control stack</td></tr>
+<tr><td>clear-control</td><td>clears the control stack</td></tr>
+<tr><td>control-dump</td><td>dumps the control stack</td></tr>
+<tr><td>text-quote</td><td>turns a string into a valid text literal</td></tr>
+<tr><td>text-to-integer</td><td>converts a text literal to an integer</td></tr>
+<tr><td>text-to-integer</td><td>converts a text literal into an integer</td></tr>
+<tr><td>text-hex-to-integer</td><td>converts a text literal to an integer</td></tr>
+<tr><td>text-octal-to-integer</td><td>converts a text literal to an integer</td></tr>
+<tr><td>text-binary-to-integer</td><td>converts a text literal to an integer</td></tr>
+<tr><td>integer-to-hex</td><td>converts an integer to an hexadecimal text</td></tr>
+<tr><td>integer-to-octal</td><td>convert an integer to an octal text</td></tr>
+<tr><td>integer-to-binary</td><td>converts an integer to a binary text</td></tr>
+<tr><td>text-unquote</td><td>turns a JSON text into a text</td></tr>
+<tr><td>debugger</td><td>invoke host debugger, if any</td></tr>
+<tr><td>debug</td><td>activate lots of traces</td></tr>
+<tr><td>normal-debug</td><td>deactivate lots of traces, keep type checking</td></tr>
+<tr><td>log</td><td>enable/disable traces and checks</td></tr>
+<tr><td>fast!</td><td>Switch to "fast mode", return previous state</td></tr>
+<tr><td>fast?</td><td>Return current state for "fast mode"</td></tr>
+<tr><td>noop</td><td>No operation - does nothing</td></tr>
+<tr><td>assert-checker</td><td>internal</td></tr>
+<tr><td>assert</td><td>assert a condition, based on the result of a block</td></tr>
+<tr><td>type-of</td><td>Get type of the TOS value, as a tag</td></tr>
+<tr><td>name-of</td><td>Get the name of the TOS value, a tag</td></tr>
+<tr><td>value-of</td><td>Get the raw integer value of the TOS value</td></tr>
+<tr><td>info-of</td><td>Get the packed type and name of the TOS value</td></tr>
+<tr><td>pack-info</td><td>Pack type and name into an integer</td></tr>
+<tr><td>unpack-type</td><td>Unpack type from an integer, see pack-info</td></tr>
+<tr><td>unpack-name</td><td>Unpack name from an integer, see pack-info</td></tr>
+<tr><td>class-of</td><td>Get the most specific type name (as a tag)</td></tr>
+<tr><td>=?</td><td>value equality</td></tr>
+<tr><td><>?</td><td>value inequality, the boolean opposite of =? value equality.</td></tr>
+<tr><td>==?</td><td>object identicallity, ie shallow equality, not deep equality.</td></tr>
+<tr><td>not==?</td><td>object inquality, boolean opposite of ==? shallow equality.</td></tr>
+<tr><td>is-a-float?</td><td>check if a value is a float</td></tr>
+<tr><td>to-float</td><td>convert something into a float</td></tr>
+<tr><td>to-float</td><td>convert something into a float</td></tr>
+<tr><td>float-to-integer</td><td>convert a float to an integer</td></tr>
+<tr><td>float-to-text</td><td>convert a float to a text</td></tr>
+<tr><td>float-add</td><td>add two floats</td></tr>
+<tr><td>float-subtract</td><td>subtract two floats</td></tr>
+<tr><td>float-multiply</td><td>multiply two floats</td></tr>
+<tr><td>float-divide</td><td>divide two floats</td></tr>
+<tr><td>float-remainder</td><td>remainder of two floats</td></tr>
+<tr><td>float-power</td><td>power of two floats</td></tr>
+<tr><td>float-sqrt</td><td>square root of a float</td></tr>
+<tr><td>float-sin</td><td>sine of a float</td></tr>
+<tr><td>float-cos</td><td>cosine of a float</td></tr>
+<tr><td>float-tan</td><td>tangent of a float</td></tr>
+<tr><td>float-asin</td><td>arc sine of a float</td></tr>
+<tr><td>float-acos</td><td>arc cosine of a float</td></tr>
+<tr><td>float-atan</td><td>arc tangent of a float</td></tr>
+<tr><td>float-log</td><td>natural logarithm of a float</td></tr>
+<tr><td>float-exp</td><td>exponential of a float</td></tr>
+<tr><td>float-floor</td><td>floor of a float</td></tr>
+<tr><td>float-ceiling</td><td>ceiling of a float</td></tr>
+<tr><td>float-round</td><td>round a float</td></tr>
+<tr><td>float-truncate</td><td>truncate a float</td></tr>
+<tr><td>&</td><td>text concatenation operator</td></tr>
+<tr><td>text-cut</td><td>extract a cut of a text, remove a suffix</td></tr>
+<tr><td>text-length</td><td>length of a text</td></tr>
+<tr><td>text-but</td><td>remove a prefix from a text, keep the rest</td></tr>
+<tr><td>text-mid</td><td>extract a part of the text</td></tr>
+<tr><td>text-low</td><td>convert a text to lower case</td></tr>
+<tr><td>text-up</td><td>convert a text to upper case</td></tr>
+<tr><td>text=?</td><td>compare two texts</td></tr>
+<tr><td>text<>?</td><td>compare two texts</td></tr>
+<tr><td>text-find</td><td>find a piece in a text</td></tr>
+<tr><td>text-find-last</td><td>find a piece in a text</td></tr>
+<tr><td>text-line</td><td>extract a line from a text</td></tr>
+<tr><td>as-text</td><td>textual representation</td></tr>
+<tr><td>dump</td><td>textual representation, debug style</td></tr>
+<tr><td>peek</td><td>Get the value of a cell, using a cell's address.</td></tr>
+<tr><td>poke</td><td>Set the value of a cell, using a cell's address.</td></tr>
+<tr><td>make-global</td><td>Create a global variable and two verbs to</td></tr>
+<tr><td>make-local</td><td>Create a local variable in the control stack</td></tr>
+<tr><td>local</td><td>copy a control variable to the data stack</td></tr>
+<tr><td>set-local</td><td>assign a value to a local variable</td></tr>
+<tr><td>lookup</td><td>find a variable in a memory area.</td></tr>
+<tr><td>upper-data</td><td>get a data variable in the nth upper frame, or void</td></tr>
+<tr><td>set-upper-local</td><td>set a local variable in the nth upper frame</td></tr>
+<tr><td>without-data</td><td>remove down to a data variable in the data stack</td></tr>
+<tr><td>stack-push</td><td>push a value onto a stack object</td></tr>
+<tr><td>stack-drop</td><td>drop the top of a stack object</td></tr>
+<tr><td>stack-drop-nice</td><td>drop the tof of a stack object, unless empty</td></tr>
+<tr><td>stack-fetch</td><td>get the nth entry of a stack object</td></tr>
+<tr><td>stack-fetch-nice</td><td>get the nth entry of a stack object, or void</td></tr>
+<tr><td>stack-length</td><td>get the depth of a stack object</td></tr>
+<tr><td>stack-capacity</td><td>get the capacity of a stack object</td></tr>
+<tr><td>stack-dup</td><td>duplicate the top of a stack object</td></tr>
+<tr><td>stack-clear</td><td>clear a stack object</td></tr>
+<tr><td>stack-swap</td><td>swap the top two values of a stack object</td></tr>
+<tr><td>stack-swap-nice</td><td>like swap but ok if stack is too short</td></tr>
+<tr><td>stack-enter</td><td>swith stack to the stack of an object</td></tr>
+<tr><td>stack-leave</td><td>revert to the previous data stack</td></tr>
+<tr><td>data-stack-base</td><td>return the base address of the data stack</td></tr>
+<tr><td>data-stack-limit</td><td>upper limit of the data stack</td></tr>
+<tr><td>control-stack-base</td><td>base address b of the control stack</td></tr>
+<tr><td>control-stack-limit</td><td>upper limit s of the control stack</td></tr>
+<tr><td>grow-data-stack</td><td>double the data stack if 80% full</td></tr>
+<tr><td>grow-control-stack</td><td>double the control stack if 80% full</td></tr>
+<tr><td>without-local</td><td>clear the control stack downto to specified local</td></tr>
+<tr><td>return-without-locals</td><td>like return but with some cleanup</td></tr>
+<tr><td>run-with-it</td><td>like run but with an "it" local variable</td></tr>
+<tr><td>inox-dialect</td><td>switch to the Inox dialect</td></tr>
+<tr><td>dialect</td><td>query current dialect text name</td></tr>
+<tr><td>forth-dialect</td><td>switch to the Forth dialect</td></tr>
+<tr><td>set-dialect</td><td>set current dialect</td></tr>
+<tr><td>alias</td><td>add an alias to the current dialect</td></tr>
+<tr><td>dialect-alias</td><td>add an alias to a dialect</td></tr>
+<tr><td>import-dialect</td><td>import a dialect into the current one</td></tr>
+<tr><td>literal</td><td>add a literal to the Inox verb beeing defined,</td></tr>
+<tr><td>machine-code</td><td>add a machine code id to the verb beeing defined,</td></tr>
+<tr><td>inox</td><td>add next token as code for the verb beeing defined,</td></tr>
+<tr><td>quote</td><td>push next instruction instead of executing it.</td></tr>
+<tr><td>immediate</td><td>make the last defined verb immediate</td></tr>
+<tr><td>hidden</td><td>make the last defined verb hidden</td></tr>
+<tr><td>operator</td><td>make the last defined verb an operator</td></tr>
+<tr><td>inline</td><td>make the last defined verb inline</td></tr>
+<tr><td>last-token</td><td>return the last tokenized item</td></tr>
+<tr><td>tag</td><td>make a tag, from a text typically</td></tr>
+<tr><td>run-tag</td><td>run a verb by tag</td></tr>
+<tr><td>run-name</td><td>run a verb by text name</td></tr>
+<tr><td>run-verb</td><td>run a verb by verb id</td></tr>
+<tr><td>definition</td><td>get the definition of a verb</td></tr>
+<tr><td>run</td><td>run a block or a verb definition</td></tr>
+<tr><td>run-definition</td><td>run a verb definition</td></tr>
+<tr><td>block</td><td>push the start address of the block at IP</td></tr>
+<tr><td>block</td><td>push the start address of the block at IP.</td></tr>
+<tr><td>start-input</td><td>start reading from a given source code</td></tr>
+<tr><td>input</td><td>get next character in source code, or ""</td></tr>
+<tr><td>input-until</td><td>get characters until a given delimiter</td></tr>
+<tr><td>pushback-token</td><td>push back a token in source code stream</td></tr>
+<tr><td>whitespace?</td><td>true if TOS is a whitespace character</td></tr>
+<tr><td>next-character</td><td>get next character in source code, or ""</td></tr>
+<tr><td>digit?</td><td>true if the top of stack is a digit character</td></tr>
+<tr><td>set-literate</td><td>set the tokenizer to literate style</td></tr>
+<tr><td>eval</td><td>evaluate a source code text</td></tr>
+<tr><td>trace</td><td>output text to console.log(), preserve TOS</td></tr>
+<tr><td>ascii-character</td><td>return one character text from TOS integer</td></tr>
+<tr><td>ascii-code</td><td>return ascii code of first character of TOS as text</td></tr>
+<tr><td>now</td><td>return number of milliseconds since start</td></tr>
+<tr><td>the-void</td><td>push a void cell</td></tr>
+<tr><td>memory-visit</td><td>get a view of the memory</td></tr>
+</table>
+<p>Found 175 primitives.</p></body></html>
