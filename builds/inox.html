@@ -1,5 +1,15 @@
-<html><head><title>Inox primitives</title></head><body><table border=1>
+<html><head><title>Inox primitives</title></head><body>
+<table border=1>
 <tr><th>Primitive</th><th>Code</th></tr>
+<tr><td>a-list?</td><td>true if TOS is a list</td></tr>
+<tr><td>nil?</td><td>true if TOS is an empty list</td></tr>
+<tr><td>list</td><td>make a new list, empty</td></tr>
+<tr><td>list-cons</td><td>make a new list, with TOS as head and NOS as tail</td></tr>
+<tr><td>list-car</td><td>get the head of a list</td></tr>
+<tr><td>list-length</td><td>number of elements in a list</td></tr>
+<tr><td>list-append</td><td>append two lists</td></tr>
+<tr><td>list-reverse</td><td>reverse a list</td></tr>
+<tr><td>list-equal?</td><td>true if two lists have the same elements in the same order</td></tr>
 <tr><td>little-endian?</td><td>true if the machine is little endian</td></tr>
 <tr><td>a-primitive?</td><td>true if TOS tag is also the name of a primitive</td></tr>
 <tr><td>return</td><td>jump to return address</td></tr>
@@ -11,34 +21,44 @@
 <tr><td>cast</td><td>change the type of a value, unsafe</td></tr>
 <tr><td>rename</td><td>change the name of the NOS value</td></tr>
 <tr><td>goto</td><td>jump to some absolue IP position, a branch</td></tr>
-<tr><td>a-void?</td><td>true if TOS is a void type of cell</td></tr>
+<tr><td>a-void?</td><td>true if TOS was a void type of cell</td></tr>
+<tr><td>a-tag?</td><td>true if TOS is a tag</td></tr>
+<tr><td>a-boolean?</td><td>true if TOS was a boolean</td></tr>
+<tr><td>an-integer?</td><td>true if TOS was an integer</td></tr>
+<tr><td>a-text?</td><td>true if TOS was a text</td></tr>
+<tr><td>a-reference?</td><td>true if TOS was a reference to an object</td></tr>
+<tr><td>a-verb?</td><td>true if TOS was a verb</td></tr>
+<tr><td>a-proxy?</td><td>true if TOS was a reference to proxied object</td></tr>
+<tr><td>a-flow?</td><td>true if TOS was a flow</td></tr>
 <tr><td>push</td><td>push the void on the data stack</td></tr>
-<tr><td>drops</td><td>drops n cells from the data stack</td></tr>
-<tr><td>dup</td><td>duplicates the top of the data stack</td></tr>
-<tr><td>2dup</td><td>duplicates the top two cells of the data stack</td></tr>
-<tr><td>?dup</td><td>duplicates the top of the data stack if it is not zero</td></tr>
-<tr><td>dups</td><td>duplicates n cells from the data stack</td></tr>
-<tr><td>overs</td><td>pushes n cells from the data stack</td></tr>
-<tr><td>2over</td><td>pushes the third and fourth cells from TOS</td></tr>
+<tr><td>drop</td><td>remove the top of the data stack</td></tr>
+<tr><td>drops</td><td>remove cells from the data stack</td></tr>
+<tr><td>dup</td><td>duplicate the top of the data stack</td></tr>
+<tr><td>2dup</td><td>duplicate the top two cells of the data stack</td></tr>
+<tr><td>?dup</td><td>duplicates the top of the data stack if TOS is non zero</td></tr>
+<tr><td>dups</td><td>duplicate cells from the data stack</td></tr>
+<tr><td>overs</td><td>push cells from the data stack</td></tr>
+<tr><td>2over</td><td>push the third and fourth cells from TOS</td></tr>
+<tr><td>nip</td><td>removes the second cell from the top of the stack</td></tr>
 <tr><td>tuck</td><td>pushes the second cell from the top of the stack</td></tr>
 <tr><td>swap</td><td>swaps the top two cells of the data stack</td></tr>
-<tr><td>swaps</td><td>swaps the top n cells of the data stack</td></tr>
+<tr><td>swaps</td><td>swaps the top cells of the data stack</td></tr>
 <tr><td>2swap</td><td>swaps the top four cells of the data stack</td></tr>
-<tr><td>over</td><td>pushes the second cell from the top of the stack</td></tr>
-<tr><td>rotate</td><td>rotates the top three cells of the data stack</td></tr>
-<tr><td>roll</td><td>rotates n cells from the top of the stack</td></tr>
+<tr><td>over</td><td>push the second cell from the top of the stack</td></tr>
+<tr><td>rotate</td><td>rotate the top three cells of the data stack</td></tr>
+<tr><td>roll</td><td>rotate cells from the top of the stack</td></tr>
 <tr><td>pick</td><td>pushes the nth cell from the top of the stack</td></tr>
-<tr><td>data-depth</td><td>pushes the depth of the data stack</td></tr>
-<tr><td>clear-data</td><td>clears the data stack</td></tr>
-<tr><td>data-dump</td><td>dumps the data stack</td></tr>
-<tr><td>control-depth</td><td>pushes the depth of the control stack</td></tr>
-<tr><td>clear-control</td><td>clears the control stack</td></tr>
-<tr><td>control-dump</td><td>dumps the control stack</td></tr>
-<tr><td>text-quote</td><td>turns a string into a valid text literal</td></tr>
-<tr><td>text-to-integer</td><td>converts a text literal to an integer</td></tr>
-<tr><td>text-to-integer</td><td>converts a text literal into an integer</td></tr>
-<tr><td>text-hex-to-integer</td><td>converts a text literal to an integer</td></tr>
-<tr><td>text-octal-to-integer</td><td>converts a text literal to an integer</td></tr>
+<tr><td>data-depth</td><td>number of elements on the data stack</td></tr>
+<tr><td>clear-data</td><td>clear the data stack, make it empty</td></tr>
+<tr><td>data-dump</td><td>dump the data stack, ie print it</td></tr>
+<tr><td>control-depth</td><td>number of elements on the control stack</td></tr>
+<tr><td>clear-control</td><td>clear the control stack, make it empty</td></tr>
+<tr><td>control-dump</td><td>dump the control stack, ie print it</td></tr>
+<tr><td>text-quote</td><td>turn a text into a valid text literal</td></tr>
+<tr><td>text-to-integer</td><td>convert a text literal to an integer</td></tr>
+<tr><td>text-to-integer</td><td>convert a text literal into an integer</td></tr>
+<tr><td>text-hex-to-integer</td><td>convert a text literal to an integer</td></tr>
+<tr><td>text-octal-to-integer</td><td>convert a text literal to an integer</td></tr>
 <tr><td>text-binary-to-integer</td><td>converts a text literal to an integer</td></tr>
 <tr><td>integer-to-hex</td><td>converts an integer to an hexadecimal text</td></tr>
 <tr><td>integer-to-octal</td><td>convert an integer to an octal text</td></tr>
@@ -61,10 +81,23 @@
 <tr><td>unpack-type</td><td>Unpack type from an integer, see pack-info</td></tr>
 <tr><td>unpack-name</td><td>Unpack name from an integer, see pack-info</td></tr>
 <tr><td>class-of</td><td>Get the most specific type name (as a tag)</td></tr>
+<tr><td>break</td><td>exit loop</td></tr>
+<tr><td>sentinel</td><td>install a sentinel inside the control stack</td></tr>
+<tr><td>loop-until</td><td>loop until condition is met</td></tr>
+<tr><td>loop-while</td><td>loop while condition is met</td></tr>
+<tr><td>+</td><td>addition operator primitive</td></tr>
 <tr><td>=?</td><td>value equality</td></tr>
 <tr><td><>?</td><td>value inequality, the boolean opposite of =? value equality.</td></tr>
 <tr><td>==?</td><td>object identicallity, ie shallow equality, not deep equality.</td></tr>
 <tr><td>not==?</td><td>object inquality, boolean opposite of ==? shallow equality.</td></tr>
+<tr><td>?</td><td>operator</td></tr>
+<tr><td>something?</td><td>operator</td></tr>
+<tr><td>void?</td><td>operator - true when TOS is of type void and value is 0.</td></tr>
+<tr><td>true?</td><td>operator</td></tr>
+<tr><td>false?</td><td>operator</td></tr>
+<tr><td>not</td><td>unary boolean operator</td></tr>
+<tr><td>or</td><td>binary boolean operator</td></tr>
+<tr><td>and</td><td>binary boolean operator</td></tr>
 <tr><td>is-a-float?</td><td>check if a value is a float</td></tr>
 <tr><td>to-float</td><td>convert something into a float</td></tr>
 <tr><td>to-float</td><td>convert something into a float</td></tr>
@@ -89,7 +122,8 @@
 <tr><td>float-ceiling</td><td>ceiling of a float</td></tr>
 <tr><td>float-round</td><td>round a float</td></tr>
 <tr><td>float-truncate</td><td>truncate a float</td></tr>
-<tr><td>&</td><td>text concatenation operator</td></tr>
+<tr><td>text-join</td><td>text concatenation operator</td></tr>
+<tr><td>&</td><td>text concatenation operator, see text-join</td></tr>
 <tr><td>text-cut</td><td>extract a cut of a text, remove a suffix</td></tr>
 <tr><td>text-length</td><td>length of a text</td></tr>
 <tr><td>text-but</td><td>remove a prefix from a text, keep the rest</td></tr>
@@ -103,16 +137,34 @@
 <tr><td>text-line</td><td>extract a line from a text</td></tr>
 <tr><td>as-text</td><td>textual representation</td></tr>
 <tr><td>dump</td><td>textual representation, debug style</td></tr>
+<tr><td>""?</td><td>unary operator</td></tr>
+<tr><td>""?</td><td>unary operator - true if TOS is the empty text</td></tr>
+<tr><td>named?</td><td>operator - true if NOS's name is TOS tag</td></tr>
 <tr><td>peek</td><td>Get the value of a cell, using a cell's address.</td></tr>
 <tr><td>poke</td><td>Set the value of a cell, using a cell's address.</td></tr>
-<tr><td>make-global</td><td>Create a global variable and two verbs to</td></tr>
-<tr><td>make-local</td><td>Create a local variable in the control stack</td></tr>
+<tr><td>make-constant</td><td>using a value and a name, create a constant</td></tr>
+<tr><td>tag-defined?</td><td>true if text described tag is defined</td></tr>
+<tr><td>defined?</td><td>true if text described verb is defined</td></tr>
+<tr><td>make-global</td><td>create a global variable and verbs to get/set it</td></tr>
+<tr><td>make-local</td><td>create a local variable in the control stack</td></tr>
+<tr><td>return-without-parameters</td><td>internal</td></tr>
+<tr><td>run-with-parameters</td><td>run a block with the "function" protocol</td></tr>
 <tr><td>local</td><td>copy a control variable to the data stack</td></tr>
 <tr><td>set-local</td><td>assign a value to a local variable</td></tr>
+<tr><td>data</td><td>lookup for a named value in the data stack and copy it to the top</td></tr>
+<tr><td>set-data</td><td>change the value of an existing data variable</td></tr>
+<tr><td>size-of-cell</td><td>constant that depends on the platform, 8 for now</td></tr>
 <tr><td>lookup</td><td>find a variable in a memory area.</td></tr>
-<tr><td>upper-data</td><td>get a data variable in the nth upper frame, or void</td></tr>
+<tr><td>upper-local</td><td>non local access to a local variable</td></tr>
+<tr><td>upper-data</td><td>non local access to a data variable</td></tr>
 <tr><td>set-upper-local</td><td>set a local variable in the nth upper frame</td></tr>
-<tr><td>without-data</td><td>remove down to a data variable in the data stack</td></tr>
+<tr><td>set-upper-data</td><td>set a data variable in the nth upper frame</td></tr>
+<tr><td>without-data</td><td>remove stack elements until a previous variable, included</td></tr>
+<tr><td>make-fixed-object</td><td>create a fixed size object</td></tr>
+<tr><td>make-object</td><td>create a object of the given length</td></tr>
+<tr><td>extend-object</td><td>turn a fixed object into an extensible one</td></tr>
+<tr><td>object-get</td><td>access a data member of an object</td></tr>
+<tr><td>object-set</td><td>change a data member of an object</td></tr>
 <tr><td>stack-push</td><td>push a value onto a stack object</td></tr>
 <tr><td>stack-drop</td><td>drop the top of a stack object</td></tr>
 <tr><td>stack-drop-nice</td><td>drop the tof of a stack object, unless empty</td></tr>
@@ -132,9 +184,41 @@
 <tr><td>control-stack-limit</td><td>upper limit s of the control stack</td></tr>
 <tr><td>grow-data-stack</td><td>double the data stack if 80% full</td></tr>
 <tr><td>grow-control-stack</td><td>double the control stack if 80% full</td></tr>
+<tr><td>queue-push</td><td>add an element to the queue</td></tr>
+<tr><td>queue-length</td><td>number of elements in the queue</td></tr>
+<tr><td>queue-pull</td><td>extract the oldest element from the queue</td></tr>
+<tr><td>queue-capacity</td><td>maximum number of elements in the queue</td></tr>
+<tr><td>queue-clear</td><td>make the queue empty</td></tr>
+<tr><td>array-put</td><td>set the value of the nth element</td></tr>
+<tr><td>array-get</td><td>nth element</td></tr>
+<tr><td>array-length</td><td>number of elements in an array</td></tr>
+<tr><td>array-capacity</td><td>return the capacity of an array</td></tr>
+<tr><td>map-put</td><td>put a value in a map</td></tr>
+<tr><td>map-get</td><td>get a value from a map</td></tr>
+<tr><td>map-length</td><td>number of elements in a map</td></tr>
+<tr><td>set-put</td><td>put a value in a set</td></tr>
+<tr><td>set-get</td><td>access a set element using a tag</td></tr>
+<tr><td>set-length</td><td>number of elements in a set</td></tr>
+<tr><td>set-extend</td><td>extend a set with another set</td></tr>
+<tr><td>set-union</td><td>union of two sets</td></tr>
+<tr><td>set-intersection</td><td>intersection of two sets</td></tr>
 <tr><td>without-local</td><td>clear the control stack downto to specified local</td></tr>
 <tr><td>return-without-locals</td><td>like return but with some cleanup</td></tr>
+<tr><td>with-locals</td><td>prepare the control stack to handle local local variables</td></tr>
+<tr><td>return-without-it</td><td>internal, run-with-it uses it</td></tr>
+<tr><td>with-it</td><td>prepare the control stack to handle the 'it' local variable</td></tr>
+<tr><td>it</td><td>access to the it local variable</td></tr>
+<tr><td>it!</td><td>change the value of the it local variable</td></tr>
+<tr><td>run-method-by-name</td><td>using a text to identify the method</td></tr>
+<tr><td>run-method-by-tag</td><td>using a tag to identify the method</td></tr>
 <tr><td>run-with-it</td><td>like run but with an "it" local variable</td></tr>
+<tr><td>words_per_cell</td><td>plaftorm dependent, current 1</td></tr>
+<tr><td>CSP</td><td>Constrol Stack Pointer, address of the top of the control stack</td></tr>
+<tr><td>set-CSP</td><td>move the top of the control stack</td></tr>
+<tr><td>TOS</td><td>address of the top of the data stack</td></tr>
+<tr><td>set-TOS</td><td>move the top of the data stack to some new address</td></tr>
+<tr><td>IP</td><td>access to the instruction pointer where the primitive was called</td></tr>
+<tr><td>set-IP</td><td>jump to some address</td></tr>
 <tr><td>inox-dialect</td><td>switch to the Inox dialect</td></tr>
 <tr><td>dialect</td><td>query current dialect text name</td></tr>
 <tr><td>forth-dialect</td><td>switch to the Forth dialect</td></tr>
@@ -167,13 +251,33 @@
 <tr><td>whitespace?</td><td>true if TOS is a whitespace character</td></tr>
 <tr><td>next-character</td><td>get next character in source code, or ""</td></tr>
 <tr><td>digit?</td><td>true if the top of stack is a digit character</td></tr>
+<tr><td>eol?</td><td>true if the top of stack is an end of line character</td></tr>
+<tr><td>next-token</td><td>read the next token from the default input stream</td></tr>
 <tr><td>set-literate</td><td>set the tokenizer to literate style</td></tr>
+<tr><td>integer-text?</td><td>true if text is valid integer</td></tr>
+<tr><td>parse-integer</td><td>convert a text to an integer</td></tr>
+<tr><td>compiler-enter</td><td>Entering a new parse context</td></tr>
+<tr><td>compiler-leave</td><td>Leaving a parse context</td></tr>
+<tr><td>compile-definition-begin</td><td>Entering a new verb definition</td></tr>
+<tr><td>compile-definition-end</td><td>Leaving a verb definition</td></tr>
+<tr><td>compiling?</td><td>Is the interpreter compiling?</td></tr>
+<tr><td>compiler-expecting?</td><td>Is the compiler expecting the verb to define?</td></tr>
+<tr><td>compile-literal</td><td>Add a literal to the verb beeing defined</td></tr>
+<tr><td>compile-verb</td><td>add a verb to the beeing defined block or new verb</td></tr>
+<tr><td>compile-quote</td><td>avoid executing the next token, just compile it</td></tr>
+<tr><td>compile-block-begin</td><td>Start the definition of a new block</td></tr>
+<tr><td>compile-block-end</td><td>Close the definition of a new block</td></tr>
+<tr><td>eval</td><td>Run from source code text coming from the default input stream</td></tr>
 <tr><td>eval</td><td>evaluate a source code text</td></tr>
 <tr><td>trace</td><td>output text to console.log(), preserve TOS</td></tr>
+<tr><td>inox-out</td><td>output text to the default output stream</td></tr>
+<tr><td>trace-stacks</td><td>dump user friendly stacks trace</td></tr>
 <tr><td>ascii-character</td><td>return one character text from TOS integer</td></tr>
 <tr><td>ascii-code</td><td>return ascii code of first character of TOS as text</td></tr>
 <tr><td>now</td><td>return number of milliseconds since start</td></tr>
+<tr><td>instructions</td><td>number of instructions executed so far</td></tr>
 <tr><td>the-void</td><td>push a void cell</td></tr>
 <tr><td>memory-visit</td><td>get a view of the memory</td></tr>
+<tr><td>source</td><td>evaluate the content of a file</td></tr>
 </table>
-<p>Found 175 primitives.</p></body></html>
+<p>Found 278 primitives.</p></body></html>

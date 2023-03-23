@@ -9,6 +9,7 @@
 pids
 builds/*
 !builds/inox.html
+!builds/inox.md
 !builds/html
 !builds/html/*
 
