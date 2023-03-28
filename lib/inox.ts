@@ -35,7 +35,7 @@
  */
 
 /// 0: no debug, 1: some debug, 2: more debug, etc
-const INOX_DEBUG_LEVEL = 0;
+const INOX_DEBUG_LEVEL = 1;
 
 /// The initial size of the flat memory where the Inox interpreter will run
 // ToDo: make the size configurable at run time ?
@@ -320,11 +320,11 @@ static milliseconds now( void ){
  */
 
 // Address in memory of a cell, that's where the value, type and name are stored
-// It's a 28 bits index that needz to be << 3 shifted to get a byte pointer
+// It's a 29 bits index that needs to be << 3 shifted to get a byte pointer
 /**/ type    Cell = i32;
 //c/ #define Cell   i32
 
-// Address of a dynamically allocated cell, a substype of Cell
+// Address of a dynamically allocated cell, a subtype of Cell
 /**/ type Area    = i32;
 //c/ #define Area   i32
 
@@ -484,7 +484,7 @@ static milliseconds now( void ){
   static char assert_msg_buffer[ INOX_ASSERT_MAX_LENGTH + 80 ];
 
   // Forward
-  static void breakpoint( void );
+  static bool breakpoint( void );
 
   bool failed_assert(
     TxtC title,
@@ -1185,8 +1185,9 @@ static Cell  allocate_cells( Count );
 static void  cell_free( Cell );
 static void  cells_free( Cell, Count );
 static int   init_area_allocator( void );
-static Size  area_aligned_size( Size );
-static Area  allocate_area( Count );
+static Size  area_align_size( Size );
+static Area  allocate_area( Tag, Size );
+static Tag   area_tag( Area );
 static bool  area_is_shared( Cell );
 static void  area_lock( Area );
 static void  area_free( Area );
@@ -1214,6 +1215,7 @@ static Index object_length( Area );
 static void  object_free( Area );
 static void  text_free( Cell );
 static void  proxy_free( Index );
+static void  box_free( Cell );
 static void  range_free( Area );
 static Area  reference_of( Cell );
 static bool  is_sharable( Cell );
@@ -1310,15 +1312,11 @@ let the_empty_text_cell = 0;
 // Having a tempory cell is convenient sometimes
 let the_tmp_cell = 0;
 
-// A few global variables need to be initialized soon.
-// That's mainly for debugging purposes.
-// They are documented better close to where they are used.
+// A few global variables need to be initialized soon
+// That's mainly for debugging purposes
+// They are documented better close to where they are used
 let all_symbol_cells = 0;
 let all_symbol_cells_length = 0;
-
-// Precomputed value for /list. It's needed early to manage the cells allocator
-/**/ const tag_list = 10;
-//c/ #define tag_list 10
 
 
 /* -----------------------------------------------------------------------------
@@ -1385,11 +1383,12 @@ static bool trace_const_c_str( const char* msg ){
 /**/ let bootstrapping         = true;
 //c/ static bool bootstrapping = true;
 
-function breakpoint(){
+function breakpoint() : boolean {
   debugger;
-  if( bootstrapping )return;
+  if( bootstrapping )return true;
   trace_context( "BREAKPOINT\n" );
   debugger;
+  return true;
 }
 
 
@@ -1401,8 +1400,8 @@ function breakpoint(){
  */
 
 
-/**/ const   mand  = ( b    ) => ( assert(  b    ), true );
-/**/ const   mand2 = ( b, m ) => ( assert(  b, m ), true );
+/**/ const   mand  = ( b    ) => ( b || breakpoint(), assert(  b    ),  true );
+/**/ const   mand2 = ( b, m ) => ( b || breakpoint(), assert(  b, m ),  true );
 //c/ #define mand(     b    )    ( assert(  b    )       )
 //c/ #define mand2(    b, m )    ( assert2( b, m )       )
 
@@ -1541,26 +1540,30 @@ const check_endianes_done = check_endianess();
  *  informations, info. Info is the type and the name of the value. See pack().
  */
 
-/**/ const   size_of_word    = 8;  // 8 bytes, 64 bits
-//c/ #define size_of_word      8
+// 8 bytes, 64 bits
+const size_of_word = 8;
 
-/**/ const   size_of_value   = 4;  // 4 bytes, 32 bits
-//c/ #define size_of_value     4
+// 4 bytes, 32 bits
+const size_of_value = 4;
 
-/**/ const   size_of_cell    =   2 * size_of_value;
-//c/ #define size_of_cell      ( 2 * size_of_value )
+/**/ const   size_of_cell =   2 * size_of_value;
+//c/ #define size_of_cell   ( 2 * size_of_value )
 
 // Cell addresses to byte pointers and vice versa, aligned on cell boundaries
 /**/ function to_cell( a_ptr : number  ) : Cell   {  return a_ptr    >> 3;  }
-//c/ #define  to_cell( a_ptr )         ( (Cell)   ( ( (u32) a_ptr )  >> 3 ) )
-/**/ function to_ptr(  a_cell  : Cell  ) : number {  return a_cell   << 3;  }
-//c/ #define  to_ptr( a_cell )         ( (char*)  ( ( (u32) a_cell ) << 3 ) )
+//c/ #define  to_cell( a_ptr )         (  (Cell)  ( ( (u32) a_ptr )  >> 3 ) )
 
+// Convert a cell address to a native byte address, ie multiply by size_of_cell
+/**/ function to_ptr( a_cell  : Cell  ) : number {  return a_cell   << 3;  }
+//c/ #define  to_ptr( a_cell )         ( (char*) ( ( (u32) a_cell ) << 3 ) )
+
+// ToDo: make it work when size_of_cell is not size_of_word
 /**/ const   words_per_cell  =   size_of_cell  / size_of_word;
 //c/ #define words_per_cell    ( size_of_cell  / size_of_word )
 
-/**/ const   ONE             = words_per_cell;
-//c/ #define ONE               words_per_cell
+// This is like Forth's CELLS word
+/**/ const   ONE = words_per_cell;
+//c/ #define ONE   words_per_cell
 
 // Other layouts could work too. 2 bytes word, 4 bytes value, 2 bytes info.
 // This would make 6 bytes long cells instead of 8. ok for a 32 bits cpu.
@@ -1591,7 +1594,7 @@ const check_endianes_done = check_endianess();
 
 
 // Write access to that cell triggers a debugger breakpoint in debug mode
-let breakpoint_cell = 0;
+let breakpoint_cell = 1;
 
 function mand_cell_in_range( c : Cell ) : boolean {
   if( c >= 0
@@ -1742,12 +1745,12 @@ function init_copy_cell( dst : Cell, src : Cell ){
 /*ts{*/
 
 function pack( t : Type, n : Tag ) : Info {
-  return n | t << 28;
+  return n | t << 29;
 }
 
 
 function unpack_type( i : Info ) : Type {
-  return i >>> 28;
+  return i >>> 29;
 }
 
 
@@ -1769,8 +1772,8 @@ function name_of( c : Cell ): Tag {
 
 /*c{
 
-#define pack( t, n )       ( ( n ) | ( ( t ) << 28 ) )
-#define unpack_type( i )   ( ( ( u32) i ) >> 28 )
+#define pack( t, n )       ( ( n ) | ( ( t ) << 29 ) )
+#define unpack_type( i )   ( ( ( u32) i )    >> 29 )
 #define unpack_name( i )   ( ( i ) & 0xffffff )
 #define type_of( c )       ( unpack_type( info_of( c ) ) )
 #define name_of( c )       ( unpack_name( info_of( c ) ) )
@@ -1812,9 +1815,9 @@ function set_name( c : Cell, n : Tag ){
 function test_pack(){
   // copilot generated code
   de&&mand( pack( 0, 0 ) == 0 );
-  de&&mand( pack( 1, 0 ) == 1 << 28 );
+  de&&mand( pack( 1, 0 ) == 1 << 29 );
   de&&mand( pack( 0, 1 ) == 1 );
-  de&&mand( pack( 1, 1 ) == ( 1 << 28 ) + 1 );
+  de&&mand( pack( 1, 1 ) == ( 1 << 29 ) + 1 );
   de&&mand( unpack_type( pack( 0, 0 ) ) == 0 );
   de&&mand( unpack_type( pack( 1, 0 ) ) == 1 );
   de&&mand( unpack_type( pack( 0, 1 ) ) == 0 );
@@ -1884,7 +1887,7 @@ function test_pack(){
  *  like Lisp tags are called "atoms" or "symbols".
  *
  *  The encoding stores all of that in a 64 bits word.
- *  cell's type is a numeric id, 0..15
+ *  cell's type is a numeric id, 0...7
  *  cell's name is the address of a tag type of cell.
  *  cell's value depends on type, often an integer or the address of a cell.
  *
@@ -1898,9 +1901,9 @@ function test_pack(){
   *  See https://en.wikipedia.org/wiki/Tagged_architecture
   */
 
-// In this implementation, the name is a 28 bits pointer that points
-// to 64 bits words, this is equivalent to a 31 bits pointer
-// pointing to bytes. That's 2 giga bytes or 256 millions of cells.
+// In this implementation, the name is a 29 bits pointer that points
+// to 64 bits words, this is equivalent to a 32 bits pointer
+// pointing to bytes. That's 4 giga bytes or 512 millions of cells.
 //
 // I used these named values 30 years ago, when I designed the
 // object oriented version of a scriting language named Emul. It was
@@ -1916,58 +1919,60 @@ function test_pack(){
  *  Cell types
  */
 
-/**/ const   type_void       = 0;
-//c/ #define type_void         0
-
-/**/ const   type_boolean    = 1;
-//c/ #define type_boolean      1
-
-/**/ const   type_integer    = 2;
-//c/ #define type_integer      2
-
-/**/ const   type_float      = 3;
-//c/ #define type_float        3
-
-/**/ const   type_tag        = 4;
-//c/ #define type_tag          4
-
-/**/ const   type_verb       = 5;
-//c/ #define type_verb         5
-
-/**/ const   type_reference  = 6;
-//c/ #define type_reference    6
-
-/**/ const   type_proxy      = 7;
-//c/ #define type_proxy        7
-
-/**/ const   type_text       = 8;
-//c/ #define type_text         8
-
-/**/ const   type_flow       = 9;
-//c/ #define type_flow         9
-
-/**/ const   type_list       = 10;
-//c/ #define type_list         10
-
-// ToDo: study ranges, see https://accu.org/conf-docs/PDFs_2009/AndreiAlexandrescu_iterators-must-go.pdf
-/**/ const   type_range      = 11;
-//c/ #define type_range        11
-
-// ToDo: study a type_box. It would be a cell that contains a reference
-// to a dynamiccaly allocated cell. It would be used to implement
-// a "box" in the sense of a mutable reference. The usage would be
-// somehow similar to the usage of a pointer in C. It would be
-// be safe however, with no dangling pointer, no memory leak and no
-// complex handling of closures.
-// Better study that concept before implementing it.
-
-/**/ const   type_invalid    = 12;
-//c/ #define type_invalid      12
+const   type_void       = 0;
+const   type_boolean    = 1;
+const   type_integer    = 2;
+const   type_float      = 3;
+const   type_tag        = 4;
+const   type_verb       = 5;
+const   type_reference  = 6;
+const   type_invalid    = 8;
 
 
 // When some IP is stored in the control stack, it is stored as a verb
 /**/ const   type_ip = type_verb
 //c/ #define type_ip   type_verb
+
+
+/* -----------------------------------------------------------------------------
+ *  Constant tags
+ */
+
+/*ts{*/
+const tag_void      = 0;
+const tag_boolean   = 1;
+const tag_integer   = 2;
+const tag_float     = 3;
+const tag_tag       = 4;
+const tag_verb      = 5;
+const tag_reference = 6;
+const tag_invalid   = 7;
+const tag_list      = 10;
+const tag_text      = 11;
+const tag_stack     = 12;
+const tag_proxy     = 13;
+const tag_flow      = 14;
+const tag_range     = 15;
+const tag_box       = 16;
+/*}*/
+
+/*c{
+#define tag_void      0
+#define tag_boolean   1
+#define tag_integer   2
+#define tag_float     3
+#define tag_tag       4
+#define tag_verb      5
+#define tag_reference 6
+#define tag_invalid   7
+#define tag_list      10
+#define tag_text      11
+#define tag_stack     12
+#define tag_proxy     13
+#define tag_flow      14
+#define tag_range     15
+#define tag_box       16
+}*/
 
 
 /* -----------------------------------------------------------------------------
@@ -2043,20 +2048,13 @@ const init_cell_allocator_done = init_cell_allocator();
 
 // Some early declarations to avoid access before initialization
 
-// The first cell of a busy byte area header is the reference counter
-// This is precomputed, see init_symbols()
-/**/ const tag_dynamic_ref_count = 17;
-//c/ #define tag_dynamic_ref_count 17
-
 // When the area is freed, that header is overwritten with this tag
 // This is precomputed, see init_symbols()
-/**/ const tag_dynamic_next_area = 18;
-//c/ #define tag_dynamic_next_area 18
+const tag_dynamic_next_area = 9;
 
 // The second cell of the header is the size of the area, including the header
 // This is precomputed, see init_symbols()
-/**/ const tag_dynamic_area_size = 16;
-//c/ #define tag_dynamic_area_size 16
+const tag_dynamic_area_size = 8;
 
 // This is where to find the size, relative to the area first header address.
 const offset_of_area_size = ONE;
@@ -2089,14 +2087,6 @@ function lean_is_empty( area : Area ) : boolean {
     mand_neq( len, 0 );
   }
   return false;
-}
-
-
-function lean_new_empty() : Area {
-// Return a reference to the empty lean string
-  // ToDo: no need to lock it because it is never freed
-  // area_lock( the_empty_lean );
-  return the_empty_lean;
 }
 
 
@@ -2137,7 +2127,7 @@ function lean_allocate_cells_for_bytes( sz : Size ) : Area {
   // At least one bye is needed, for the null terminator
   alloc_de&&mand( sz > 0 );
 
-  if( !bootstrapping )return allocate_area( sz );
+  if( !bootstrapping )return allocate_area( tag_text, sz );
 
   // During bootstrap, the byte area allocator is not yet available
   let needed_cells = lean_aligned_cell_length( sz );
@@ -2147,10 +2137,10 @@ function lean_allocate_cells_for_bytes( sz : Size ) : Area {
   const header = allocate_cells( needed_cells );
 
   // Header 0 is a reference counter
-  set_info(  header + 0 * ONE, pack( type_integer, tag_dynamic_ref_count ) );
+  set_info(  header + 0 * ONE, pack( type_integer, tag_text ) );
   set_value( header + 0 * ONE, 1 );
 
-  // Header 1 is total size in bytes, including the two headers, aligned
+  // Header 1 is total size in bytes, including the two headers, not aligned
   set_info(  header + 1 * ONE, pack( type_integer, tag_dynamic_area_size ) );
   set_value( header + 1 * ONE, 2 * size_of_cell + sz );
 
@@ -2288,7 +2278,7 @@ function lean_new_from_native( str : TxtC ) : Area {
 
     // If empty, reuse the empty lean string
     if( str.length == 0 ){
-      return lean_new_empty();
+      return the_empty_lean;
     }
 
     // Convert using a TextEncoder, utf-8 is the default encoding
@@ -2311,7 +2301,7 @@ function lean_new_from_native( str : TxtC ) : Area {
   // C++ version uses fast memcpy(), the destination is filled with 0 bytes
   /*c{
     Count str_len = strlen( str );
-    if( str_len == 0 )return lean_new_empty();
+    if( str_len == 0 )return the_empty_lean;
     Area area = lean_allocate_cells_for_bytes( str_len + 1 );
     memcpy( (char*) ( (int) to_ptr( area ) ), str, str_len );
   }*/
@@ -2621,10 +2611,10 @@ function lean_strrindex( target : Cell, pattern : Cell ) : Value {
 function lean_substr( str : Cell, start : Value, len : Value ) : Cell {
 // Extract a substring from a lean string, return a new string
 
-  // If past the end, return an empty string
+  // If past the end, return the empty string
   const str_len = lean_strlen( str );
   if( start >= str_len ){
-    return lean_new_empty();
+    return the_empty_lean;
   }
 
   // Truncate the length if needed
@@ -2632,9 +2622,9 @@ function lean_substr( str : Cell, start : Value, len : Value ) : Cell {
     len = str_len - start;
   }
 
-  // If the substring is empty, return an empty string
+  // If the substring is empty, return the empty string
   if( len == 0 ){
-    return lean_new_empty();
+    return the_empty_lean;
   }
 
   // ToDo: if big enough, share the string
@@ -3361,7 +3351,7 @@ function init_cell_allocator() : Index {
     set(
       the_cell_limit - 2 * ONE,
       type_integer,
-      tag_dynamic_ref_count,
+      tag_void,
       0
     );
     set(
@@ -3373,7 +3363,7 @@ function init_cell_allocator() : Index {
     the_previous_chunk_area = the_cell_limit;
     alloc_de&&mand_cell_name(
       the_previous_chunk_area - 2 * ONE,
-      tag_dynamic_ref_count
+      tag_void
     );
     alloc_de&&mand_cell_name(
       the_previous_chunk_area - 1 * ONE,
@@ -3389,7 +3379,7 @@ function init_cell_allocator() : Index {
 
   // Avoid using the addresses that match a type id
   // It helps for debugging traces, see N() and C()
-  /**/ allocate_cells( 16 );
+  /**/ allocate_cells( 8 );
 
   // The first allocated cell is a tempory cell that is sometimes convenient
   the_tmp_cell = allocate_cell();
@@ -3404,14 +3394,14 @@ function init_cell_allocator() : Index {
  *  The memory
  *
  *  The memory is the place where data manipulated by the Inox interpreter is
- *  stored. It looks like a contiguous area of memory, divided into cells. Each *  cell is 64 bits wide, 3 parts : 4 bits for the type of the cell, 28 bits for
+ *  stored. It looks like a contiguous area of memory, divided into cells. Each *  cell is 64 bits wide, 3 parts : 3 bits for the type of the cell, 29 bits for
  *  for the name of the cell and 32 bits for the value of the cell. Such values
  *  are called "named values". Each cell has an address. It is the index of the
- *  cell in the memory. The possible range extends from 0 to 2^28-1, ie
- *  approximately 268 million cells. It should be possible to change the size of
+ *  cell in the memory. The possible range extends from 0 to 2^29-1, ie
+ *  approximately 512 million cells. It should be possible to change the size of
  *  a cell, either to reduce it or to increase it. The size of a cell is defined
  *  by the size_of_cell constant, itself defined as the addition of 32 bits for
- *  the value, 28 bits for the name and 4 bits for the type, the type and name
+ *  the value, 29 bits for the name and 3 bits for the type, the type and name
  *  beeing packed together in a single 32 bits value.
  *
  *  The implementation of the memory is not the same in TypeScript and C++. In
@@ -3476,7 +3466,7 @@ function grow_memory( sz : Size ){
 // The heap is full, need to expand it by some amount
 
   // Align on size of a cell, ie 7 becomes 8, 9 becomes 16, etc.
-  let min_size = area_aligned_size( sz );
+  let min_size = area_align_size( sz );
 
   // Make sure some minimum size is allocated
   if( min_size < INOX_HEAP_SIZE ){
@@ -3561,14 +3551,8 @@ function grow_memory( sz : Size ){
 
     // Check that the previously set sentinel cells are still there
     alloc_de&&mand_eq( old_gap_area, the_cell_limit );
-    alloc_de&&mand_cell_name(
-      old_gap_area - 2 * ONE,
-      tag_dynamic_ref_count
-    );
-    alloc_de&&mand_cell_name(
-      old_gap_area - 1 * ONE,
-      tag_dynamic_area_size
-    );
+    alloc_de&&mand_eq( name_of( old_gap_area - 2 * ONE ), tag_void );
+    alloc_de&&mand_cell_name(   old_gap_area - 1 * ONE, tag_dynamic_area_size );
 
     // Reinitialize the previous chunck's busy gap area headers
     area_init_busy( old_gap_area, gap_size );
@@ -3593,7 +3577,7 @@ function grow_memory( sz : Size ){
     set(
       new_gap_area - 2 * ONE,
       type_integer,
-      tag_dynamic_ref_count,
+      tag_void,
       0
     );
     set(
@@ -3805,7 +3789,6 @@ function init_area_allocator() : Index {
   the_first_free_area = 0;
 
   // Check precomputed tags
-  de&&mand_eq( tag( "_dynrc" ), tag_dynamic_ref_count );
   de&&mand_eq( tag( "_dynxt" ), tag_dynamic_next_area );
   de&&mand_eq( tag( "_dynsz" ), tag_dynamic_area_size );
 
@@ -3836,12 +3819,12 @@ function area_ref_count( area : Area ) : Value {
 }
 
 
-function area_turn_busy( area : Area, sz : Size ){
+function area_turn_busy( area : Area, klass : Tag, sz : Size ){
 // Set the reference counter header of a free byte area to 1, ie it becomes busy
   const header = area_to_header( area );
   // Before it becomes busy, it was free, so it must have a next_area header
   alloc_de&&mand_cell_name( header, tag_dynamic_next_area );
-  set( header, type_integer, tag_dynamic_ref_count, 1 );
+  set( header, type_integer, klass, 1 );
   alloc_de&&mand_cell_name( header + ONE, tag_dynamic_area_size );
   set_value( header + ONE, sz );
 }
@@ -3854,10 +3837,10 @@ function area_turn_free( area : Area, next_area : Area ){
 }
 
 
-function area_init_busy( area : Area, size : Count ){
+function area_init_busy( area : Area, klass : Tag, size : Count ){
 // Initialize a new busy area
   const header = area_to_header( area );
-  set( header, type_integer, tag_dynamic_ref_count, 1 );
+  set( header, type_integer, klass, 1 );
   set( header + ONE, type_integer, tag_dynamic_area_size, size );
 }
 
@@ -3865,7 +3848,7 @@ function area_init_busy( area : Area, size : Count ){
 function area_is_busy( area : Area ) : boolean {
 // Return true if the area is busy, false if it is free
   alloc_de&&mand( area_is_safe( area ) );
-  return name_of( area_to_header( area ) ) == tag_dynamic_ref_count;
+  return name_of( area_to_header( area ) ) != tag_dynamic_next_area;
 }
 
 
@@ -3880,15 +3863,13 @@ function area_cell_is_area( cell : Cell ) : boolean {
 // Return true if the cell is the first cell of a dynamic area, false otherwise
   // This is maybe not 100% reliable, but it is good enough
   const first_header = area_to_header( cell );
-  if( name_of( first_header ) == tag_dynamic_ref_count ){
+  if( name_of( first_header + ONE ) == tag_dynamic_area_size ){
     if( type_of( first_header ) == type_integer ){
-      alloc_de&&mand( area_is_busy( cell ) );
-      return true;
-    }
-    return false;
-  }else if( name_of( first_header ) == tag_dynamic_next_area ){
-    if( type_of( first_header ) == type_integer ){
-      alloc_de&&mand( area_is_free( cell ) );
+      if( name_of( first_header ) == tag_dynamic_next_area ){
+        alloc_de&&mand( area_is_free( cell ) );
+      }else{
+        alloc_de&&mand( area_is_busy( cell ) );
+      }
       return true;
     }
     return false;
@@ -3920,9 +3901,9 @@ function area_set_ref_count( area : Area, v : Value ){
 
 
 function area_size( area : Area ) : Size {
-// Return the size of a byte area, in bytes. It includes the 2 header cells
+// Return the size of a byte area, in bytes, aligned. It includes the 2 header cells
   alloc_de&&mand( area_is_safe( area ) );
-  const byte_size = value_of( area_to_header( area ) + offset_of_area_size * ONE );
+  const byte_size = value_of( area_to_header( area ) + ONE );
   // Do as if last cell was fully occupied
   const aligned_size = ( byte_size + size_of_cell - 1 ) & ~( size_of_cell - 1 );
   return aligned_size;
@@ -3944,15 +3925,15 @@ function area_payload_size( area : Area ) : Size {
 }
 
 
-function area_set_size( area : Area, s : Size ) : void {
-// Set the size of a byte area, it includes the header
+function area_set_size( area : Area, sz : Size ) : void {
+// Set the size of the area, including the size of the header, but not aligned
   const header = area_to_header( area );
-  // The second header is after the first one, ie after the ref count.
-  set( header + offset_of_area_size, type_integer, tag_dynamic_area_size, s );
+  // The second header is after the first one, ie after the reference counter
+  set( header + ONE, type_integer, tag_dynamic_area_size, sz );
 }
 
 
-function area_aligned_size( s : Size ) : Size {
+function area_align_size( s : Size ) : Size {
 // Align on size of cells, ie 7 becomes 8, 8 stays 8, 9 becomes 16, etc
   let aligned_size = ( s + ( size_of_cell - 1 ) ) & ~( size_of_cell - 1 );
   return aligned_size;
@@ -4137,7 +4118,7 @@ let stat_deallocated_bytes = 0;
 let stat_deallocated_areas = 0;
 
 
-function allocate_area( sz : Size ) : Area {
+function allocate_area( klass : Tag , sz : Size ) : Area {
 
   if( alloc_de ){
     if( allocate_area_entered != 0 ){
@@ -4166,16 +4147,16 @@ function allocate_area( sz : Size ) : Area {
   );
 
   // Align on 64 bits, size of a cell, plus size of headers
-  let adjusted_size = area_aligned_size( sz ) + 2 * size_of_cell;
+  let adjusted_size = area_align_size( sz ) + 2 * size_of_cell;
 
   // Search in "per length" free lists if size is small enough
   if( adjusted_size < 10 * size_of_cell ){
-    let try_length = to_cell( adjusted_size );
+    let try_length = to_cell( adjusted_size ) - 2;
     let small_free_area = all_free_lists_by_area_length[ try_length ];
     if( small_free_area ){
       all_free_lists_by_area_length[ try_length ]
       = area_next( small_free_area );
-      area_turn_busy( small_free_area, sz + 2 * size_of_cell );
+      area_turn_busy( small_free_area, klass, sz + 2 * size_of_cell );
       allocate_area_entered = 0;
       stat_allocated_bytes += adjusted_size;
       stat_allocated_areas += 1;
@@ -4252,7 +4233,7 @@ function allocate_area( sz : Size ) : Area {
     }
 
     // Mark the found free area as busy, for the requested size + the headers
-    area_turn_busy( area, sz + 2 * size_of_cell );
+    area_turn_busy( area, klass, sz + 2 * size_of_cell );
 
     alloc_de&&mand( area_is_busy(    area ) );
     alloc_de&&mand( !area_is_shared( area ) );
@@ -4290,13 +4271,13 @@ function allocate_area( sz : Size ) : Area {
   area = cells + 2 * ONE;
 
   // Pretend it is a busy area and then free it to add it to the heap
-  area_init_busy( area, needed_cells * size_of_cell );
+  area_init_busy( area, tag_void, needed_cells * size_of_cell );
   alloc_de&&mand( area_is_busy( area ) );
   area_free( area );
 
   // Retry the allocation, it should work now
   allocate_area_entered = 0;
-  const allocated_area = allocate_area( sz );
+  const allocated_area = allocate_area( klass, sz );
 
   // The result should be the newly added area
   alloc_de&&mand_eq( allocated_area, area );
@@ -4316,10 +4297,19 @@ function allocate_area( sz : Size ) : Area {
     the_first_free_area == 0 || area_is_free( the_first_free_area )
   );
 
+  // Some monitoring, for debugging and future optimizations
   stat_allocated_bytes += adjusted_size;
   stat_allocated_areas += 1;
+
   return allocated_area;
 
+}
+
+
+function area_tag( area : Area ) : Tag {
+  alloc_de&&mand( area_is_busy( area ) );
+  // The tag (class) is stored in the first header of the area
+  return name_of( area - 2 * ONE);
 }
 
 
@@ -4330,7 +4320,8 @@ function resize_area( area : Area, sz : Size ) : Area {
     // ToDo: should split the area and free the extra space
     return area;
   }
-  const new_mem = allocate_area( sz );
+  const klass = area_tag( area );
+  const new_mem = allocate_area( klass, sz );
   while( true ){
     ii -= size_of_cell;
     // ToDo: should copy cell if previous area is referenced somewhere?
@@ -4351,6 +4342,7 @@ function area_free( area : Area ){
   }
 
   if( area == the_empty_lean ){
+    // ToDo: avoid this
     return;
   }
 
@@ -4364,19 +4356,18 @@ function area_free( area : Area ){
   }
 
   // The whole area should be full of zeros, ie cleared
+  const len = area_length( area );
   if( de ){
-    const capacity = area_length( area );
     let ii;
-    for( ii = 0 ; ii < capacity ; ii++ ){
+    for( ii = 0 ; ii < len ; ii++ ){
       mand_empty_cell( area + ii * ONE );
     }
   }
 
   // Add to a "per length" free list if small enough area
-  const size = area_size( area );
-  if( size < 10 * size_of_cell ){
-    area_turn_free( area, all_free_lists_by_area_length[ to_cell( size ) ] );
-    all_free_lists_by_area_length[ to_cell( size ) ] = area;
+  if( len < 10 ){
+    area_turn_free( area, all_free_lists_by_area_length[ len ] );
+    all_free_lists_by_area_length[ len ] = area;
     // ToDo: this can degenerate when too many small areas are unused.
     // I should from time to time empty the free lists and add areas to the
     // global pool, the older areas first to maximize locality.
@@ -4464,7 +4455,7 @@ function area_is_safe( area : Cell ) : boolean {
   }
 
   // When busy
-  if( name_of( header ) == tag_dynamic_ref_count ){
+  if( name_of( header ) != tag_dynamic_next_area ){
 
     // The reference counter must be an integer
     alloc_de&&mand( type_of( header ) == type_integer );
@@ -4479,8 +4470,8 @@ function area_is_safe( area : Cell ) : boolean {
       return false;
     }
 
-    // When one of the 4 most significant bits is set, that's a type id probably
-    if( reference_counter >= ( 1 << 28 ) ){
+    // When one of the 3 most significant bits is set, that's a type id probably
+    if( reference_counter >= ( 1 << 29 ) ){
       // It also could be a very big reference counter, but that's unlikely
       const type = unpack_type( reference_counter );
       FATAL( S()+ "Invalid area, bad counter, " + N( type ) + " " + C( area ) );
@@ -4575,8 +4566,8 @@ function area_is_safe( area : Cell ) : boolean {
     return false;
   }
 
-  // When one of the 4 most significant bits is set, that's a type id probably
-  if( size >= ( 1 << 28 ) ){
+  // When one of the 3 most significant bits is set, that's a type id probably
+  if( size >= ( 1 << 29 ) ){
     const type = unpack_type( size );
     FATAL( S()+ "Invalid counter for area? " + N( type ) + " " + C( area ) );
     return false;
@@ -4607,11 +4598,11 @@ function decrement_object_ref_count( area : Area ){
 
 function area_test_suite(){
   // This was generated by copilot, it is very insufficent
-  const the_area = allocate_area( 10 );
+  const the_area = allocate_area( tag_void, 10 );
   de&&mand( area_is_busy( the_area ) );
   area_free( the_area );
   de&&mand( area_is_free( the_area ) );
-  const the_area2 = allocate_area( 10 );
+  const the_area2 = allocate_area( tag_void, 10 );
   de&&mand( area_is_busy( the_area2 ) );
   area_lock( the_area2 );
   de&&mand( area_is_busy( the_area2 ) );
@@ -4741,7 +4732,7 @@ function reset_cell_value( c : Cell ){
 }
 
 
-function clear_unshared_area( area : Area, typ : Type ){
+function clear_unshared_area( area : Area ){
 
   de&&mand( ! area_is_shared( area ) );
 
@@ -4750,18 +4741,23 @@ function clear_unshared_area( area : Area, typ : Type ){
   // To keep the "destructor" logic, some flag would have to be set
   // to mark the area as being an area that needs that logic.
 
-  if( typ == type_reference ){
-    object_free( area );
+  const class_tag = type_of( area );
 
-  }else if( typ == type_text ){
-    text_free( area );
-
-  }else if( typ == type_range ){
-    range_free( area );
-
-  }else{
-    legacy_de&&mand_type( typ, type_proxy );
-    proxy_free( area );
+  switch( class_tag ){
+    case tag_box :
+      box_free( area );
+      break;
+    case tag_text:
+      text_free( area );
+      break;
+    case tag_range:
+      range_free( area );
+      break;
+    case tag_proxy:
+      proxy_free( area );
+      break;
+    default:
+      object_free( area );
   }
 
 }
@@ -4800,7 +4796,7 @@ function clear( c : Cell ){
   }
 
   // Last reference reached, need to clear the area now
-  clear_unshared_area( area, typ );
+  clear_unshared_area( area );
 
 }
 
@@ -4830,7 +4826,7 @@ function clear_value( c : Cell ){
   }
 
   // Last reference reached, need to free the area
-  clear_unshared_area( area, typ );
+  clear_unshared_area( area);
 
 }
 
@@ -4850,10 +4846,10 @@ function clear_value( c : Cell ){
  *  definitions.
  *
  *  As a result, there are four arrays for each symbol:
- *    - the tag cell,   a 28 bits address
+ *    - the tag cell,   a 29 bits address
  *    - the string,     a Text in C++, a string in TypeScript
  *    - the primitive,  a void (fn)( void ) in C++, a function in TypeScript
- *    - the definition, a 28 bits address of the first cell of the definition
+ *    - the definition, a 29 bits address of the first cell of the definition
  *
  *  This makes a total of 4 x 32 bits words per symbol if compiled for 32 bits
  *  and 2 x 32 bits + 2 x 64 bits words per symbol if compiled for 64 bits. ie
@@ -4918,8 +4914,8 @@ let all_primitives_stack = 0;
 function init_symbols() : Index {
 // Initialize the global arrays of all symbols
 
-  // See tables below, from "void" to "stack", 21 symbols
-  all_symbol_cells_length = 21;
+  // See tables below, from "void" to ...
+  all_symbol_cells_length = 17;
 
   // ToDo: test with a smaller value
   all_symbol_cells_capacity = INOX_SYMBOL_TABLE_SIZE;
@@ -4945,27 +4941,24 @@ function init_symbols() : Index {
   /*ts{*/
     // ToDo: I should use a stack for that
     all_symbol_texts = [
-      "void",       // 0 - the 16 first symbols must match the type ids
+      "void",       // 0 - the 8 first symbols must match the type ids
       "boolean",    // 1
       "integer",    // 2
       "float",      // 3
       "tag",        // 4
       "verb",       // 5
       "reference",  // 6
-      "proxy",      // 7
-      "text",       // 8
-      "flow",       // 9
+      "invalid",    // 7 - room for future types
+      "_dynsz",     // 8 - dynamic area allocator related
+      "_dynxt",     // 9 - dynamic area allocator related
       "list",       // 10
-      "invalid",    // 11 - room for future types
-      "invalid2",   // 12
-      "invalid3",   // 13
-      "invalid4",   // 14
-      "invalid5",   // 15
-      "_dynsz",     // 16 - dynamic area allocator related
-      "_dynrc",     // 17 - dynamic area allocator related
-      "_dynxt",     // 18 - dynamic area allocator related
-      "true",       // 19 - misc
-      "stack",      // 20
+      "text",       // 11
+      "stack",      // 12
+      "proxy",      // 13
+      "flow",       // 14
+      "range",      // 15
+      "box"         // 16
+
     ];
     // ToDo: I should use a stack for that too
     all_primitives  = [];
@@ -4989,20 +4982,16 @@ function init_symbols() : Index {
     all_symbol_texts[  4 ] = "tag";
     all_symbol_texts[  5 ] = "verb";
     all_symbol_texts[  6 ] = "reference";
-    all_symbol_texts[  7 ] = "proxy";
-    all_symbol_texts[  8 ] = "text";
-    all_symbol_texts[  9 ] = "flow";
+    all_symbol_texts[  7 ] = "invalid";
+    all_symbol_texts[  8 ] = "_dynsz";
+    all_symbol_texts[  9 ] = "_dynxt";
     all_symbol_texts[ 10 ] = "list";
-    all_symbol_texts[ 11 ] = "invalid";
-    all_symbol_texts[ 12 ] = "invalid2";
-    all_symbol_texts[ 13 ] = "invalid3";
-    all_symbol_texts[ 14 ] = "invalid4";
-    all_symbol_texts[ 15 ] = "invalid5";
-    all_symbol_texts[ 16 ] = "_dynsz";
-    all_symbol_texts[ 17 ] = "_dynrc";
-    all_symbol_texts[ 18 ] = "_dynxt";
-    all_symbol_texts[ 19 ] = "true";
-    all_symbol_texts[ 20 ] = "stack";
+    all_symbol_texts[ 11 ] = "text";
+    all_symbol_texts[ 12 ] = "stack";
+    all_symbol_texts[ 13 ] = "proxy";
+    all_symbol_texts[ 14 ] = "flow";
+    all_symbol_texts[ 15 ] = "range";
+    all_symbol_texts[ 16 ] = "box";
     all_primitives = (Primitive*) calloc(
       all_primitives_capacity,
       sizeof( Primitive )
@@ -5016,6 +5005,7 @@ function init_symbols() : Index {
   // tag_list = tag( "list" );
   // Can't use tag() yet, because of LeanString. Hence it is hardcoded
   de&&mand_eq( tag_list, 10 );
+  de&&mand( teq( all_symbol_texts[ tag_list ], "list" ) );
   return 1;
 }
 
@@ -5090,20 +5080,6 @@ function upgrade_symbols(){
 let init_symbol_done = init_symbols();
 
 
-const tag_void      = tag( "void" );
-const tag_boolean   = tag( "boolean" );
-const tag_integer   = tag( "integer" );
-const tag_tag       = tag( "tag" );
-const tag_verb      = tag( "verb" );
-const tag_float     = tag( "float" );
-const tag_reference = tag( "reference" );
-const tag_proxy     = tag( "proxy" );
-const tag_text      = tag( "text" );
-const tag_flow      = tag( "flow" );
-const tag_invalid   = tag( "invalid" );
-const tag_stack     = tag( "stack" );
-
-
 function tag_to_text( t : Tag ) : Text {
 // Return the string value of a tag
   de&&mand( tag_is_valid( t ) );
@@ -5152,7 +5128,7 @@ function register_symbol( name : TxtC ) : Index {
   if( index != 0 || teq( name, "void" ) ){
     return index;
   }
-
+  
   // Allocate a bigger array if needed, twice the size
   if( all_symbol_cells_length == all_symbol_cells_capacity ){
 
@@ -5326,15 +5302,16 @@ let init_area_allocator_done = init_area_allocator();
  */
 
 function stack_allocate( len : Length ) : Cell {
-// Allocate a stack of length l
-  // First cell holds the length of the stack and it's class name
-  const area = allocate_area( ( len + 1 ) * size_of_cell );
+// Allocate a stack of length len
+  let area;
   // If stack is extensible, ie has an initial length of 0
-  if( len == 0 ){
+  if( len <= 0 ){
+    area = allocate_area( tag_stack, ( 1 * size_of_cell ) );
     // Then first cell is a reference to some other stack that may change
-    set( area, type_reference, tag_stack, stack_allocate( len ) ); // one cell
+    set( area, type_reference, tag_stack, stack_allocate( 1 ) );
   // If stack isn't extensible, then first cell is the length of the stack
   }else{
+    area = allocate_area( tag_stack, ( ( len + 1 ) * size_of_cell ) );
     set( area, type_integer, tag_stack, 0 );
     de&&mand_eq( stack_length( area ), 0 );
   }
@@ -5346,7 +5323,7 @@ function stack_allocate( len : Length ) : Cell {
 
 function stack_preallocate( len : Length ) : Cell {
 // Allocate an extensible stack with an initial capacity
-  const a = allocate_area( 1 * size_of_cell );
+  const a = allocate_area( tag_stack, 1 * size_of_cell );
   set( a, type_reference, tag_stack, stack_allocate( len ) );
   de&&mand_eq( stack_length( a ), 0 );
   return a;
@@ -5828,7 +5805,7 @@ function tag( tag : TxtC ) : Tag {
 
 function tag_exists( n : TxtC ) : boolean {
 // Return true if the tag singleton cell with the given name exists
-  return tag_is_valid( symbol_lookup( n ) );
+  return symbol_lookup( n ) != 0;
 }
 
 
@@ -5858,8 +5835,7 @@ function set_verb_cell( c : Cell, n : Tag ){
 }
 
 
-/**/ const   the_void_cell = 0; // tag_singleton_cell_by_name( "void" );
-//c/ #define the_void_cell   0
+const the_void_cell = 0;
 
 
 /* -----------------------------------------------------------------------
@@ -5896,7 +5872,7 @@ function set_float_cell( c : Cell, v : Float ){
   //a/ set( c, type_float, tag_float, 0 );
   //a/ mem32f[ ( c << 1 ) ] = v;
   //c/ set( c, type_float, tag_float, 0 );
-  //c/ *( ( Float * ) ( c << 4 ) ) = v;
+  //c/ *( ( Float * ) ( c << 3 ) ) = v;
 }
 
 
@@ -5940,7 +5916,7 @@ function set_text_cell( c : Cell, txt : ConstText ){
   if( tlen( txt ) == 0 ){
     alloc_de&&mand( area_is_busy( the_empty_lean ) );
     // ToDo: precompute info_text_text and use init_cell()
-    set( c, type_text, tag_text, the_empty_lean );
+    set( c, type_reference, tag_text, the_empty_lean );
     // copy_cell( the_empty_text_cell, c );
     return;
   }
@@ -5949,7 +5925,7 @@ function set_text_cell( c : Cell, txt : ConstText ){
     Cell str = to_cell( txt.c_str() );
     lean_lock( str );
   }*/
-  set( c, type_text, tag_text, str );
+  set( c, type_reference, tag_text, str );
   de&&mand( cell_looks_safe( c ) );
 
   // ToDo: handle utf-8
@@ -5992,12 +5968,11 @@ function text_free( oid : Area ){
 function init_the_empty_text_cell() : Index {
   the_empty_text_cell = allocate_cell();
   // ToDo: precompute the_empty_lean to avoid a test in lean_new_empty()
-  const empty_lean_string = lean_new_empty();
   set(
     the_empty_text_cell,
-    type_text,
+    type_reference,
     tag( "the-empty-text" ),
-    empty_lean_string
+    the_empty_lean
   );
   // It's only now that testing the area allocator is possible.
   area_test_suite();
@@ -6200,7 +6175,7 @@ function object_free( area : Area ){
   // etc. This would be a good reason to implement a new version
   // of the LinkOS kernel, l9.
   // Note: there is plenty of room to add flags to references because
-  // the reference itself is a 28 bits address. The 4 bits left
+  // the reference itself is a 29 bits address. The 3 bits left
   // could be used for flags.
   // This could be used to increase the number of types with a
   // distinction between "by value" and "by reference" types.
@@ -6391,14 +6366,14 @@ function object_free( area : Area ){
 //c/ static Tag tag_c_string = tag( "c_string" );
 
 function make_proxy( object : any ) : Index {
-  // In C++, the object is a char* that points to a dynamically allocated area
+  // In C++, the object points to a dynamically allocated area
   /*c{
     int area = to_cell( object );
     area_lock( area );
   }*/
   // In TypeScript there is map between the id and the native object
   /*ts{*/
-    const area = allocate_area( 0 );
+    const area = allocate_area( tag_proxy, 0 );
     all_proxied_objects_by_id.set( area, object );
   /*}*/
   return area;
@@ -6409,7 +6384,7 @@ function set_proxy_cell( c : Cell, area : Area ){
   alloc_de&&mand( area_is_busy( area ) );
   set(
     c,
-    type_proxy,
+    type_reference,
     /**/ tag( proxied_object_by_id( area ).constructor.name ),
     //c/ tag_c_string,
     area
@@ -6907,77 +6882,77 @@ function is_primitive_verb( id : Index ) : Index {
 
 
 /*
- *  list-cons - make a new list, with TOS as head and NOS as tail
+ *  list.cons - make a new list, with TOS as head and NOS as tail
  */
 
 
 /*
- *  list-car - get the head of a list
+ *  list.car - get the head of a list
  */
 
 
 /*
- *  list-head -
+ *  list.head -
  */
 
 
 /*
- *  list-tail -
+ *  list.tail -
  */
 
 
 /*
- *  list-cdr -
+ *  list.cdr -
  */
 
 
 /*
- *  list-set-car -
+ *  list.set-car -
  */
 
 
 /*
- *  list-set-cdr -
+ *  list.set-cdr -
  */
 
 
 /*
- *  list-length - number of elements in a list
+ *  list.length - number of elements in a list
  */
 
 
 /*
- *  list-append - append two lists
+ *  list.append - append two lists
  */
 
 
 /*
- *  list-reverse - reverse a list
+ *  list.reverse - reverse a list
  */
 
 
 /*
- *  list-last -
+ *  list.last -
  */
 
 
 /*
- *  list-nth -
+ *  list.nth -
  */
 
 
 /*
- *  list-member? -
+ *  list.member? -
  */
 
 
 /*
- *  list-copy -
+ *  list.copy -
  */
 
 
 /*
- *  list-equal? - true if two lists have the same elements in the same order
+ *  list.= - true if two lists have the same elements in the same order
  */
 
 
@@ -6991,45 +6966,11 @@ function is_primitive_verb( id : Index ) : Index {
 // ToDo: get rid of type_tag and use type_verb instead
 // ToDo: add a type for a reference to a cell, named pointer
 // ToDo: change pointer (to object) back into reference
-// As a result there would be only two types of types: verb & literals
-
-
-/**/ const   is_reference_type_array = [
-//c/ boolean is_reference_type_array[ 16 ] = {
-false, false, false, false,
-false, false, false, false,
-false, false, false, false,
-false, false, false, false
-/**/ ];
-//c/ };
-
-function check_types() : Index {
-  de&&mand_eq( type_void,      0x0 );
-  de&&mand_eq( type_boolean,   0x1 );
-  de&&mand_eq( type_integer,   0x2 );
-  de&&mand_eq( type_float,     0x3 );
-  de&&mand_eq( type_tag,       0x4 );
-  de&&mand_eq( type_verb,      0x5 );
-  de&&mand_eq( type_reference, 0x6 );
-  is_reference_type_array[     0x6 ] = true;
-  de&&mand_eq( type_proxy,     0x7 );
-  is_reference_type_array[     0x7 ] = true;
-  de&&mand_eq( type_text,      0x8 );
-  is_reference_type_array[     0x8 ] = true;
-  de&&mand_eq( type_flow,      0x9 );
-  is_reference_type_array[     0x9 ] = true;
-  de&&mand_eq( type_list,      0xA );
-  is_reference_type_array[     0xA ] = true;
-  de&&mand_eq( type_invalid,   0xC );
-  return 1;
-}
-
-const check_types_done = check_types();
+// As a result there would be only two types of types: verbs & literals
 
 
 function is_a_reference_type( t : Type ) : boolean {
-  // ToDo: faster t >= type_reference?
-  return is_reference_type_array[ t ];
+  return t == type_reference;
 }
 
 
@@ -7125,8 +7066,7 @@ function mand_integer( c : Cell ) : boolean {
 
 
 function mand_boolean( c : Cell ) : boolean {
-  return mand( type_of( c ) <= type_reference );
-  // return mand_cell_type( c, type_boolean );
+  return mand_cell_type( c, type_boolean );
 }
 
 
@@ -7171,37 +7111,30 @@ function mand_void_cell( c : Cell ) : boolean {
 
 function mand_boolean_cell( c : Cell ) : boolean {
 // Assert that the type of a cell is compatible with the boolean type
-  return mand( type_of( c ) <= type_reference );
-  // return mand_cell_type( c, type_boolean );
+  return mand_cell_type( c, type_boolean );
 }
 
 
 function mand_tag_cell( cell  : Cell ) : boolean {
-// Assert that the type of a cell is the tag type.
+// Assert that the type of a cell is the tag type
   return mand_cell_type( cell, type_tag );
 }
 
 
 function mand_reference_cell( c : Cell ) : boolean {
-// Assert that the type of a cell is the integer type.
+// Assert that the type of a cell is the reference type
   return mand_cell_type( c, type_reference );
 }
 
-
-function mand_proxy_cell( c : Cell ) : boolean {
-// Assert that the type of a cell is the integer type.
-  return mand_cell_type( c, type_proxy );
-}
-
-
 function mand_text_cell( cell : Cell ) : boolean {
-// Assert that the type of a cell is the text type.
-  return mand_cell_type( cell, type_text );
+// Assert that the type of a cell is the text type
+  return mand_cell_type( cell, type_reference )
+  && area_tag( value_of( cell ) ) == tag_text;
 }
 
 
 function mand_verb_cell( c : Cell ) : boolean {
-// Assert that the type of a cell is the integer type.
+// Assert that the type of a cell is the integer type
   return mand_cell_type( c, type_verb );
 }
 
@@ -7914,6 +7847,10 @@ function build_targets(){
     replace(  /^const +INOX_([A-Z0-9_]+) += +(.+);(.*)$/,
       "#define INOX_$1 $2$3" );
 
+    // Turn numerical constants into #define
+    replace( /^(\s*)const +([a-zA-Z0-9_]+) += +([0-9]+);$/,
+    "$1#define $2 $3" );
+
     // Turn "let auto_" into C++ local automatic variables
     // This takes advantage of C++ type inference
     replace( /^(\s+) let +auto_/, "$1 auto auto_" );
@@ -8076,6 +8013,9 @@ function build_targets(){
       md_source += "\n| " + name + " | " + brief + " |";
     }
   }
+
+  // Add a final new line
+  md_source += "\n";
 
   // Done, write the Markdown source code
   require( "fs" ).writeFileSync( "builds/inox.md", md_source, "utf8" );
@@ -8382,41 +8322,21 @@ primitive( "a-void?", primitive_is_a_void );
 
 
 /*
- *  a-tag? - true if TOS is a tag
- */
-
-function is_a_tag_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_tag;
-}
-
-const tag_is_a_tag = tag( "a-tag?" );
-
-function primitive_is_a_tag(){
-  const it_is = is_a_tag_cell( TOS );
-  if( !it_is ){
-    clear( TOS );
-  }
-  set( TOS, type_boolean, tag_is_a_tag, it_is ? 1 : 0 );
-}
-primitive( "a-tag?", primitive_is_a_tag );
-
-
-/*
  *  a-boolean? - true if TOS was a boolean
  */
 
 function is_a_boolean_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_boolean;
+ return type_of( c ) == type_boolean;
 }
 
 const tag_is_a_boolean = tag( "a-boolean?" );
 
 function primitive_is_a_boolean(){
-  const it_is = is_a_boolean_cell( TOS );
-  if( !it_is ){
-    clear( TOS );
-  }
-  set( TOS, type_boolean, tag_is_a_boolean, it_is ? 1 : 0 );
+ const auto_it_is = is_a_boolean_cell( TOS );
+ if( !auto_it_is ){
+   clear( TOS );
+ }
+ set( TOS, type_boolean, tag_is_a_boolean, auto_it_is ? 1 : 0 );
 }
 primitive( "a-boolean?", primitive_is_a_boolean );
 
@@ -8438,11 +8358,67 @@ primitive( "an-integer?", primitive_is_an_integer );
 
 
 /*
+ *  is-a-float? - check if a value is a float
+ */
+
+const tag_is_a_float = tag( "is-a-float?" );
+
+function primitive_is_a_float(){
+  const tos = TOS;
+  const it_is = is_a_float_cell( tos );
+  clear( tos );
+  set( tos, type_boolean, tag_is_a_float, it_is ? 1 : 0 );
+}
+primitive( "is-a-float?", primitive_is_a_float );
+
+
+/*
+ *  a-tag? - true if TOS is a tag
+ */
+
+function is_a_tag_cell( c : Cell ) : boolean {
+  return type_of( c ) == type_tag;
+}
+
+const tag_is_a_tag = tag( "a-tag?" );
+
+function primitive_is_a_tag(){
+  const it_is = is_a_tag_cell( TOS );
+  if( !it_is ){
+    clear( TOS );
+  }
+  set( TOS, type_boolean, tag_is_a_tag, it_is ? 1 : 0 );
+}
+primitive( "a-tag?", primitive_is_a_tag );
+
+
+/*
+ *  a-verb? - true if TOS was a verb
+ */
+
+const tag_is_a_verb = tag( "a-verb?" );
+
+function is_a_verb_cell( c : Cell ) : boolean {
+  return type_of( c ) == type_verb;
+}
+
+function primitive_is_a_verb(){
+  const it_is = is_a_verb_cell( TOS );
+  if( !it_is ){
+    clear( TOS );
+  }
+  set( TOS, type_boolean, tag_is_a_verb, it_is ? 1 : 0 );
+}
+primitive( "a-verb?", primitive_is_a_verb );
+
+
+/*
  *  a-text? - true if TOS was a text
  */
 
 function is_a_text_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_text;
+  return type_of( c ) == type_reference
+  && area_tag( value_of( c ) ) == tag_text;
 }
 
 const tag_is_a_text = tag( "a-text?" );
@@ -8474,31 +8450,11 @@ primitive( "a-reference?", primitive_is_a_reference );
 
 
 /*
- *  a-verb? - true if TOS was a verb
- */
-
-const tag_is_a_verb = tag( "a-verb?" );
-
-function is_a_verb_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_verb;
-}
-
-function primitive_is_a_verb(){
-  const it_is = is_a_verb_cell( TOS );
-  if( !it_is ){
-    clear( TOS );
-  }
-  set( TOS, type_boolean, tag_is_a_verb, it_is ? 1 : 0 );
-}
-primitive( "a-verb?", primitive_is_a_verb );
-
-
-/*
  *  a-proxy? - true if TOS was a reference to proxied object
  */
 
 function is_a_proxy_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_proxy;
+  return type_of( c ) == type_reference && name_of( c ) == tag_proxy;
 }
 
 const tag_is_a_proxy = tag( "a-proxy?" );
@@ -8516,7 +8472,8 @@ primitive( "a-proxy?", primitive_is_a_proxy );
  */
 
 function is_a_flow_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_flow;
+  return type_of( c ) == type_reference
+  && area_tag( value_of( c ) ) == tag_flow;
 }
 
 const tag_is_a_flow = tag( "a-flow?" );
@@ -8530,11 +8487,12 @@ primitive( "a-flow?", primitive_is_a_flow );
 
 
 /*
- *  a-list? -
+ *  a-list? - true if TOS was a list
  */
 
 function is_a_list_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_list;
+  return type_of( c ) == type_reference
+  && area_tag( value_of( c ) ) == tag_list;
 }
 
 const tag_is_a_list = tag( "a-list?" );
@@ -8545,6 +8503,45 @@ function primitive_is_a_list(){
   set( TOS, type_boolean, tag_is_a_list, it_is ? 1 : 0 );
 }
 primitive( "a-list?", primitive_is_a_list );
+
+
+
+/*
+ * a-range? - true if TOS was a range
+ */
+
+const tag_is_a_range = tag( "a-range?" );
+
+function is_a_range_cell( c : Cell ) : boolean {
+  return type_of( c ) == type_reference
+  && area_tag( value_of( c ) ) == tag_range;
+}
+
+function primitive_is_a_range(){
+  const it_is = is_a_range_cell( TOS );
+  clear( TOS );
+  set( TOS, type_boolean, tag_is_a_range, it_is ? 1 : 0 );
+}
+primitive( "a-range?", primitive_is_a_range );
+
+
+/*
+ *  a-box? - true if TOS was a box
+ */
+
+const tag_is_a_box = tag( "a-box?" );
+
+function is_a_box_cell( c : Cell ) : boolean {
+  return type_of( c ) == type_reference
+  && area_tag( value_of( c ) ) == tag_box;
+}
+
+function primitive_is_a_box(){
+  const it_is = is_a_box_cell( TOS );
+  clear( TOS );
+  set( TOS, type_boolean, tag_is_a_box, it_is ? 1 : 0 );
+}
+primitive( "a-box?", primitive_is_a_box );
 
 
 /* -----------------------------------------------------------------------------
@@ -8928,7 +8925,7 @@ primitive( "control-dump", primitive_control_dump );
 
 
 /*
- *  text-quote - turn a text into a valid text literal
+ *  text.quote - turn a text into a valid text literal
  */
 
 function HEX( n : Value ) : Text {
@@ -9000,7 +8997,7 @@ function primitive_text_quote(){
   push_text( text_quote( auto_s ) );
   // ToDo: should name the result?
 }
-primitive( "text-quote", primitive_text_quote );
+primitive( "text.quote", primitive_text_quote );
 
 
 /*c{
@@ -9062,7 +9059,7 @@ primitive( "text-quote", primitive_text_quote );
 
 
 /*
- *  text-to-integer - convert a text literal to an integer
+ *  text.to-integer - convert a text literal to an integer
  */
 
 function checked_text_to_integer( txt : TxtC ) : Value {
@@ -9072,7 +9069,7 @@ function checked_text_to_integer( txt : TxtC ) : Value {
   /*c{
     int result = parseInt( txt, 10 );
     if( parse_int_error ){
-      FATAL( "text-to-integer: invalid integer" );
+      FATAL( "text.to-integer: invalid integer" );
     }
     return result;
   }*/
@@ -9080,7 +9077,7 @@ function checked_text_to_integer( txt : TxtC ) : Value {
 
 
 /*
- *  text-to-integer - convert a text literal into an integer
+ *  text.to-integer - convert a text literal into an integer
  *  ToDo: should not FATAL on error
  */
 
@@ -9090,11 +9087,11 @@ function primitive_text_to_integer(){
   clear( POP() );
   push_integer( checked_text_to_integer( auto_s ) );
 }
-primitive( "text-to-integer", primitive_text_to_integer );
+primitive( "text.to-integer", primitive_text_to_integer );
 
 
 /*
- *  text-hex-to-integer - convert a text literal to an integer
+ *  text.hex-to-integer - convert a text literal to an integer
  *  ToDo: should not FATAL on error
  */
 
@@ -9105,7 +9102,7 @@ function checked_text_hex_to_integer( txt : TxtC ) : Value {
   /*c{
     int result = parseInt( txt, 16 );
     if( parse_int_error ){
-      FATAL( "text-hex-to-integer: invalid integer" );
+      FATAL( "text.hex-to-integer: invalid integer" );
     }
     return result;
   }*/
@@ -9117,11 +9114,11 @@ function primitive_text_hex_to_integer(){
   clear( POP() );
   push_integer( checked_text_hex_to_integer( auto_t ) );
 }
-primitive( "text-hex-to-integer", primitive_text_hex_to_integer );
+primitive( "text.hex-to-integer", primitive_text_hex_to_integer );
 
 
 /*
- *  text-octal-to-integer - convert a text literal to an integer
+ *  text.octal-to-integer - convert a text literal to an integer
  *  ToDo: should not FATAL on error
  */
 
@@ -9132,7 +9129,7 @@ function checked_text_octal_to_integer( txt : TxtC ) : Value {
   /*c{
     int result = parseInt( txt, 8 );
     if( parse_int_error ){
-      FATAL( "text-octal-to-integer: invalid integer" );
+      FATAL( "text.octal-to-integer: invalid integer" );
     }
     return result;
   }*/
@@ -9144,11 +9141,11 @@ function primitive_text_octal_to_integer(){
   clear( POP() );
   push_integer( checked_text_octal_to_integer( auto_t ) );
 }
-primitive( "text-octal-to-integer", primitive_text_octal_to_integer );
+primitive( "text.octal-to-integer", primitive_text_octal_to_integer );
 
 
 /*
- *  text-binary-to-integer - converts a text literal to an integer
+ *  text.binary-to-integer - converts a text literal to an integer
  *  ToDo: should not FATAL on error
  */
 
@@ -9159,7 +9156,7 @@ function checked_text_binary_to_integer( txt : TxtC ) : Value {
   /*c{
     int result = parseInt( txt, 2 );
     if( parse_int_error ){
-      FATAL( "text-binary-to-integer: invalid integer" );
+      FATAL( "text.binary-to-integer: invalid integer" );
     }
     return result;
   }*/
@@ -9171,7 +9168,7 @@ function primitive_text_binary_to_integer(){
   clear( POP() );
   push_integer( checked_text_binary_to_integer( auto_t ) );
 }
-primitive( "text-binary-to-integer", primitive_text_binary_to_integer );
+primitive( "text.binary-to-integer", primitive_text_binary_to_integer );
 
 
 /*
@@ -9240,7 +9237,7 @@ function primitive_integer_to_binary(){
 
 
 /*
- *  text-unquote - turns a JSON text into a text
+ *  text.unquote - turns a JSON text into a text
  */
 
 function text_unquote( txt : TxtC ) : Text {
@@ -9287,7 +9284,7 @@ function primitive_text_unquote(){
   clear( POP() );
   push_text( text_unquote( auto_t ) );
 }
-primitive( "text-unquote", primitive_text_unquote );
+primitive( "text.unquote", primitive_text_unquote );
 
 
 /* -----------------------------------------------------------------------------
@@ -9329,23 +9326,20 @@ function cell_looks_safe( c : Cell ) : boolean {
     }
     return true;
 
-  case type_text :
-    if( !lean_is_valid( referencee ) ){
-      bug( S()
-        + "Invalid lean string for text cell, " + C( referencee )
-        + " at " + C( c )
-      );
-      debugger;
-      lean_is_valid( referencee );
-      return false;
-    }
-    // ToDo: check it is a text
-    return true;
-
-  case type_proxy :
-    return proxy_is_safe( referencee );
-
   case type_reference :
+    if( name_of( referencee ) == tag_text ){
+      if( !lean_is_valid( referencee ) ){
+        bug( S()
+          + "Invalid lean string for text cell, " + C( referencee )
+          + " at " + C( c )
+        );
+        debugger;
+        lean_is_valid( referencee );
+        return false;
+      }
+      // ToDo: check it is a text
+      return true;
+    }
     return reference_is_safe( referencee );
 
   case type_tag :
@@ -9387,55 +9381,75 @@ function cell_to_text( c : Cell ) : Text {
   const i = info_of(  c );
   const t = unpack_type( i );
 
-  // ToDo: optimize with a switch?
-  if( t == type_text ){
-    //c/ return LeanString( v );
-    /**/ return lean_to_native( v );
-  }else if( t == type_range ){
-    const referenced_cell = dereference_if_bounded( c );
-    if( referenced_cell ){
-      // ToDo: check if it is a text
-      de&&mand( cell_looks_safe( referenced_cell ) );
-      // If it is a text, return a portion of it
-      if( type_of( referenced_cell ) == type_text ){
-        /*{
-          return LeanString(
-            referenced_cell,
-            range_get_low(  c ),
-            range_get_high( c )
-          );
-        }*/
-        /*ts{*/
-          return lean_to_native( lean_substr(
-            referenced_cell,
-            range_get_low( c ),
-            range_get_high( c )
-          ) );
-        /*}*/
-      }else{
-        // Otherwise, return the text representation of the cell
-        return cell_to_text( referenced_cell );
+  switch( t ){
+
+    case type_void :
+      return no_text;
+
+    case type_boolean :
+      return v == 0 ? no_text : "false";
+
+    case type_integer :
+      return N( v );
+
+    case type_float :
+      return float_to_text( v );
+
+    case type_tag :
+      return tag_to_text( v );
+
+    case type_verb :
+      return tag_to_text( unpack_name( i ) );
+
+    case type_reference :
+
+      const class_tag = area_tag( v );
+
+      if( class_tag == tag_text ){
+        //c/ return LeanString( v );
+        /**/ return lean_to_native( v );
       }
-    }else{
-      const length = range_length( c );
-      return integer_to_text( length );
-    }
-  }else if( t == type_tag ){
-    return tag_to_text( v );
-  }else if( t == type_boolean ){
-    /**/ return v ? "true" : no_text;
-    //c/ return v ? Text( "true" ) : no_text;
-  }else if( t == type_integer ){
-    return integer_to_text( v );
-  }else if( t == type_verb ){
-    return no_text; // ToDo: return verb name if not anonymous?
-  }else if( t == type_reference ){
-    // ToDo: reenter the inner interpreter to call an as-text method?
-    return no_text;
-  }else if( t == type_void ){
-    return no_text;
-  }else{
-    return no_text;
+
+      if(class_tag == tag_range ){
+
+        if( range_is_free( c ) ){
+          const length = range_length( c );
+          return integer_to_text( length );
+        }
+
+        const referenced_cell = range_get_binding( c );
+
+        // ToDo: check if it is a text
+        de&&mand( cell_looks_safe( referenced_cell ) );
+        // If it is a text, return a portion of it
+        if( type_of( referenced_cell ) == type_reference
+        && area_tag( referenced_cell ) == tag_text
+        ){
+          /*{
+            return LeanString(
+              referenced_cell,
+              range_get_low(  c ),
+              range_get_high( c )
+            );
+          }*/
+          /*ts{*/
+            return lean_to_native( lean_substr(
+              referenced_cell,
+              range_get_low( c ),
+              range_get_high( c )
+            ) );
+          /*}*/
+        }else{
+          // Otherwise, return the text representation of the cell
+          return cell_to_text( referenced_cell );
+        }
+      }
+      // ToDo: reenter the interpreter to call an as-text method?
+      return S() + "Reference(" + N( v ) + ")";
+
+    default :
+      FATAL( "Invalid type " + N( t ) + " at " + C( c ) );
+
   }
 
 }
@@ -9507,7 +9521,7 @@ function dump( c : Cell ) : Text {
   // Never dereference the cell at address 0, at least in C++
   /*c{
     if( c == 0 ){
-      return "Invalid cell address 0";
+      return "<null>";
     }
   }*/
 
@@ -9597,17 +9611,7 @@ function dump( c : Cell ) : Text {
 
     case type_integer :
 
-      if( n == tag_dynamic_ref_count ){
-        // Check integrity of busy dynamic area
-        if( !area_is_safe( header_to_area( c ) ) ){
-          dump_invalid_cell = c;
-          buf += "Invalid busy dynamic area, ";
-        }else{
-          cell_dump_entered = false;
-          return "busy, count: " + N( v );
-        }
-
-      }else if( n == tag_dynamic_next_area ){
+      if( n == tag_dynamic_next_area ){
         // Check integrity of free dynamic area
         if( !area_is_safe( header_to_area( c ) ) ){
           dump_invalid_cell = c;
@@ -9674,58 +9678,54 @@ function dump( c : Cell ) : Text {
     break;
 
     case type_reference :
+
       class_name_tag = name_of( v );
-      buf += tag_to_dump_text( n )
-      + "<" + tag_to_dump_text( class_name_tag ) + C( v ) + ">";
-    break;
 
-    case type_proxy :
-      /**/ const obj = proxied_object_by_id( v );
-      /**/ const proxy_class_name = obj.constructor.name;
-      // ToDo: in C++, the instance of AbstractProxy should give the class name
-      /**/ //c/ TxtC proxy_class_name( "invalid-proxy" );
-      /**/ buf += tag_to_text( n )
-      /**/ + "<proxied-" + proxy_class_name + C( v ) + ">";
-    break;
+      if( class_name_tag = tag_text ){
+        txt = cell_to_text( c );
+        // ToDo: truncate somewhere else
+        if( tlen( txt ) > 31 ){
+          txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
+        }
+        if( n != tag_text ){
+          buf += tag_to_dump_text( n )  + ":";
+        }
+        // ToDo: better escape
+        // ToDo: C++ version
+        /**/ txt = txt
+        /**/ .replace( "\n",  () => "\\n"  )
+        /**/ .replace( "\"",  () => "\\\"" )
+        /**/ .replace( "\t",  () => "\\t"  )
+        /**/ .replace( "\r",  () => "\\r"  )
+        /**/ .replace( "\\",  () => "\\\\" )
+        buf += "\"" + txt + "\"";
+        if( c == the_empty_text_cell ){
+          buf += " ( <SINGLETON> )";
+        }else if( tlen( txt ) == 0 && v != 0 ){
+          buf += " ( <INVALID_EMPTY_TEXT> )";
+        }
 
-    case type_text :
-      txt = cell_to_text( c );
-      // ToDo: truncate somewhere else
-      if( tlen( txt ) > 31 ){
-        txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
-      }
-      if( n != tag_text ){
-        buf += tag_to_dump_text( n )  + ":";
-      }
-      // ToDo: better escape
-      // ToDo: C++ version
-      /**/ txt = txt
-      /**/ .replace( "\n",  () => "\\n"  )
-      /**/ .replace( "\"",  () => "\\\"" )
-      /**/ .replace( "\t",  () => "\\t"  )
-      /**/ .replace( "\r",  () => "\\r"  )
-      /**/ .replace( "\\",  () => "\\\\" )
-      buf += "\"" + txt + "\"";
-      if( c == the_empty_text_cell ){
-        buf += " ( <SINGLETON> )";
-      }else if( tlen( txt ) == 0 && v != 0 ){
-        buf += " ( <INVALID_EMPTY_TEXT> )";
+      }else if( class_name_tag = tag_proxy ){
+        /**/ const obj = proxied_object_by_id( v );
+        /**/ const proxy_class_name = obj.constructor.name;
+        // ToDo: in C++, the instance of AbstractProxy should give the class name
+        /**/ //c/ TxtC proxy_class_name( "invalid-proxy" );
+        /**/ buf += tag_to_text( n )
+        /**/ + "<proxied-" + proxy_class_name + C( v ) + ">";
+
+      }else if( class_name_tag = tag_flow ){
+        // ToDo: add name
+        buf += tag_to_dump_text( n ) + ":<flow:" + N( v ) + ">";
+
+      }else{
+        buf += tag_to_dump_text( n )
+        + "<" + tag_to_dump_text( class_name_tag ) + C( v ) + ">";
       }
     break;
 
     case type_verb :
-      // ToDo: add name
-      buf += tag_to_dump_text( n );
-      if( v != 0 ){
-        buf += ":<verb:" + N( v ) + ">";
-      }else{
-        buf += " ( verb )";
-      }
-    break;
-
-    case type_flow :
-      // ToDo: add name
-      buf += tag_to_dump_text( n ) + ":<flow:" + N( v ) + ">";
+      buf += "#" + tag_to_dump_text( n ) + "#";
+      buf += " ( verb:" + N( v ) + " )";
     break;
 
     default :
@@ -9813,49 +9813,45 @@ function short_dump( c : Cell ) : Text {
     break;
 
     case type_reference :
+
       // ToDo: add class
       class_name_tag = name_of( v );
-      buf += tag_to_dump_text( n )
-      + "<" + tag_to_dump_text( class_name_tag ) + ">";
-    break;
 
-    case type_proxy :
-      /**/ const obj = proxied_object_by_id( v );
-      /**/ const proxy_class_name = obj.constructor.name;
-      /**/ //c/ Text proxy_class_name( "c_string" );
-      /**/ buf += tag_to_dump_text( n )
-      /**/ + "<proxied-" + proxy_class_name + C( v ) + ">";
-    break;
+      if( class_name_tag = tag_text ){
+        // ToDo: truncate somewhere else
+        if( tlen( txt ) > 31 ){
+          txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
+        }
+        if( n != tag_text ){
+          buf += tag_to_dump_text( n )  + ":";
+        }
+        // ToDo: better escape
+        /**/ txt = txt
+        /**/ .replace( "\n",  () => "\\n"  )
+        /**/ .replace( "\"",  () => "\\\"" )
+        /**/ .replace( "\t",  () => "\\t"  )
+        /**/ .replace( "\r",  () => "\\r"  )
+        /**/ .replace( "\\",  () => "\\\\" )
+        buf += "\"" + txt + "\"";
 
-    case type_text :
-      txt = cell_to_text( c );
-      // ToDo: truncate somewhere else
-      if( tlen( txt ) > 31 ){
-        txt = tcut( txt, 31 ) + "..." + N( tlen( txt ) );
+      }else if( class_name_tag = tag_proxy ){
+        /**/ const obj = proxied_object_by_id( v );
+        /**/ const proxy_class_name = obj.constructor.name;
+        /**/ //c/ Text proxy_class_name( "c_string" );
+        /**/ buf += tag_to_dump_text( n )
+        /**/ + "<proxied-" + proxy_class_name + C( v ) + ">";
+
+      }else if( class_name_tag = tag_flow ){      // ToDo: add name
+        buf += tag_to_dump_text( n ) + ":<flow:" + N( v ) + ">";
+
+      }else{
+        buf += tag_to_dump_text( n )
+        + "<" + tag_to_dump_text( class_name_tag ) + ">";
       }
-      if( n != tag_text ){
-        buf += tag_to_dump_text( n )  + ":";
-      }
-      // ToDo: better escape
-      /**/ txt = txt
-      /**/ .replace( "\n",  () => "\\n"  )
-      /**/ .replace( "\"",  () => "\\\"" )
-      /**/ .replace( "\t",  () => "\\t"  )
-      /**/ .replace( "\r",  () => "\\r"  )
-      /**/ .replace( "\\",  () => "\\\\" )
-      buf += "\"" + txt + "\"";
     break;
 
     case type_verb :
       buf += "#" + tag_to_dump_text( n ) + "#";
-      if( v != 0 ){
-        buf += ":<verb:" + C( v ) + ">";
-      }
-    break;
-
-    case type_flow :
-      // ToDo: add name
-      buf += tag_to_dump_text( n ) + ":<flow:" + N( v ) + ">";
     break;
 
     default :
@@ -10254,9 +10250,7 @@ const tag_info  = tag( "info"   );
 const pack_void      = pack( type_void,       tag_void      );
 const pack_tag       = pack( type_tag,        tag_tag       );
 const pack_integer   = pack( type_integer,    tag_integer   );
-const pack_text      = pack( type_text,       tag_text      );
 const pack_reference = pack( type_reference,  tag_reference );
-const pack_proxy     = pack( type_proxy,      tag_proxy     );
 const pack_verb      = pack( type_verb,       tag_verb      );
 
 /*
@@ -10403,19 +10397,9 @@ function type_name_to_type( n : ConstText ) : Type {
 function cell_class_tag( c : Cell ) : Tag {
 // Get the most specific type of a cell's value
   const t = type_of( c );
-  // For references, it's the name stored in the first cell of the object
+  // For references, it's the name stored in the first cell of the object header
   if( t == type_reference ){
-    return name_of( value_of( c ) );
-  }
-  // For proxied object, it's the class name of the proxied object
-  if( t == type_proxy ){
-    //c/ return tag_c_string;
-    /**/ const proxied_obj = proxied_object_by_id( value_of( c ) );
-    /**/ const js_type = typeof proxied_obj;
-    /**/ if( typeof proxied_obj == "object" ){
-    /**/   return tag( proxied_obj.constructor.name );
-    /**/ }
-    /**/ return tag( js_type );
+    return area_tag( value_of( c ) );
   }
   return type_to_tag( type_of( c ) );
 }
@@ -10974,10 +10958,17 @@ operator_primitive( "+", primitive_add );
 
 
 /*
- *  =? - value equality
+ *  integer.+ - add two integers
  */
 
-const tag_is_equal = tag( "=?" );
+primitive( "integer.+", primitive_add );
+
+
+/*
+ *  = - value equality binary operator
+ */
+
+const tag_is_equal = tag( "=" );
 
 function primitive_is_equal(){
 
@@ -11004,7 +10995,7 @@ function primitive_is_equal(){
       return;
     }
     // For text, compare content
-    if( type1 == type_text  ){
+    if( type1 == type_reference && area_tag( value1 ) == tag_text ){
       /**/ const text1 = cell_proxied_object( p1 );
       /**/ const text2 = cell_proxied_object( p2 );
       //c/ const char* text1 = (const char*) value_of( value_of( p1 ) );
@@ -11047,11 +11038,18 @@ function primitive_is_equal(){
   set( p1, type_boolean, tag_is_equal, 0 );
 
 }
-operator_primitive( "=?", primitive_is_equal );
+operator_primitive( "=", primitive_is_equal );
 
 
 /*
- *  <>? - value inequality, the boolean opposite of =? value equality.
+ *  equal? - like = but it is not an operator, value equality
+ */
+
+primitive( "equal?", primitive_is_equal );
+
+
+/*
+ *  <> - value inequality, the opposite of = value equality
  */
 
 function primitive_is_not_equal(){
@@ -11060,9 +11058,15 @@ function primitive_is_not_equal(){
 }
 operator_primitive( "<>", primitive_is_not_equal );
 
+/*
+ *  inequal? - like <> but it is not an operator
+ */
+
+primitive( "inequal?", primitive_is_not_equal );
+
 
 /*
- *  ==? - object identicallity, ie shallow equality, not deep equality.
+ *  same? - true if two objects or two values are the same one
  */
 
 function primitive_is_identical(){
@@ -11071,32 +11075,47 @@ function primitive_is_identical(){
   const p1     = TOS;
   const value1 = value_of( p1 );
   const value2 = value_of( p2 );
+
+  if( value1 != value2 ){
+    clear( p2 );
+    clear( p1 );
+    set_value( p1, 0 );
+    return;
+  }
+
   const type1  = type_of(  p1 );
   const type2  = type_of(  p2 );
 
   clear( p2 );
   clear( p1 );
 
-  // Simple case if when both type and value are the same
-  if( value1 == value2 && type1 == type2 ){
+  if( type1 == type2 ){
     set_value( p1, 1 );
   }else{
     set_value( p1, 0 );
   }
 
 }
-operator_primitive( "==?", primitive_is_identical );
+operator_primitive( "same?", primitive_is_identical );
 
 
 /*
- *  not==? - object inquality, boolean opposite of ==? shallow equality.
+ *  identical? - like same? but it is not an operator
+ */
+
+primitive( "identical?", primitive_is_identical );
+
+
+
+/*
+ *  different? - true unless two objects or two values are the same one
  */
 
 function primitive_is_not_identical(){
   primitive_is_identical();
   set_value( TOS, value_of( TOS ) == 0 ? 1 : 0 );
 }
-operator_primitive( "not==?", primitive_is_not_identical );
+operator_primitive( "different?", primitive_is_not_identical );
 
 
 /*
@@ -11313,63 +11332,16 @@ function unary_math_operator( n : ConstText, fun : Function ) : void {
 const tag_is_truth = tag( "truth?" );
 
 function primitive_is_truth(){
-
-  const typ = type_of( TOS );
-
-  switch( typ ){
-
-    case type_void:
-      de&&mand_eq( value_of( TOS ), 0 );
-    break;
-
-    case type_boolean:
-      de&&mand( value_of( TOS ) == 0 || value_of( TOS ) == 1 );
-    break;
-
-    case type_integer:
-      if( value_of( TOS ) != 0 ){
-        set_value( TOS, 1 );
-      }else{
-        // not needed: set_value( TOS, 0 );
-      }
-    break;
-
-    case type_reference:
-      if( value_of( TOS ) != 0 ){
-        clear( TOS );
-        set_value(  TOS, 1 );
-      }
-    break;
-
-    case type_proxy:
-      clear( TOS );
-    break;
-
-    case type_text:
-      if( value_of( TOS ) != 0 ){
-        let is_empty;
-        /**/ proxied_object_by_id( value_of( TOS ) ).length == 0;
-        //c/ is_empty = *(char*) value_of( TOS ) == 0;
-        if( is_empty ){
-          clear( TOS );
-          set_value(  TOS, 1 );
-        }else{
-          clear( TOS );
-          set_value(  TOS, 0 );
-        }
-      }
-    break;
-
-    default:
-      bug( "bad type, expecting boolean, integer, reference or text" );
-      debugger;
-      clear( TOS );
-      set_value(  TOS, 0 );
-    break;
-
+  if( value_of( TOS ) == 0 ){
+    set( TOS, type_boolean, tag_is_truth, 0 );
+    return;
   }
-  set_type( TOS, type_boolean );
-  set_tos_name( tag_is_truth );
+  if( type_of( TOS ) == type_reference ){
+    // ToDo: delegate to some method
+    set( TOS, type_boolean, tag_is_truth, 0 );
+    return;
+  }
+  set( TOS, type_boolean, tag_is_truth, 1 );
 }
 primitive( "truth?", primitive_is_truth );
 
@@ -11536,14 +11508,14 @@ binary_boolean_operator(  "<",    ( a, b ) => ( a <   b ) ? 1 : 0 );
 binary_boolean_operator(  ">=",   ( a, b ) => ( a >=  b ) ? 1 : 0 );
 binary_boolean_operator(  "<=",   ( a, b ) => ( a <=  b ) ? 1 : 0 );
 
-unary_boolean_operator(   "=1?",   ( x )    => ( x ==  1 ) ? 1 : 0 );
-unary_boolean_operator(   "=-1?",  ( x )    => ( x == -1 ) ? 1 : 0 );
-unary_boolean_operator(   "=0?",   ( x )    => ( x ==  0 ) ? 1 : 0 );
-unary_boolean_operator(   "<>0?",  ( x )    => ( x !=  0 ) ? 1 : 0 );
-unary_boolean_operator(   "<0?",   ( x )    => ( x  <  0 ) ? 1 : 0 );
-unary_boolean_operator(   "<=0?",  ( x )    => ( x <=  0 ) ? 1 : 0 );
-unary_boolean_operator(   ">0?",   ( x )    => ( x  >  0 ) ? 1 : 0 );
-unary_boolean_operator(   ">=0?",  ( x )    => ( x >=  0 ) ? 1 : 0 );
+unary_boolean_operator(   "=1",   ( x )    => ( x ==  1 ) ? 1 : 0 );
+unary_boolean_operator(   "=-1",  ( x )    => ( x == -1 ) ? 1 : 0 );
+unary_boolean_operator(   "=0",   ( x )    => ( x ==  0 ) ? 1 : 0 );
+unary_boolean_operator(   "<>0",  ( x )    => ( x !=  0 ) ? 1 : 0 );
+unary_boolean_operator(   "<0",   ( x )    => ( x  <  0 ) ? 1 : 0 );
+unary_boolean_operator(   "<=0",  ( x )    => ( x <=  0 ) ? 1 : 0 );
+unary_boolean_operator(   ">0",   ( x )    => ( x  >  0 ) ? 1 : 0 );
+unary_boolean_operator(   ">=0",  ( x )    => ( x >=  0 ) ? 1 : 0 );
 
 /*}*/
 
@@ -11620,14 +11592,14 @@ static void checked_int_is_greater_or_equal_to_0(){
 }
 
 
-operator_primitive(   "=1?",   checked_int_is_equal_to_1 );
-operator_primitive(   "=-1?",  checked_int_is_equal_to_minus_1 );
-operator_primitive(   "=0?",   checked_int_is_equal_to_0 );
-operator_primitive(   "<>0?",  checked_int_is_not_equal_to_0 );
-operator_primitive(   "<0?",   checked_int_is_less_than_0 );
-operator_primitive(   "<=0?",  checked_int_is_less_or_equal_to_0 );
-operator_primitive(   ">0?",   checked_int_is_greater_than_0 );
-operator_primitive(   ">=0?",  checked_int_is_greater_or_equal_to_0 );
+operator_primitive(   "=1",   checked_int_is_equal_to_1 );
+operator_primitive(   "=-1",  checked_int_is_equal_to_minus_1 );
+operator_primitive(   "=0",   checked_int_is_equal_to_0 );
+operator_primitive(   "<>0",  checked_int_is_not_equal_to_0 );
+operator_primitive(   "<0",   checked_int_is_less_than_0 );
+operator_primitive(   "<=0",  checked_int_is_less_or_equal_to_0 );
+operator_primitive(   ">0",   checked_int_is_greater_than_0 );
+operator_primitive(   ">=0",  checked_int_is_greater_or_equal_to_0 );
 
 
 }*/
@@ -11680,20 +11652,6 @@ operator_primitive( "abs",      checked_int_abs      );
  *  Floating point arithmetic, 32 bits
  */
 
-/*
- *  is-a-float? - check if a value is a float
- */
-
-const tag_is_a_float = tag( "is-a-float?" );
-
-function primitive_is_a_float(){
-  const tos = TOS;
-  const it_is = is_a_float_cell( tos );
-  clear( tos );
-  set( tos, type_boolean, tag_is_a_float, it_is ? 1 : 0 );
-}
-primitive( "is-a-float?", primitive_is_a_float );
-
 
 /*
  *  to-float - convert something into a float
@@ -11704,7 +11662,7 @@ function push_float( f : Float ){
   // TypeScript version:
   /**/ mem32f[ c ] = f;
   // C++ version:
-  //c/ *( float* ) ( ( void* ) ( c << 4 ) ) = f;
+  //c/ *( float* ) ( ( void* ) ( c << 3 ) ) = f;
   set_info( c, pack( type_float, tag_float ) );
 }
 
@@ -11723,7 +11681,7 @@ function primitive_to_float(){
 
   if( is_an_integer_cell( tos ) ){
     /**/ const f = mem32f[ tos ];
-    //c/ auto  f = *( float* ) ( ( void* ) ( tos << 4 ) );
+    //c/ auto  f = *( float* ) ( ( void* ) ( tos << 3 ) );
     push_float( f );
     return;
   }
@@ -11752,7 +11710,7 @@ function pop_float() : Float {
   const tos = POP();
   check_de&&mand_cell_type( tos, type_float );
   /**/ const f = mem32f[ tos ];
-  //c/ auto  f = *( float *) ( tos << 4 );
+  //c/ auto  f = *( float *) ( tos << 3 );
   return f;
 }
 
@@ -11771,34 +11729,32 @@ primitive( "float-to-integer", primitive_float_to_integer );
  *  float-to-text - convert a float to a text
  */
 
-function primitive_float_to_text(){
-  const auto_f = pop_float();
-  /**/ const buf = auto_f.toString();
+function float_to_text( f : Float ) : Text {
+
+  /**/ const buf = f.toString();
+
   /*c{
-    // This is a OpenAI generated solution, march 18 2023
-    // ToDo: test it
+    // This is a copilot generated solution, march 23 2023
+    // ToDo: test this
     char buf[32];  // buffer for result
 
     // handle special cases: NaN, infinity, zero
-    if ( isnan(auto_f)) {
+    if ( isnan(f)) {
       memcpy(buf, "nan", 4 );
-    } else if ( isinf(auto_f)) {
-      if (auto_f > 0) {
+    } else if ( isinf(f)) {
+      if (f > 0) {
         memcpy(buf, "inf", 4 );
       } else {
         memcpy(buf, "-inf", 5);
       }
-    } else if (auto_f == 0) {
+    } else if (f == 0) {
       memcpy(buf, "0.0", 4 );
     } else {
       // handle sign
-      if (auto_f < 0) {
+      if (f < 0) {
         buf[0] = '-';
-        auto_f = -auto_f;
-      } else {
-        buf[0] = '\0';
+        f = -f;
       }
-
       // handle integer part
       int intPart = (int)auto_f;
       if (intPart == 0) {
@@ -11836,7 +11792,14 @@ function primitive_float_to_text(){
       }
     }
   }*/
-  push_text( buf );
+
+  return buf;
+}
+
+
+function primitive_float_to_text(){
+  const auto_f = pop_float();
+  push_text( float_to_text( auto_f ) );
 }
 
 
@@ -12089,7 +12052,7 @@ primitive( "float-truncate", primitive_float_truncate );
  */
 
 /*
- *  text-join - text concatenation operator
+ *  text.join - text concatenation operator
  */
 
 function primitive_text_join(){
@@ -12098,18 +12061,18 @@ function primitive_text_join(){
   const auto_t1 = pop_as_text();
   push_text( auto_t1 + auto_t2 );
 }
-primitive( "text-join", primitive_text_join );
+primitive( "text.join", primitive_text_join );
 
 
 /*
- *  & - text concatenation operator, see text-join
+ *  & - text concatenation binary operator, see text.join
  */
 
 operator_primitive( "&", primitive_text_join );
 
 
 /*
- *  text-cut - extract a cut of a text, remove a suffix
+ *  text.cut - extract a cut of a text, remove a suffix
  */
 
 function primitive_text_cut(){
@@ -12117,34 +12080,34 @@ function primitive_text_cut(){
   const auto_t = pop_as_text();
   push_text( tcut( auto_t, n ) );
 }
-primitive( "text-cut", primitive_text_cut );
+primitive( "text.cut", primitive_text_cut );
 
 
 /*
- *  text-length - length of a text
+ *  text.length - length of a text
  */
 
 function primitive_text_length(){
   const auto_t = pop_as_text();
   push_integer( tlen( auto_t ) );
 }
-primitive( "text-length", primitive_text_length );
+primitive( "text.length", primitive_text_length );
 
 
 /*
- *  text-but - remove a prefix from a text, keep the rest
+ *  text.but - remove a prefix from a text, keep the rest
  */
 
-function               primitive_text_but(){
+function primitive_text_but(){
   const n = pop_integer();
   const auto_t = pop_as_text();
   push_text( tbut( auto_t, n ) );
 }
-primitive( "text-but", primitive_text_but );
+primitive( "text.but", primitive_text_but );
 
 
 /*
- *  text-mid - extract a part of the text
+ *  text.mid - extract a part of the text
  */
 
 function primitive_text_mid(){
@@ -12153,33 +12116,33 @@ function primitive_text_mid(){
   const auto_t = pop_as_text();
   push_text( tmid( auto_t, m, n ) );
 }
-primitive( "text-mid", primitive_text_mid );
+primitive( "text.mid", primitive_text_mid );
 
 
 /*
- *  text-low - convert a text to lower case
+ *  text.low - convert a text to lower case
  */
 
 function primitive_text_low(){
   const auto_t = pop_as_text();
   push_text( tlow( auto_t ) );
 }
-primitive( "text-low", primitive_text_low );
+primitive( "text.low", primitive_text_low );
 
 
 /*
- *  text-up - convert a text to upper case
+ *  text.up - convert a text to upper case
  */
 
 function primitive_text_up(){
   const auto_t = pop_as_text();
   push_text( tup( auto_t ) );
 }
-primitive( "text-up", primitive_text_up );
+primitive( "text.up", primitive_text_up );
 
 
 /*
- *  text=? - compare two texts
+ *  text.= - compare two texts
  */
 
 function primitive_text_eq(){
@@ -12187,11 +12150,11 @@ function primitive_text_eq(){
   const auto_t1 = pop_as_text();
   push_boolean( teq( auto_t1, auto_t2 ) );
 }
-primitive( "text=?", primitive_text_eq );
+primitive( "text.=", primitive_text_eq );
 
 
 /*
- *  text<>? - compare two texts
+ *  text.<> - compare two texts
  */
 
 function primitive_text_neq(){
@@ -12199,11 +12162,11 @@ function primitive_text_neq(){
   const auto_t1 = pop_as_text();
   push_boolean( tneq( auto_t1, auto_t2 ) );
 }
-primitive( "text<>?", primitive_text_neq );
+primitive( "text.<>", primitive_text_neq );
 
 
 /*
- *  text-find - find a piece in a text
+ *  text.find - find a piece in a text
  */
 
 function primitive_text_find(){
@@ -12211,11 +12174,11 @@ function primitive_text_find(){
   const auto_t1 = pop_as_text();
   push_integer( tidx( auto_t1, auto_t2 ) );
 }
-primitive( "text-find", primitive_text_find );
+primitive( "text.find", primitive_text_find );
 
 
 /*
- *  text-find-last - find a piece in a text
+ *  text.find-last - find a piece in a text
  */
 
 function primitive_text_find_last(){
@@ -12223,11 +12186,11 @@ function primitive_text_find_last(){
   const auto_t1 = pop_as_text();
   push_integer( tidxr( auto_t1, auto_t2 ) );
 }
-primitive( "text-find-last", primitive_text_find_last );
+primitive( "text.find-last", primitive_text_find_last );
 
 
 /*
- *  text-line - extract a line from a text
+ *  text.line - extract a line from a text at some position
  */
 
 function  primitive_text_line(){
@@ -12235,7 +12198,7 @@ function  primitive_text_line(){
   const auto_t = pop_as_text();
   push_text( extract_line( auto_t, n ) );
 }
-primitive( "text-line", primitive_text_line );
+primitive( "text.line", primitive_text_line );
 
 
 /*
@@ -12243,7 +12206,9 @@ primitive( "text-line", primitive_text_line );
  */
 
 function primitive_as_text(){
-  if( type_of( TOS ) == type_text )return;
+  if( type_of( TOS ) == type_reference
+  && area_tag( value_of( TOS ) ) == tag_text
+  )return;
   push_text( pop_as_text() );
 }
 primitive( "as-text", primitive_as_text );
@@ -12268,7 +12233,7 @@ const tag_empty_text = tag( "empty?" );
 
 function is_empty_text_cell( c : Cell ) : boolean {
   if( value_of( c ) != the_empty_lean )return false;
-  if( type_of(  c ) != type_text      )return false;
+  if( type_of(  c ) != type_reference )return false;
   return true;
 }
 
@@ -12277,14 +12242,16 @@ function is_empty_text_cell( c : Cell ) : boolean {
  *  ""? - unary operator - true if TOS is the empty text
  */
 
+const tag_is_empty_text = tag( "\"\"?" );
+
 function primitive_is_empty_text(){
-  if( type_of( TOS ) != type_text ){
+  if( type_of( TOS ) != type_reference ){
     clear( TOS );
-    set( TOS, type_boolean, tag_empty_text, 0 );
+    set( TOS, type_boolean, tag_is_empty_text, 0 );
   }else{
     const it_is = is_empty_text_cell( TOS );
     clear( TOS );
-    set( TOS, type_boolean, tag_empty_text, it_is ? 1 : 0 );
+    set( TOS, type_boolean, tag_is_empty_text, it_is ? 1 : 0 );
   }
 }
 operator_primitive( "\"\"?", primitive_is_empty_text );
@@ -13075,11 +13042,11 @@ function primitive_set_upper_data(){
 
 
 /*
- *  without-data - remove stack elements until a previous variable, included
+ *  forget-data - remove stack elements until a previous variable, included
  *  ToDo: rename? remove-data? drop-data? pop-data, something else?
  */
 
-function primitive_without_data(){
+function primitive_forget_data(){
   const n = pop_tag();
   while( name_of( TOS ) != n ){
     clear( TOS );
@@ -13092,7 +13059,7 @@ function primitive_without_data(){
   clear( TOS );
   TOS -= ONE;
 }
-primitive( "without-data", primitive_without_data );
+primitive( "forget-data", primitive_forget_data );
 
 
 /* -----------------------------------------------------------------------------
@@ -13104,6 +13071,8 @@ const tag_it = tag( "it" );
 
 /*ts{*/
 
+const tag_map = tag( "map" );
+
 function make_circular_object_from_js( obj : any, met : Map< string, any> ) : Cell {
 
   // The first item is the name of the class.
@@ -13114,7 +13083,7 @@ function make_circular_object_from_js( obj : any, met : Map< string, any> ) : Ce
   const length = keys.length;
 
   // Allocate enough memory to hold all of that
-  const area = allocate_area( length * size_of_cell );
+  const area = allocate_area( tag_map, length * size_of_cell );
 
   // First cell is name:length
   init_cell( area, length, pack( type_integer, class_name ) );
@@ -13213,13 +13182,10 @@ function make_object_from_js( obj : any ) : Cell {
 /*}*/
 
 
-function  object_length( header : Cell ) : Count {
+function  object_length( area : Cell ) : Count {
 // Get the number of cells of the object
   // This does not include the headers used for memory management
-  // The first cell of the object contains the length, whereas the
-  // it's name is the class of the object. That first cell is not
-  // included in the length.
-  const length = value_of( header );
+  const length = area_length( area );
   return length;
 }
 
@@ -13254,8 +13220,8 @@ function                        primitive_make_fixed_object(){
   // ToDo: should there be an upper limit on the length?
   check_de&&mand( length > 0 && length < 100 );
 
-  // Allocate a cell for the class/length and cells for the values
-  const dest_area = allocate_area( max_length * size_of_cell );
+  // Allocate cells for the values
+  const dest_area = allocate_area( class_name, max_length * size_of_cell );
   if( dest_area == 0 ){
     // ToDo: raise an exception?
     set( TOS, type_tag, tag_out_of_memory, 0 );
@@ -13270,12 +13236,10 @@ function                        primitive_make_fixed_object(){
     raw_move_cell( POP(), dest_area + ii * ONE );
   }
 
-  // The first element is the named length
-  de&&mand_eq( value_of( dest_area ), length );
-  de&&mand_eq( name_of(  dest_area ), class_name );
+  de&&mand_eq( area_length( dest_area ), length );
+  de&&mand_eq( area_tag(   dest_area ), class_name );
 
   // Return the named reference to the object
-  // ToDo: should skip the first cell and skip the header as done with areas?
   set( PUSH(), type_reference, class_name, dest_area );
 }
 
@@ -13310,7 +13274,7 @@ function                    primitive_extend_object(){
   };
 
   // Allocate the extended area
-  const area = allocate_area( len * size_of_cell );
+  const area = allocate_area( name_of( obj ), len * size_of_cell );
   if( area == 0 ){
     // ToDo: raise an exception, return 0?
     FATAL( "out-of-memory" );
@@ -13329,7 +13293,7 @@ function                    primitive_extend_object(){
 
 
 /*
- *  object-get - access a data member of an object
+ *  object.get - access a data member of an object
  */
 
 function primitive_object_get(){
@@ -13384,11 +13348,11 @@ function primitive_object_get(){
   copy_cell( ptr, obj );
 
 }
-primitive( "object-get", primitive_object_get );
+primitive( "object.get", primitive_object_get );
 
 
 /*
- *  object-set - change a data member of an object
+ *  object.set! - change a data member of an object
  */
 
 function primitive_object_set(){
@@ -13425,7 +13389,7 @@ function primitive_object_set(){
     }
   }
 
-  // ToDo: optimize this, the target name is alreay ok
+  // ToDo: optimize this, the target name is already ok
   reset( ptr );
   move_cell( POP(), ptr );
 
@@ -13435,7 +13399,7 @@ function primitive_object_set(){
   clear( obj );
 
 }
-primitive( "object-set", primitive_object_set );
+primitive( "object.set!", primitive_object_set );
 
 
 /* ----------------------------------------------------------------------------
@@ -13443,7 +13407,7 @@ primitive( "object-set", primitive_object_set );
  */
 
 /*
- *  stack-push - push a value onto a stack object
+ *  stack.push - push a value onto a stack object
  */
 
 function primitive_stack_push(){
@@ -13456,11 +13420,11 @@ function primitive_stack_push(){
   move_cell( value_cell, target + length * ONE );
   set_value( target, length + 1 );
 }
-primitive( "stack-push", primitive_stack_push );
+primitive( "stack.push", primitive_stack_push );
 
 
 /*
- *  stack-drop - drop the top of a stack object
+ *  stack.drop - drop the top of a stack object
  */
 
 function primitive_stack_drop(){
@@ -13470,17 +13434,17 @@ function primitive_stack_drop(){
   }
   const length = value_of( target );
   if( length == 0 ){
-    FATAL( "stack-pop, empty stack" );
+    FATAL( "stack.pop, empty stack" );
     return;
   }
   move_cell( target + length * ONE, PUSH() );
   set_value( target, length - 1 );
 }
-primitive( "stack-drop", primitive_stack_drop );
+primitive( "stack.drop", primitive_stack_drop );
 
 
 /*
- *  stack-drop-nice - drop the tof of a stack object, unless empty
+ *  stack.drop-nice - drop the tof of a stack object, unless empty
  */
 
 function primitive_stack_drop_nice(){
@@ -13494,11 +13458,11 @@ function primitive_stack_drop_nice(){
   move_cell( target + length * ONE, PUSH() );
   set_value( target, length - 1 );
 }
-primitive( "stack-drop-nice", primitive_stack_drop_nice );
+primitive( "stack.drop-nice", primitive_stack_drop_nice );
 
 
 /*
- *  stack-fetch - get the nth entry of a stack object
+ *  stack.fetch - get the nth entry of a stack object
  */
 
 function primitive_stack_fetch(){
@@ -13508,7 +13472,7 @@ function primitive_stack_fetch(){
   }
   const length = value_of( target );
   if( length == 0 ){
-    FATAL( "stack-fetch, empty stack" );
+    FATAL( "stack.fetch, empty stack" );
     return;
   }
   // ToDo: handle negative indices where -1 is the older item in the stack
@@ -13517,16 +13481,16 @@ function primitive_stack_fetch(){
     index += length;
   }
   if( index < 0 || index >= length ){
-    FATAL( "stack-fetch, index out of range" );
+    FATAL( "stack.fetch, index out of range" );
     return;
   }
   copy_cell( target + index * ONE, PUSH() );
 }
-primitive( "stack-fetch", primitive_stack_fetch );
+primitive( "stack.fetch", primitive_stack_fetch );
 
 
 /*
- *  stack-fetch-nice - get the nth entry of a stack object, or void
+ *  stack.fetch-nice - get the nth entry of a stack object, or void
  */
 
 function primitive_stack_fetch_nice(){
@@ -13550,11 +13514,11 @@ function primitive_stack_fetch_nice(){
   }
   copy_cell( target + index * ONE, PUSH() );
 }
-primitive( "stack-fetch-nice", primitive_stack_fetch_nice );
+primitive( "stack.fetch-nice", primitive_stack_fetch_nice );
 
 
 /*
- *  stack-length - get the depth of a stack object
+ *  stack.length - get the depth of a stack object
  */
 
 function primitive_stack_length(){
@@ -13565,41 +13529,41 @@ function primitive_stack_length(){
   const length = value_of( target );
   push_integer( length );
 }
-primitive( "stack-length", primitive_stack_length );
+primitive( "stack.length", primitive_stack_length );
 
 
 /*
- *  stack-capacity - get the capacity of a stack object
+ *  stack.capacity - get the capacity of a stack object
  */
 
-const tag_stack_capacity = tag( "stack-capacity" );
+const tag_stack_capacity = tag( "stack.capacity" );
 
 function primitive_stack_capacity(){
   let target = pop_reference();
   push_integer( stack_capacity( target ) );
   set_tos_name( tag_stack_capacity );
 }
-primitive( "stack-capacity", primitive_stack_capacity );
+primitive( "stack.capacity", primitive_stack_capacity );
 
 
 /*
- *  stack-dup - duplicate the top of a stack object
+ *  stack.dup - duplicate the top of a stack object
  */
 
 function primitive_stack_dup(){
   stack_dup( pop_reference() );
 }
-primitive( "stack-dup", primitive_stack_dup );
+primitive( "stack.dup", primitive_stack_dup );
 
 
 /*
- *  stack-clear - clear a stack object
+ *  stack.clear - clear a stack object
  */
 
 function primitive_stack_clear(){
   stack_clear( pop_reference() );
 }
-primitive( "stack-clear", primitive_stack_clear );
+primitive( "stack.clear", primitive_stack_clear );
 
 
 /**/ function swap_cell( c1 : Cell, c2 : Cell ){
@@ -13611,7 +13575,7 @@ primitive( "stack-clear", primitive_stack_clear );
 
 
 /*
- *  stack-swap - swap the top two values of a stack object
+ *  stack.swap - swap the top two values of a stack object
  */
 
 function primitive_stack_swap(){
@@ -13621,16 +13585,16 @@ function primitive_stack_swap(){
   }
   const length = value_of( target );
   if( length < 2 ){
-    FATAL( "stack-swap, stack too short" );
+    FATAL( "stack.swap, stack too short" );
     return;
   }
   swap_cell( target, target - 1 * ONE );
 }
-primitive( "stack-swap", primitive_stack_swap );
+primitive( "stack.swap", primitive_stack_swap );
 
 
 /*
- *  stack-swap-nice - like swap but ok if stack is too short
+ *  stack.swap-nice - like swap but ok if stack is too short
  */
 
 function primitive_stack_swap_nice(){
@@ -13642,11 +13606,11 @@ function primitive_stack_swap_nice(){
   if( length < 2 )return;
   swap_cell( target, target - 1 * ONE );
 }
-primitive( "stack-swap-nice", primitive_stack_swap_nice );
+primitive( "stack.swap-nice", primitive_stack_swap_nice );
 
 
 /*
- *  stack-enter - swith stack to the stack of an object
+ *  stack.enter - swith stack to the stack of an object
  */
 
 const tag_stack_base  = tag( "stack-base" );
@@ -13681,11 +13645,11 @@ function primitive_stack_enter(){
   TOS = target + length * ONE;
 
 }
-primitive( "stack-enter", primitive_stack_enter );
+primitive( "stack.enter", primitive_stack_enter );
 
 
 /*
- *  stack-leave - revert to the previous data stack
+ *  stack.leave - revert to the previous data stack
  */
 
 function primitive_stack_leave(){
@@ -13700,7 +13664,7 @@ function primitive_stack_leave(){
   CSP -= ONE;
 
 }
-primitive( "stack-leave", primitive_stack_leave );
+primitive( "stack.leave", primitive_stack_leave );
 
 
 /*
@@ -13768,7 +13732,7 @@ function  primitive_grow_data_stack(){
     return;
   }
   const new_length = length * 2;
-  const new_stack_area = allocate_area( new_length * size_of_cell );
+  const new_stack_area = allocate_area( tag_stack, new_length * size_of_cell );
   if( new_stack_area == 0 ){
     FATAL( "grow-control-stack, out of memory" );
     return;
@@ -13795,7 +13759,7 @@ function primitive_grow_control_stack(){
     return;
   }
   const new_length = length * 2;
-  const new_stack = allocate_area( new_length * size_of_cell );
+  const new_stack = allocate_area( tag_stack, new_length * size_of_cell );
   if( new_stack == 0 ){
     FATAL( "grow-control-stack, out of memory" );
     return;
@@ -13814,27 +13778,27 @@ primitive( "grow-control-stack", primitive_grow_control_stack );
  */
 
 /*
- *  queue-push - add an element to the queue
+ *  queue.push - add an element to the queue
  */
 
 function primitive_queue_push(){
   primitive_stack_push();
 }
-primitive( "queue-push", primitive_queue_push );
+primitive( "queue.push", primitive_queue_push );
 
 
 /*
- *  queue-length - number of elements in the queue
+ *  queue.length - number of elements in the queue
  */
 
 function primitive_queue_length(){
   primitive_stack_length();
 }
-primitive( "queue-length", primitive_queue_length );
+primitive( "queue.length", primitive_queue_length );
 
 
 /*
- *  queue-pull - extract the oldest element from the queue
+ *  queue.pull - extract the oldest element from the queue
  */
 
 function primitive_queue_pull(){
@@ -13845,7 +13809,7 @@ function primitive_queue_pull(){
   POP();
   const queue_length = value_of( queue );
   if( queue_length + 1 >= to_cell( area_size( queue ) ) ){
-    FATAL( "queue-pull, queue overflow" );
+    FATAL( "queue.pull, queue overflow" );
     return;
   }
   // Make room for new element
@@ -13856,14 +13820,14 @@ function primitive_queue_pull(){
   // Push new element
   move_cell( POP(), queue + ONE );
 }
-primitive( "queue-pull", primitive_queue_pull );
+primitive( "queue.pull", primitive_queue_pull );
 
 
 /*
- *  queue-capacity - maximum number of elements in the queue
+ *  queue.capacity - maximum number of elements in the queue
  */
 
-const tag_queue_capacity = tag( "queue-capacity" );
+const tag_queue_capacity = tag( "queue.capacity" );
 
 function primitive_queue_capacity(){
   check_de&&mand_cell_type( TOS, tag_reference );
@@ -13874,11 +13838,11 @@ function primitive_queue_capacity(){
   push_integer( queue_capacity - 1 );
   set_tos_name( tag_queue_capacity );
 }
-primitive( "queue-capacity", primitive_queue_capacity );
+primitive( "queue.capacity", primitive_queue_capacity );
 
 
 /*
- *  queue-clear - make the queue empty
+ *  queue.clear - make the queue empty
  */
 
 function primitive_queue_clear(){
@@ -13893,7 +13857,7 @@ function primitive_queue_clear(){
   }
   set_value( queue, 0 );
 }
-primitive( "queue-clear", primitive_queue_clear );
+primitive( "queue.clear", primitive_queue_clear );
 
 
 /* ----------------------------------------------------------------------------
@@ -13901,7 +13865,7 @@ primitive( "queue-clear", primitive_queue_clear );
  */
 
 /*
- *  array-put - set the value of the nth element
+ *  array.put - set the value of the nth element
  */
 
 function primitive_array_put(){
@@ -13919,7 +13883,7 @@ function primitive_array_put(){
     index += array_length;
   }
   if( index >= array_capacity ){
-    FATAL( "array-put, index out of range" );
+    FATAL( "array.put, index out of range" );
     return;
   }
   move_cell( value_cell, array + ( index + 1 ) * ONE );
@@ -13931,11 +13895,11 @@ function primitive_array_put(){
   reset( index_cell );
   TOS -= 3 * ONE;
 }
-primitive( "array-put", primitive_array_put );
+primitive( "array.put", primitive_array_put );
 
 
 /*
- *  array-get - nth element
+ *  array.get - nth element
  */
 
 function primitive_array_get(){
@@ -13951,7 +13915,7 @@ function primitive_array_get(){
     index += array_length;
   }
   if( index >= array_length ){
-    FATAL( "array-get, index out of range" );
+    FATAL( "array.get, index out of range" );
     return;
   }
   reset( index_cell );
@@ -13959,14 +13923,14 @@ function primitive_array_get(){
   clear( array_cell );
   TOS -= 2 * ONE;
 }
-primitive( "array-get", primitive_array_get );
+primitive( "array.get", primitive_array_get );
 
 
 /*
- *  array-length - number of elements in an array
+ *  array.length - number of elements in an array
  */
 
-const tag_array_length = tag( "array-length" );
+const tag_array_length = tag( "array.length" );
 
 function primitive_array_length(){
   const array_cell = TOS;
@@ -13976,14 +13940,14 @@ function primitive_array_length(){
   clear( array_cell );
   set( TOS, type_integer, tag_array_length, array_length );
 }
-primitive( "array-length", primitive_array_length );
+primitive( "array.length", primitive_array_length );
 
 
 /*
- *  array-capacity - return the capacity of an array
+ *  array.capacity - return the capacity of an array
  */
 
-const tag_array_capacity = tag( "array-capacity" );
+const tag_array_capacity = tag( "array.capacity" );
 
 function primitive_array_capacity(){
   const array_cell = TOS;
@@ -13993,7 +13957,7 @@ function primitive_array_capacity(){
   clear( array_cell );
   set( TOS, type_integer, tag_array_capacity, array_capacity - 1 );
 }
-primitive( "array-capacity", primitive_array_capacity );
+primitive( "array.capacity", primitive_array_capacity );
 
 
 /* ----------------------------------------------------------------------------
@@ -14001,7 +13965,7 @@ primitive( "array-capacity", primitive_array_capacity );
  */
 
 /*
- *  map-put - put a value in a map
+ *  map.put - put a value in a map
  */
 
 function primitive_map_put(){
@@ -14022,7 +13986,7 @@ function primitive_map_put(){
     ii++;
   }
   if( ii == map_capacity ){
-    FATAL( "map-put, map full" );
+    FATAL( "map.put, map full" );
     return;
   }
   if( ii == map_length ){
@@ -14031,11 +13995,11 @@ function primitive_map_put(){
   move_cell( value_cell, map + ( ii + 1 ) * ONE );
   TOS -= 3 * ONE;
 }
-primitive( "map-put", primitive_map_put );
+primitive( "map.put", primitive_map_put );
 
 
 /*
- *  map-get - get a value from a map
+ *  map.get - get a value from a map
  */
 
 function primitive_map_get(){
@@ -14054,7 +14018,7 @@ function primitive_map_get(){
     ii++;
   }
   if( ii == map_length ){
-    FATAL( "map-get, key not found" );
+    FATAL( "map.get, key not found" );
     return;
   }
   reset( key_cell );
@@ -14062,14 +14026,14 @@ function primitive_map_get(){
   clear( map_cell );
   TOS -= 2 * ONE;
 }
-primitive( "map-get", primitive_map_get );
+primitive( "map.get", primitive_map_get );
 
 
 /*
- *  map-length - number of elements in a map
+ *  map.length - number of elements in a map
  */
 
-const tag_map_length = tag( "map-length" );
+const tag_map_length = tag( "map.length" );
 
 function primitive_map_length(){
   const map_cell = TOS;
@@ -14080,7 +14044,7 @@ function primitive_map_length(){
   set( TOS, type_integer, tag_map_length, map_length );
   set_tos_name( tag_map_length );
 }
-primitive( "map-length", primitive_map_length );
+primitive( "map.length", primitive_map_length );
 
 
 /* ----------------------------------------------------------------------------
@@ -14111,7 +14075,7 @@ function primitive_set_put(){
     }
   }
   if( set_length == set_capacity ){
-    FATAL( "set-put, set full" );
+    FATAL( "set.put, set full" );
     return;
   }
   set_value( set, set_length + 1 );
@@ -14121,7 +14085,7 @@ function primitive_set_put(){
 
 
 /*
- *  set-get - access a set element using a tag
+ *  set.get - access a set element using a tag
  */
 
 function primitive_set_get(){
@@ -14144,16 +14108,16 @@ function primitive_set_get(){
     }
   }
   // Key not found
-  FATAL( "set-get, key not found" );
+  FATAL( "set.get, key not found" );
   return;
 }
 
 
 /*
- *  set-length - number of elements in a set
+ *  set.length - number of elements in a set
  */
 
-const tag_set_length = tag( "set-length" );
+const tag_set_length = tag( "set.length" );
 
 function primitive_set_length(){
   const set_cell = TOS;
@@ -14167,7 +14131,7 @@ function primitive_set_length(){
 
 
 /*
- *  set-extend - extend a set with another set
+ *  set.extend - extend a set with another set
  */
 
 function primitive_set_extend(){
@@ -14194,7 +14158,7 @@ function primitive_set_extend(){
 
 
 /*
-  *  set-union - union of two sets
+  *  set.union - union of two sets
   */
 
 function primitive_set_union(){
@@ -14222,7 +14186,7 @@ function primitive_set_union(){
 
 
 /*
- *  set-intersection - intersection of two sets
+ *  set.intersection - intersection of two sets
  */
 
 function primitive_set_intersection(){
@@ -14254,6 +14218,100 @@ function primitive_set_intersection(){
   clear( set_cell );
   TOS -= ONE;
 }
+
+
+/* ----------------------------------------------------------------------------
+ *  Type box
+ *  A box is a cell that references another cell. It's like a pointer but
+ *  safer because the box manages the reference count of the cell it points to.
+ *  As a result, the box is always valid, it always points to a valid cell.
+ *  Note: the cell that a box references is dynamically allocated.
+ */
+
+
+function set_box( box_cell, value_cell ){
+  const allocated_cell = allocate_area( tag_box, size_of_cell );
+  move_cell( value_cell, allocated_cell );
+  set( box_cell, type_reference, tag_box, allocated_cell );
+}
+
+
+function box_free( box_cell ){
+  const value_cell = value_of( box_cell );
+  clear( value_cell )
+  area_free( value_cell );
+  clear( box_cell );
+}
+
+
+/*
+ *  box - boxify the top of the data stack
+ */
+
+function primive_box(){
+  const allocated_cell = allocate_area( tag_box, size_of_cell );
+  const kept_name = name_of( TOS );
+  move_cell( TOS, allocated_cell );
+  set( TOS, type_reference, kept_name, allocated_cell );
+}
+
+
+/*
+ *  @ - unary operator to access a boxed value, work with bound ranges too
+ */
+
+const tag_at = tag( "@" );
+
+function primitive_at(){
+  const box_cell = TOS;
+  check_de&&mand_cell_type( box_cell, tag_box );
+  const value_cell = value_of( box_cell );
+  if( value_cell == 0 ){
+    // The box is empty, return a void cell
+    clear( TOS );
+  } else {
+    // The box is not empty, return the value it contains
+    copy_cell( value_cell, TOS );
+  }
+}
+operator_primitive( "@", primitive_at );
+
+
+/*
+ *  at - like @ unary operator but it is not an operator
+ */
+
+primitive( "at", primitive_at )
+
+
+/*
+ *  @! - binary operator to set a boxed value, works with bound ranges too
+ */
+
+const tag_at_bang = tag( "@!" );
+
+function primitive_at_set(){
+  const box_cell = TOS;
+  check_de&&mand_cell_type( box_cell, tag_box );
+  const value_cell = value_of( box_cell );
+  if( value_cell == 0 ){
+    // The box is empty, ignore
+    reset( TOS );
+    clear( POP() );
+  } else {
+    clear( value_cell );
+    move_cell( TOS + ONE, value_cell );
+    reset( TOS );
+    TOS -= 2 * ONE;
+  }
+}
+operator_primitive( "@!", primitive_at_set );
+
+/*
+ *  at! - like the @! binary operator but it is not an operator
+ */
+
+primitive( "at!", primitive_at_set )
 
 
 /* ----------------------------------------------------------------------------
@@ -14292,7 +14350,7 @@ function primitive_set_intersection(){
  *    When a range is bound, 1 bit is used to indicate that it is bound, the
  *    other bits are the address of the dynamic area where the range is stored
  *    together with the entity it is bound to. When stored this way, the name
- *    portion of the cell has 28 bits available. Semantically, the name is
+ *    portion of the cell has 29 bits available. Semantically, the name is
  *    the name of the entity the range is bound to. This is necessary to
  *    process ranges as if they were the entity they are bound to, ie to
  *    use a range in all places where an entity is used.
@@ -14366,7 +14424,6 @@ const range_type_count = 9;
 const range_type_end_count = 10;
 
 
-const tag_range = tag( "range" );
 const tag_range_type    = tag( "range-type" );
 const tag_range_low     = tag( "range-low" );
 const tag_range_high    = tag( "range-high" );
@@ -14506,11 +14563,11 @@ function range_normalize( c : Cell ){
 }
 
 
-function new_bounded_range( c : Cell, type : Index, to : Value ){
+function new_bound_range( c : Cell, type : Index, to : Value ){
 
   // Allocate 4 cells for type, low, high and bound entity
   // ToDo: allocate more or less depending on the type
-  const range = allocate_area( 3 * size_of_cell );
+  const range = allocate_area( tag_range, 3 * size_of_cell );
 
   // Set the type
   set( range + 0 * ONE, type_integer, tag_range_type, type );
@@ -14525,7 +14582,7 @@ function new_bounded_range( c : Cell, type : Index, to : Value ){
   set( range + 3 * ONE, type_integer, tag_range_binding, to );
 
   // Set the range in the cell
-  set( c, type_range, tag_range, range );
+  set( c, type_reference, tag_range, range );
 
   // Increment the reference count of the bound entity if any
   if( to ){
@@ -14578,7 +14635,7 @@ function range_get_binding( c : Cell ) : Value {
 
 
 function set_range( c : Cell, start : Index, end : Index ){
-  new_bounded_range( c, range_type_mid, 0 );
+  new_bound_range( c, range_type_mid, 0 );
   const range = value_of( c );
   range_set_low( range, start );
   range_set_high( range, end );
@@ -14588,7 +14645,7 @@ function set_range( c : Cell, start : Index, end : Index ){
 
 
 function set_range_counted( c : Cell, start : Index, count : Length ){
-  new_bounded_range( c, range_type_count, 0 );
+  new_bound_range( c, range_type_count, 0 );
   range_set_low( value_of( c ), start );
   range_set_high( value_of( c ), count );
 }
@@ -14606,7 +14663,7 @@ function range_length( c : Cell ) : Length {
       return 1;
     break;
     case range_type_first:
-      return = 1;
+      return 1;
     break;
     case range_type_all:
       // What is the maximum value of a positive 32 bits integer?
@@ -14629,7 +14686,7 @@ function range_length( c : Cell ) : Length {
     break;
     case range_type_mid:
       const low  = range_get_low( c );
-      const high = range_get_high( c );
+      high = range_get_high( c );
       if( low < 0 ){
         if( high >= 0 ){
           return 0x7FFFFFFF;
@@ -14678,13 +14735,18 @@ function range_free( c : Cell ){
 }
 
 
-function range_is_bounded( c : Cell ) : boolean {
+function range_is_bound( c : Cell ) : boolean {
   return range_get_binding( value_of( c ) ) != 0;
 }
 
 
-function dereference_if_bounded( c : Cell ) : Cell {
-  if( range_is_bounded( c ) ){
+function range_is_free( c : Cell ) : boolean {
+  return range_get_binding( value_of( c ) ) == 0;
+}
+
+
+function dereference_if_bound( c : Cell ) : Cell {
+  if( range_is_bound( c ) ){
     return range_get_binding( value_of( c ) );
   } else {
     return c;
@@ -14697,24 +14759,24 @@ function dereference_if_bounded( c : Cell ) : Cell {
  */
 
 /*
- *  without-local - clear the control stack downto to specified local
+ *  forget-local - clear the control stack downto to specified local
  *  ToDo: rename, remove-local? drop-local? pop-local? something else?
  */
 
-function primitive_without_local(){
+function primitive_forget_local(){
   const n = pop_tag();
   while( name_of( CSP ) != n ){
     clear( CSP );
     CSP -= ONE;
     if( CSP < ACTOR_control_stack ){
-      FATAL( "without-local, missing " + tag_to_text( n ) );
+      FATAL( "forget-local, missing " + tag_to_text( n ) );
       return;
     }
   }
   clear( CSP );
   CSP -= ONE;
 }
-primitive( "without-local", primitive_without_local );
+primitive( "forget-local", primitive_forget_local );
 
 
 /*
@@ -14776,7 +14838,7 @@ function primitive_return_without_it(){
     clear( CSP );
     CSP -= ONE;
     if( CSP < ACTOR_control_stack ){
-      FATAL( "without-it, 'it' is missing" );
+      FATAL( "return-without-it, 'it' is missing" );
       return;
     }
   }
@@ -15029,13 +15091,81 @@ function primitive_set_IP(){
 primitive( "set-IP", primitive_set_IP );
 
 
+/* ---------------------------------------------------------------------------
+ *  Forth words
+ */
+
+
+/*
+ *  ALLOT - allocate some memory by moving the HERE pointer forward
+ */
+
+function primitive_ALLOT(){
+  const n = pop_integer();
+  the_next_free_cell += n;
+  // ToDo: check for overflow?
+}
+primitive( "ALLOT", primitive_ALLOT );
+
+
+/*
+ *  HERE - the current value of the HERE pointer
+ */
+
+const tag_HERE = tag( "HERE" );
+
+function primitive_HERE(){
+  set( PUSH(), type_integer, tag_HERE, the_next_free_cell );
+}
+
+
+/*
+ *  ALIGN - See Forth 2012, noop in Inox
+ */
+
+function primitive_ALIGN(){
+}
+primitive( "ALIGN", primitive_ALIGN );
+
+
+/*
+ *  ALIGNED - See Forth 2012, noop in Inox
+ */
+
+function primitive_ALIGNED(){
+}
+primitive( "ALIGNED", primitive_ALIGNED );
+
+
+/*
+ *  CHAR+ - Forth, increment a character address
+ */
+
+const tag_CHAR_plus = tag( "CHAR+" );
+
+function primitive_CHAR_plus(){
+  const c = pop_integer();
+  set( PUSH(), type_integer, tag_CHAR_plus, c + ONE );
+}
+
+
+/*
+ *  STATE - Forth 2012, the current state of the interpreter
+ */
+
+const tag_STATE = tag( "STATE" );
+
+function primitive_STATE(){
+  set( PUSH(), type_integer, tag_STATE, eval_is_compiling() ? 1 : 0 );
+}
+primitive( "STATE", primitive_STATE );
+
+
 /* -----------------------------------------------------------------------
  *  runner, fast, execute Inox verbs
  */
 
-
 const type_primitive = type_void;
-
 
 /**/ function get_IP(){  return IP;  }
 //c/ #define  get_IP()  IP
@@ -15355,7 +15485,7 @@ function RUN(){
           }
 
           #if INOX_IS_LITTLE_ENDIAN
-            t = w64 >> 60;
+            t = w64 >> 61;
           #else
             #error "Not implemented"
           #endif
@@ -15477,7 +15607,7 @@ function RUN(){
             if( t >= type_reference ){
 
               #ifdef RUN_DEBUG
-                mand( t == type_reference || t == type_text );
+                mand( t == type_reference );
                 mand( is_sharable( IP ) );
               #endif
 
@@ -15492,9 +15622,9 @@ function RUN(){
               #endif
 
               #ifdef RUN_DEBUG
-                mand_eq(
+                mand_neq(
                   name_of( value_of( TOS ) - 2 * ONE ),
-                  tag_dynamic_ref_count
+                  tag_dynamic_next_area
                 );
               #endif
 
@@ -15662,10 +15792,10 @@ function RUN(){
             && i != tag( "loop" )
             && i != tag( "break" )
             && i != tag( "with-it" )
-            && i != tag( "without-it" )
+            && i != tag( "return-without-it" )
             && i != tag( "from-local" )
             && i != tag( "make-local" )
-            && i != tag( "without-local" )
+            && i != tag( "forget-local" )
             && i != tag( "sentinel" )
             && i != tag( "jump" )
             && i != tag( "run-with-parameters" )
@@ -16175,7 +16305,6 @@ primitive( "run-tag", primitive_run_tag );
 
 function primitive_run_name(){
   const tos = TOS;
-  de&&mand_cell_type( tos, type_text );
   const auto_verb_name = cell_to_text( tos );
   clear( POP() );
   // ToDo: better error handling
@@ -16187,16 +16316,16 @@ primitive( "run-name", primitive_run_name );
 
 
 /*
- *  run-verb - run a verb by verb id
+ *  verb.run - run a verb
  *  ToDo: unify with run-tag
  */
 
-function primitive_run_verb(){
+function primitive_verb_run(){
   de&&mand_cell_type( TOS, type_verb );
   const verb_id = eat_raw_value( TOS );
   run_verb( verb_id );
 }
-primitive( "run-verb", primitive_run_verb );
+primitive( "verb.run", primitive_verb_run );
 
 
 /*
@@ -16325,24 +16454,15 @@ primitive( "block", primitive_block );
  *  types of tokens & of tokenizer states
  */
 
-/**/ const token_base               = 0;
-//c/ #define token_base               0
-/**/ const token_type_word          = 1;
-//c/ #define token_type_word          1
-/**/ const token_type_number        = 2;
-//c/ #define token_type_number        2
-/**/ const token_type_text          = 3;
-//c/ #define token_type_text          3
-/**/ const token_type_comment       = 4;
-//c/ #define token_type_comment       4
-/**/ const token_comment_multiline  = 5;
-//c/ #define token_comment_multiline  5
-/**/ const token_type_eof           = 6;
-//c/ #define token_type_eof           6
-/**/ const token_type_indent        = 7;
-//c/ #define token_type_indent        7
-/**/ const token_type_error         = 8;
-//c/ #define token_type_error         8
+const token_base               = 0;
+const token_type_word          = 1;
+const token_type_number        = 2;
+const token_type_text          = 3;
+const token_type_comment       = 4;
+const token_comment_multiline  = 5;
+const token_type_eof           = 6;
+const token_type_indent        = 7;
+const token_type_error         = 8;
 
 
 function token_type_to_text( type : Index ) : Text {
@@ -16736,11 +16856,9 @@ function ch_is_space( ch : ConstText ) : boolean {
 
 const tag_is_whitespace = tag( "whitespace?" );
 
-
 primitive( "whitespace?", primitive_inox_is_whitespace );
 function                  primitive_inox_is_whitespace(){
 // True if the text top of stack is a whitespace character
-  de&&mand_cell_type( TOS, type_text );
   const auto_txt = cell_to_text( TOS );
   clear( POP() );
   push_boolean( ch_is_space( auto_txt ) );
@@ -16753,7 +16871,6 @@ function                  primitive_inox_is_whitespace(){
  */
 
 const tag_next_character = tag( "next-character" );
-
 
 function primitive_next_character(){
   const auto_ch = tokenizer_next_character();
@@ -16777,7 +16894,6 @@ function ch_is_digit( ch : TxtC ) : boolean {
 
 
 function primitive_is_digit(){
-  de&&mand_cell_type( TOS, type_text );
   const auto_txt = cell_to_text( TOS );
   clear( POP() );
   push_boolean( ch_is_digit( auto_txt ) );
@@ -16801,7 +16917,6 @@ function ch_is_eol( ch : ConstText ) : boolean {
 
 
 function primitive_inox_is_eol(){
-  de&&mand_cell_type( TOS, type_text );
   const auto_t = cell_to_text( TOS );
   clear( POP() );
   push_boolean( ch_is_eol( auto_t ) );
@@ -17662,15 +17777,14 @@ function process_word_state(){
     return;
   }
 
-  // . is a token if alone
+  // . is a token if followed by some space
   if( teq( toker_ch, end_define ) ){
-    toker_is_limit
-    = tlen( toker_buf ) != 0
-    || ch_is_space( tcut( next_ch, 1 ) );
+    toker_is_limit = ch_is_space( tcut( next_ch, 1 ) );
 
-  // ; is a token
+  // ; is a token if followed by some space or .
   }else if( teq( toker_ch, terminator_sign ) ){
-    toker_is_limit = true;
+    toker_is_limit = ch_is_space( tcut( next_ch, 1 ) )
+    || teq( tcut( next_ch, 1 ), end_define );
 
   // Some other special characters are a limit too
   }else{
@@ -18011,19 +18125,19 @@ function test_tokenizer() : Index {
   test_token( token_type_word, "]"  );
   test_token( token_type_eof, ""    );
 
-  tokenizer_restart( "~~\n a, abc;,. [[ ]] #[ ]# xxx.[ ] " );
+  tokenizer_restart( "~~\n a, bc;,. [[ ]] #[ ]# x.[ ] };" );
   test_token( token_type_comment, "" );
   test_token( token_type_word, "a"   );
-  test_token( token_type_word, "abc" );
-  test_token( token_type_word, ";"   );
+  test_token( token_type_word, "bc;" );
   test_token( token_type_word, "."   );
   test_token( token_type_word, "[["  );
   test_token( token_type_word, "]]"  );
   test_token( token_type_word, "#["  );
   test_token( token_type_word, "]#"  );
-  test_token( token_type_word, "xxx" );
-  test_token( token_type_word, ".["  );
+  test_token( token_type_word, "x.[" );
   test_token( token_type_word, "]"   );
+  test_token( token_type_word, "}"   );
+  test_token( token_type_word, ";"   );
   test_token( token_type_eof, ""     );
 
   tokenizer_restart( "( forth )\n : .\" out abc ; a!" );
@@ -18056,9 +18170,7 @@ function test_tokenizer() : Index {
   test_token( token_type_word, "as_v(" );
   test_token( token_type_word, "0"     );
   test_token( token_type_word, ":void" );
-  test_token( token_type_word, ")"     );
-  test_token( token_type_word, ";"     );
-  test_token( token_type_word, "bb"    );
+  test_token( token_type_word, ");bb"  );
   test_token( token_type_word, "."     );
   test_token( token_type_word, ".)"    );
   test_token( token_type_word, "."     );
@@ -18080,7 +18192,7 @@ function test_tokenizer() : Index {
   test_token( token_type_eof, ""        );
 
   tokenizer_restart(
-    "~||~ it.x dup.:m d.m: m() dup.m() a:,b:"
+    "~||~ it .x dup .:m d .m: m() dup .m() a:, b:"
   );
   test_token( token_comment_multiline, "" );
   test_token( token_type_word, "it"   );
@@ -18094,7 +18206,8 @@ function test_tokenizer() : Index {
   test_token( token_type_word, "dup"  );
   test_token( token_type_word, ".m("  );
   test_token( token_type_word, ")"    );
-  test_token( token_type_word, "a:b:" );
+  test_token( token_type_word, "a:"   );
+  test_token( token_type_word, "b:"   );
   test_token( token_type_eof,  ""     );
 
   tokenizer_restart(
@@ -18150,8 +18263,8 @@ const tag_local               = tag( "local"               );
 const tag_set_local           = tag( "set-local"           );
 const tag_data                = tag( "data"                );
 const tag_set_data            = tag( "set-data"            );
-const tag_object_get          = tag( "object-get"          );
-const tag_object_set          = tag( "object-set"          );
+const tag_object_get          = tag( "object.get"          );
+const tag_object_set          = tag( "object.set!"         );
 
 
 /*
@@ -18303,22 +18416,14 @@ function mand_stacks_are_in_bounds() : boolean {
  *  It is actually a stack, not a tree.
  */
 
-/**/ const parse_top_level     = 1;
-//c/ #define parse_top_level     1
-/**/ const parse_definition    = 2;
-//c/ #define parse_definition    2
-/**/ const parse_call          = 3;
-//c/ #define parse_call          3
-/**/ const parse_subexpr       = 4;
-//c/ #define parse_subexpr       4
-/**/ const parse_keyword       = 5;
-//c/ #define parse_keyword       5
-/**/ const parse_call_block    = 6;
-//c/ #define parse_call_block    6
-/**/ const parse_infix         = 7;
-//c/ #define parse_infix         7
-/**/ const parse_block         = 8;
-//c/ #define parse_block         8
+const parse_top_level     = 1;
+const parse_definition    = 2;
+const parse_call          = 3;
+const parse_subexpr       = 4;
+const parse_keyword       = 5;
+const parse_call_block    = 6;
+const parse_infix         = 7;
+const parse_block         = 8;
 
 
 
@@ -19877,7 +19982,6 @@ primitive( "eval", primitive_eval );
  */
 
 function primitive_trace(){
-  de&&mand_cell_type( TOS, type_text );
   const auto_txt = cell_to_text( TOS );
   clear( POP() );
   // ToDo: output to stdout when running on POSIX systems
@@ -19890,10 +19994,10 @@ primitive( "trace", primitive_trace );
  *  inox-out - output text to the default output stream
  */
 
-function primitive_out(){
+function primitive_inox_out(){
   primitive_trace();
 }
-primitive( "inox-out", primitive_out );
+primitive( "inox-out", primitive_inox_out );
 
 
 /*
@@ -20094,7 +20198,6 @@ const tag_last               = tag( "last"              );
 const tag_free               = tag( "free"              );
 const tag_busy               = tag( "busy"              );
 const tag_cell               = tag( "cell"              );
-const tag_rom                = tag( "rom"               );
 //const tag_IP               = tag( "IP"                );
 //const tag_TOS              = tag( "TOS"               );
 //const tag_CSP              = tag( "CSP"               );
@@ -20497,12 +20600,14 @@ function primitive_source(){
  */
 
 function bootstrap(){
+  /**/ try{
   eval_file( "bootstrap.nox" );
   eval_file( "forth.nox" );
   if( de ){
     eval_file( "test/smoke.nox" );
     primitive_memory_visit();
   }
+  /**/ }catch( e ){ breakpoint(); throw e; }
 }
 
 

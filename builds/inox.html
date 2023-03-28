@@ -4,12 +4,12 @@
 <tr><td>a-list?</td><td>true if TOS is a list</td></tr>
 <tr><td>nil?</td><td>true if TOS is an empty list</td></tr>
 <tr><td>list</td><td>make a new list, empty</td></tr>
-<tr><td>list-cons</td><td>make a new list, with TOS as head and NOS as tail</td></tr>
-<tr><td>list-car</td><td>get the head of a list</td></tr>
-<tr><td>list-length</td><td>number of elements in a list</td></tr>
-<tr><td>list-append</td><td>append two lists</td></tr>
-<tr><td>list-reverse</td><td>reverse a list</td></tr>
-<tr><td>list-equal?</td><td>true if two lists have the same elements in the same order</td></tr>
+<tr><td>list.cons</td><td>make a new list, with TOS as head and NOS as tail</td></tr>
+<tr><td>list.car</td><td>get the head of a list</td></tr>
+<tr><td>list.length</td><td>number of elements in a list</td></tr>
+<tr><td>list.append</td><td>append two lists</td></tr>
+<tr><td>list.reverse</td><td>reverse a list</td></tr>
+<tr><td>list.=</td><td>true if two lists have the same elements in the same order</td></tr>
 <tr><td>little-endian?</td><td>true if the machine is little endian</td></tr>
 <tr><td>a-primitive?</td><td>true if TOS tag is also the name of a primitive</td></tr>
 <tr><td>return</td><td>jump to return address</td></tr>
@@ -22,14 +22,17 @@
 <tr><td>rename</td><td>change the name of the NOS value</td></tr>
 <tr><td>goto</td><td>jump to some absolue IP position, a branch</td></tr>
 <tr><td>a-void?</td><td>true if TOS was a void type of cell</td></tr>
-<tr><td>a-tag?</td><td>true if TOS is a tag</td></tr>
 <tr><td>a-boolean?</td><td>true if TOS was a boolean</td></tr>
 <tr><td>an-integer?</td><td>true if TOS was an integer</td></tr>
+<tr><td>is-a-float?</td><td>check if a value is a float</td></tr>
+<tr><td>a-tag?</td><td>true if TOS is a tag</td></tr>
+<tr><td>a-verb?</td><td>true if TOS was a verb</td></tr>
 <tr><td>a-text?</td><td>true if TOS was a text</td></tr>
 <tr><td>a-reference?</td><td>true if TOS was a reference to an object</td></tr>
-<tr><td>a-verb?</td><td>true if TOS was a verb</td></tr>
 <tr><td>a-proxy?</td><td>true if TOS was a reference to proxied object</td></tr>
 <tr><td>a-flow?</td><td>true if TOS was a flow</td></tr>
+<tr><td>a-list?</td><td>true if TOS was a list</td></tr>
+<tr><td>a-box?</td><td>true if TOS was a box</td></tr>
 <tr><td>push</td><td>push the void on the data stack</td></tr>
 <tr><td>drop</td><td>remove the top of the data stack</td></tr>
 <tr><td>drops</td><td>remove cells from the data stack</td></tr>
@@ -54,16 +57,16 @@
 <tr><td>control-depth</td><td>number of elements on the control stack</td></tr>
 <tr><td>clear-control</td><td>clear the control stack, make it empty</td></tr>
 <tr><td>control-dump</td><td>dump the control stack, ie print it</td></tr>
-<tr><td>text-quote</td><td>turn a text into a valid text literal</td></tr>
-<tr><td>text-to-integer</td><td>convert a text literal to an integer</td></tr>
-<tr><td>text-to-integer</td><td>convert a text literal into an integer</td></tr>
-<tr><td>text-hex-to-integer</td><td>convert a text literal to an integer</td></tr>
-<tr><td>text-octal-to-integer</td><td>convert a text literal to an integer</td></tr>
-<tr><td>text-binary-to-integer</td><td>converts a text literal to an integer</td></tr>
+<tr><td>text.quote</td><td>turn a text into a valid text literal</td></tr>
+<tr><td>text.to-integer</td><td>convert a text literal to an integer</td></tr>
+<tr><td>text.to-integer</td><td>convert a text literal into an integer</td></tr>
+<tr><td>text.hex-to-integer</td><td>convert a text literal to an integer</td></tr>
+<tr><td>text.octal-to-integer</td><td>convert a text literal to an integer</td></tr>
+<tr><td>text.binary-to-integer</td><td>converts a text literal to an integer</td></tr>
 <tr><td>integer-to-hex</td><td>converts an integer to an hexadecimal text</td></tr>
 <tr><td>integer-to-octal</td><td>convert an integer to an octal text</td></tr>
 <tr><td>integer-to-binary</td><td>converts an integer to a binary text</td></tr>
-<tr><td>text-unquote</td><td>turns a JSON text into a text</td></tr>
+<tr><td>text.unquote</td><td>turns a JSON text into a text</td></tr>
 <tr><td>debugger</td><td>invoke host debugger, if any</td></tr>
 <tr><td>debug</td><td>activate lots of traces</td></tr>
 <tr><td>normal-debug</td><td>deactivate lots of traces, keep type checking</td></tr>
@@ -86,10 +89,14 @@
 <tr><td>loop-until</td><td>loop until condition is met</td></tr>
 <tr><td>loop-while</td><td>loop while condition is met</td></tr>
 <tr><td>+</td><td>addition operator primitive</td></tr>
-<tr><td>=?</td><td>value equality</td></tr>
-<tr><td><>?</td><td>value inequality, the boolean opposite of =? value equality.</td></tr>
-<tr><td>==?</td><td>object identicallity, ie shallow equality, not deep equality.</td></tr>
-<tr><td>not==?</td><td>object inquality, boolean opposite of ==? shallow equality.</td></tr>
+<tr><td>integer.+</td><td>add two integers</td></tr>
+<tr><td>=</td><td>value equality binary operator</td></tr>
+<tr><td>equal?</td><td>like = but it is not an operator, value equality</td></tr>
+<tr><td><></td><td>value inequality, the opposite of = value equality</td></tr>
+<tr><td>inequal?</td><td>like <> but it is not an operator</td></tr>
+<tr><td>same?</td><td>true if two objects or two values are the same one</td></tr>
+<tr><td>identical?</td><td>like same? but it is not an operator</td></tr>
+<tr><td>different?</td><td>true unless two objects or two values are the same one</td></tr>
 <tr><td>?</td><td>operator</td></tr>
 <tr><td>something?</td><td>operator</td></tr>
 <tr><td>void?</td><td>operator - true when TOS is of type void and value is 0.</td></tr>
@@ -98,7 +105,6 @@
 <tr><td>not</td><td>unary boolean operator</td></tr>
 <tr><td>or</td><td>binary boolean operator</td></tr>
 <tr><td>and</td><td>binary boolean operator</td></tr>
-<tr><td>is-a-float?</td><td>check if a value is a float</td></tr>
 <tr><td>to-float</td><td>convert something into a float</td></tr>
 <tr><td>to-float</td><td>convert something into a float</td></tr>
 <tr><td>float-to-integer</td><td>convert a float to an integer</td></tr>
@@ -122,19 +128,19 @@
 <tr><td>float-ceiling</td><td>ceiling of a float</td></tr>
 <tr><td>float-round</td><td>round a float</td></tr>
 <tr><td>float-truncate</td><td>truncate a float</td></tr>
-<tr><td>text-join</td><td>text concatenation operator</td></tr>
-<tr><td>&</td><td>text concatenation operator, see text-join</td></tr>
-<tr><td>text-cut</td><td>extract a cut of a text, remove a suffix</td></tr>
-<tr><td>text-length</td><td>length of a text</td></tr>
-<tr><td>text-but</td><td>remove a prefix from a text, keep the rest</td></tr>
-<tr><td>text-mid</td><td>extract a part of the text</td></tr>
-<tr><td>text-low</td><td>convert a text to lower case</td></tr>
-<tr><td>text-up</td><td>convert a text to upper case</td></tr>
-<tr><td>text=?</td><td>compare two texts</td></tr>
-<tr><td>text<>?</td><td>compare two texts</td></tr>
-<tr><td>text-find</td><td>find a piece in a text</td></tr>
-<tr><td>text-find-last</td><td>find a piece in a text</td></tr>
-<tr><td>text-line</td><td>extract a line from a text</td></tr>
+<tr><td>text.join</td><td>text concatenation operator</td></tr>
+<tr><td>&</td><td>text concatenation binary operator, see text.join</td></tr>
+<tr><td>text.cut</td><td>extract a cut of a text, remove a suffix</td></tr>
+<tr><td>text.length</td><td>length of a text</td></tr>
+<tr><td>text.but</td><td>remove a prefix from a text, keep the rest</td></tr>
+<tr><td>text.mid</td><td>extract a part of the text</td></tr>
+<tr><td>text.low</td><td>convert a text to lower case</td></tr>
+<tr><td>text.up</td><td>convert a text to upper case</td></tr>
+<tr><td>text.=</td><td>compare two texts</td></tr>
+<tr><td>text.<></td><td>compare two texts</td></tr>
+<tr><td>text.find</td><td>find a piece in a text</td></tr>
+<tr><td>text.find-last</td><td>find a piece in a text</td></tr>
+<tr><td>text.line</td><td>extract a line from a text at some position</td></tr>
 <tr><td>as-text</td><td>textual representation</td></tr>
 <tr><td>dump</td><td>textual representation, debug style</td></tr>
 <tr><td>""?</td><td>unary operator</td></tr>
@@ -159,50 +165,55 @@
 <tr><td>upper-data</td><td>non local access to a data variable</td></tr>
 <tr><td>set-upper-local</td><td>set a local variable in the nth upper frame</td></tr>
 <tr><td>set-upper-data</td><td>set a data variable in the nth upper frame</td></tr>
-<tr><td>without-data</td><td>remove stack elements until a previous variable, included</td></tr>
+<tr><td>forget-data</td><td>remove stack elements until a previous variable, included</td></tr>
 <tr><td>make-fixed-object</td><td>create a fixed size object</td></tr>
 <tr><td>make-object</td><td>create a object of the given length</td></tr>
 <tr><td>extend-object</td><td>turn a fixed object into an extensible one</td></tr>
-<tr><td>object-get</td><td>access a data member of an object</td></tr>
-<tr><td>object-set</td><td>change a data member of an object</td></tr>
-<tr><td>stack-push</td><td>push a value onto a stack object</td></tr>
-<tr><td>stack-drop</td><td>drop the top of a stack object</td></tr>
-<tr><td>stack-drop-nice</td><td>drop the tof of a stack object, unless empty</td></tr>
-<tr><td>stack-fetch</td><td>get the nth entry of a stack object</td></tr>
-<tr><td>stack-fetch-nice</td><td>get the nth entry of a stack object, or void</td></tr>
-<tr><td>stack-length</td><td>get the depth of a stack object</td></tr>
-<tr><td>stack-capacity</td><td>get the capacity of a stack object</td></tr>
-<tr><td>stack-dup</td><td>duplicate the top of a stack object</td></tr>
-<tr><td>stack-clear</td><td>clear a stack object</td></tr>
-<tr><td>stack-swap</td><td>swap the top two values of a stack object</td></tr>
-<tr><td>stack-swap-nice</td><td>like swap but ok if stack is too short</td></tr>
-<tr><td>stack-enter</td><td>swith stack to the stack of an object</td></tr>
-<tr><td>stack-leave</td><td>revert to the previous data stack</td></tr>
+<tr><td>object.get</td><td>access a data member of an object</td></tr>
+<tr><td>object.set!</td><td>change a data member of an object</td></tr>
+<tr><td>stack.push</td><td>push a value onto a stack object</td></tr>
+<tr><td>stack.drop</td><td>drop the top of a stack object</td></tr>
+<tr><td>stack.drop-nice</td><td>drop the tof of a stack object, unless empty</td></tr>
+<tr><td>stack.fetch</td><td>get the nth entry of a stack object</td></tr>
+<tr><td>stack.fetch-nice</td><td>get the nth entry of a stack object, or void</td></tr>
+<tr><td>stack.length</td><td>get the depth of a stack object</td></tr>
+<tr><td>stack.capacity</td><td>get the capacity of a stack object</td></tr>
+<tr><td>stack.dup</td><td>duplicate the top of a stack object</td></tr>
+<tr><td>stack.clear</td><td>clear a stack object</td></tr>
+<tr><td>stack.swap</td><td>swap the top two values of a stack object</td></tr>
+<tr><td>stack.swap-nice</td><td>like swap but ok if stack is too short</td></tr>
+<tr><td>stack.enter</td><td>swith stack to the stack of an object</td></tr>
+<tr><td>stack.leave</td><td>revert to the previous data stack</td></tr>
 <tr><td>data-stack-base</td><td>return the base address of the data stack</td></tr>
 <tr><td>data-stack-limit</td><td>upper limit of the data stack</td></tr>
 <tr><td>control-stack-base</td><td>base address b of the control stack</td></tr>
 <tr><td>control-stack-limit</td><td>upper limit s of the control stack</td></tr>
 <tr><td>grow-data-stack</td><td>double the data stack if 80% full</td></tr>
 <tr><td>grow-control-stack</td><td>double the control stack if 80% full</td></tr>
-<tr><td>queue-push</td><td>add an element to the queue</td></tr>
-<tr><td>queue-length</td><td>number of elements in the queue</td></tr>
-<tr><td>queue-pull</td><td>extract the oldest element from the queue</td></tr>
-<tr><td>queue-capacity</td><td>maximum number of elements in the queue</td></tr>
-<tr><td>queue-clear</td><td>make the queue empty</td></tr>
-<tr><td>array-put</td><td>set the value of the nth element</td></tr>
-<tr><td>array-get</td><td>nth element</td></tr>
-<tr><td>array-length</td><td>number of elements in an array</td></tr>
-<tr><td>array-capacity</td><td>return the capacity of an array</td></tr>
-<tr><td>map-put</td><td>put a value in a map</td></tr>
-<tr><td>map-get</td><td>get a value from a map</td></tr>
-<tr><td>map-length</td><td>number of elements in a map</td></tr>
+<tr><td>queue.push</td><td>add an element to the queue</td></tr>
+<tr><td>queue.length</td><td>number of elements in the queue</td></tr>
+<tr><td>queue.pull</td><td>extract the oldest element from the queue</td></tr>
+<tr><td>queue.capacity</td><td>maximum number of elements in the queue</td></tr>
+<tr><td>queue.clear</td><td>make the queue empty</td></tr>
+<tr><td>array.put</td><td>set the value of the nth element</td></tr>
+<tr><td>array.get</td><td>nth element</td></tr>
+<tr><td>array.length</td><td>number of elements in an array</td></tr>
+<tr><td>array.capacity</td><td>return the capacity of an array</td></tr>
+<tr><td>map.put</td><td>put a value in a map</td></tr>
+<tr><td>map.get</td><td>get a value from a map</td></tr>
+<tr><td>map.length</td><td>number of elements in a map</td></tr>
 <tr><td>set-put</td><td>put a value in a set</td></tr>
-<tr><td>set-get</td><td>access a set element using a tag</td></tr>
-<tr><td>set-length</td><td>number of elements in a set</td></tr>
-<tr><td>set-extend</td><td>extend a set with another set</td></tr>
-<tr><td>set-union</td><td>union of two sets</td></tr>
-<tr><td>set-intersection</td><td>intersection of two sets</td></tr>
-<tr><td>without-local</td><td>clear the control stack downto to specified local</td></tr>
+<tr><td>set.get</td><td>access a set element using a tag</td></tr>
+<tr><td>set.length</td><td>number of elements in a set</td></tr>
+<tr><td>set.extend</td><td>extend a set with another set</td></tr>
+<tr><td>set.union</td><td>union of two sets</td></tr>
+<tr><td>set.intersection</td><td>intersection of two sets</td></tr>
+<tr><td>box</td><td>boxify the top of the data stack</td></tr>
+<tr><td>@</td><td>unary operator to access a boxed value, work with bound ranges too</td></tr>
+<tr><td>at</td><td>like @ unary operator but it is not an operator</td></tr>
+<tr><td>@!</td><td>binary operator to set a boxed value, works with bound ranges too</td></tr>
+<tr><td>at!</td><td>like the @! binary operator but it is not an operator</td></tr>
+<tr><td>forget-local</td><td>clear the control stack downto to specified local</td></tr>
 <tr><td>return-without-locals</td><td>like return but with some cleanup</td></tr>
 <tr><td>with-locals</td><td>prepare the control stack to handle local local variables</td></tr>
 <tr><td>return-without-it</td><td>internal, run-with-it uses it</td></tr>
@@ -219,6 +230,12 @@
 <tr><td>set-TOS</td><td>move the top of the data stack to some new address</td></tr>
 <tr><td>IP</td><td>access to the instruction pointer where the primitive was called</td></tr>
 <tr><td>set-IP</td><td>jump to some address</td></tr>
+<tr><td>ALLOT</td><td>allocate some memory by moving the HERE pointer forward</td></tr>
+<tr><td>HERE</td><td>the current value of the HERE pointer</td></tr>
+<tr><td>ALIGN</td><td>See Forth 2012, noop in Inox</td></tr>
+<tr><td>ALIGNED</td><td>See Forth 2012, noop in Inox</td></tr>
+<tr><td>CHAR+</td><td>Forth, increment a character address</td></tr>
+<tr><td>STATE</td><td>Forth 2012, the current state of the interpreter</td></tr>
 <tr><td>inox-dialect</td><td>switch to the Inox dialect</td></tr>
 <tr><td>dialect</td><td>query current dialect text name</td></tr>
 <tr><td>forth-dialect</td><td>switch to the Forth dialect</td></tr>
@@ -238,7 +255,7 @@
 <tr><td>tag</td><td>make a tag, from a text typically</td></tr>
 <tr><td>run-tag</td><td>run a verb by tag</td></tr>
 <tr><td>run-name</td><td>run a verb by text name</td></tr>
-<tr><td>run-verb</td><td>run a verb by verb id</td></tr>
+<tr><td>verb.run</td><td>run a verb</td></tr>
 <tr><td>definition</td><td>get the definition of a verb</td></tr>
 <tr><td>run</td><td>run a block or a verb definition</td></tr>
 <tr><td>run-definition</td><td>run a verb definition</td></tr>
@@ -280,4 +297,4 @@
 <tr><td>memory-visit</td><td>get a view of the memory</td></tr>
 <tr><td>source</td><td>evaluate the content of a file</td></tr>
 </table>
-<p>Found 278 primitives.</p></body></html>
+<p>Found 295 primitives.</p></body></html>

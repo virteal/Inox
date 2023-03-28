@@ -11,13 +11,13 @@ to until                while-1 while-2 until-3. inline
 to immediate!           immediate
 
 ~~ Some synonyms, shorter than the original name
-to without             without-data
+to forget              forget-data
 to clear               clear-data
 
 to basic-out           inox-out
 to out                 /basic-out run-tag  ~~ late binding
 
-to ToDo                "ToDo: " swap text-join out
+to ToDo                "ToDo: " swap text.join out
 to toDo                ToDo  ~~ Literate mode friendly, it becomes ToDo
 
 ~~ Some more, using keyword syntax for ease
@@ -46,9 +46,9 @@ to range<?        dup <  and{ >= }
 
 to clear-stacks   clear-data clear-control
 
-to missing-verb     "missing-verb "     over text-join out clear-stacks
-to missing-method   "missing-method "   over text-join out clear-stacks
-to missing-operator "missing-operator " over text-join out clear-stacks
+to missing-verb     "missing-verb "     over text.join out clear-stacks
+to missing-method   "missing-method "   over text.join out clear-stacks
+to missing-operator "missing-operator " over text.join out clear-stacks
 
 to FATAL-hook    "FATAL" out debugger clear-stacks
 to FATAL         /FATAL-hook run-tag
@@ -81,16 +81,16 @@ to check-globals
   ~~ HERE is used this way in Forth
   ~~ ToDo: a safe{ } method for access to the safe global variable with
   ~~ the protection of a global mutex guard
-  assert{ ( safe =? "safe" ) }
+  assert{ ( safe = "safe" ) }
 check-globals
 
 ~~ ToDo: :xx? special form?
-to :success?  name-of /success =?
-to :failure?  name-of /failure =?
-to :on?       name-of /on      =?
-to :off?      name-of /off     =?
-to :yes?      name-of /yes     =?
-to :no?       name-of /no      =?
+to :success?  name-of /success =
+to :failure?  name-of /failure =
+to :on?       name-of /on      =
+to :off?      name-of /off     =
+to :yes?      name-of /yes     =
+to :no?       name-of /no      =
 
 
 ~~ Class hierarchy
@@ -191,8 +191,8 @@ to do-with-it     run-with-it
 to times:do:
   it{
     it >block, it!
-    if: it >0? then: {
-      while: { it--! >0? } do: {
+    if: it >0 then: {
+      while: { it--! >0 } do: {
         block> run
       };
     };
@@ -231,7 +231,7 @@ to from:to:do:
 to from:down-to:do:
   it{
     it >block, >ii-down-to, ii!
-    if: ii >=? ii-down-to> then: {
+    if: ii >= ii-down-to> then: {
       do: { block> run } while: { ii-to> > --it! };
     };
   }
@@ -239,12 +239,12 @@ to from:down-to:do:
 to from:to:by:do:
   it{
     it >block, >ii-by, >ii-to, ii!
-    if: ii-by> >0? then: {
+    if: ii-by> >0 then: {
       if: ii <= ii-to> then: {
         do: { block> run } while: { ii + ii-by>, ii!, ii <= ii-to> };
       };
     } else: {
-      if: ii >=? ii-to> then: {
+      if: ii >= ii-to> then: {
         do: { block> run } while: { ii + ii-by>, ii!, ii >= ii-to> };
       };
     };
@@ -270,73 +270,57 @@ to try
 to try:catch:
   >inox-try:catch
   try
-  inox-try:catch/without
+  inox-try:catch/forget
 
 to try:catch:finally:
   >inox-try:catch:finally
   >inox-try:catch
   try
   inox-try:catch:finally> run
-  inox-try:catch:finaly/without
+  inox-try:catch:finaly/forget
 
 to try:finally:
   >inox-try:finally
   try-run
   inox-try:finally> run
-  inox-try:finaly/without
+  inox-try:finaly/forget
 
 
 ~~ text class
-to text.join          text-join
-to text.&             text-join
-to text.cut           text-cut
-to text.but           text-but
-to text.mid           text-mid
-to text.low           text-low
-to text.up            text-up
-to text.=?            text=?
-to text.<>?           text<>?
-to prefix             over text-join       ~| A B -- A BA |~
-to suffix             over swap text-join  ~| A B -- A AB |~
-to text.length        text-length
-~~ text-slice
-~~ text-first         text-cut
-to text.first         text-cut
-to text-last          text-but
-to text.last          text-but
-~~ text-but-last      text-cut
-to text.find          text-find
-to text.find-last     text-find-last
-to text.line          text-line
-to text.quote         text-quote
-to text.unquote       text-unquote
-~~ text-starts-with?
-~~ text-ends-with?
-~~ text-contains?
-~~ text-replace
-~~ text-replace-all
-~~ text-replace-first
-~~ text-replace-last
-~~ text-trim
-~~ text-trim-left
-~~ text-trim-right
-~~ text-split-by
-~~ text-join-by
-~~ text-split-lines
-~~ text-join-lines
-~~ text-join-pieces
-~~ text-split-pieces
-~~ text-split-words
-~~ text-join-words
-~~ text-split-characters
-~~ text-join-characters
+to text.&             text.join
+to prefix             over text.join       ~| A B -- A BA |~
+to suffix             over swap text.join  ~| A B -- A AB |~
+to text.first         text.cut
+to text.last          text.but
+to text.last          text.but
+~~ text.but-last      text.cut
+~~ text.starts-with?
+~~ text.ends-with?
+~~ text.contains?
+~~ text.replace
+~~ text.replace-all
+~~ text.replace-first
+~~ text.replace-last
+~~ text.trim
+~~ text.trim-left
+~~ text.trim-right
+~~ text.split-by
+~~ text.join-by
+~~ text.split-lines
+~~ text.join-lines
+~~ text.join-pieces
+~~ text.split-pieces
+~~ text.split-words
+~~ text.join-words
+~~ text.split-characters
+~~ text.join-characters
 
 
 to test ~| name |~
 ~~ Helper to test verbs. It runs the test-xxx testing verb.
   "Testing " prefix out
   /test-sentinel, over
-  "test-" swap text-join, run-name
+  "test-" swap text.join, run-name
   ~~ checks that stack is unchanged, ie sentinel is still at the top
   /test-sentinel <> { out( "Stack mismatch!" ) debugger } if
   "End of test " prefix out
@@ -345,7 +329,7 @@ to test ~| name |~
 to debug-test  ~~ Helper for tests that needs to be debugged
   "Testing " prefix out
   dup
-  "test-" swap text-join, debug, run-name, normal-debug
+  "test-" swap text.join, debug, run-name, normal-debug
   ~~ ToDo: developer must also check that data stack is unchanged
   "End of debug-test for " prefix out
   drop

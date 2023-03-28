@@ -8,24 +8,24 @@
 inox-dialect
 
 
-to make-point  x:0 y:0 point:3 make-object
+to point.make  x:0 y:0 point:3 make-object
 
 to test-point
-  make-point
+  point.make
   dump
-  1 _point.x!  ~~ ToDo: _point x:1 .! or even x:1.!
-  2 _point.y!
-  out( "( x:" & _point.x & ", y:" & _point.y & " )" )
+  1 _point .x!  ~~ ToDo: _point x:1 .! or even x:1 .!
+  2 _point .y!
+  out( "( x:" & _point .x & ", y:" & _point .y & " )" )
   drop  ~~ forget point object
 point/test
 
 
-to point.out  method: { out( "( x:" & it.x & ", y:" & it.y & " )" ) };.
+to point.out  method: { out( "( x:" & it .x & ", y:" & it .y & " )" ) };.
 
 to test-method-call
-  make-point
-  _point .:out   ~~ ToDo: _point.:out
-  _point .out()  ~~ ToDo: _point.out()
+  point.make
+  _point .:out
+  _point .out()
   drop  ~~ forget point object
 method-call/test
 
@@ -72,7 +72,7 @@ to test-swap/
 
 
 to test-break
-  while: { true } do: { break }. ~~ ToDo: issue with dot, use token-debugger }.
+  while: { true } do: { break }. ~~ ToDo: issue with dot, use token-debugger
 break/test
 
 
@@ -102,7 +102,7 @@ to test-loop-break
       out( "loop-while body" )
       out( "Hello loop " & it )
       decrement-it!
-      if: it <0? then: { break };
+      if: it <0 then: { break };
     };
   }
 loop-break/test
@@ -135,8 +135,8 @@ HELLO/test
 to test-loop1
   0 it{
     3 it!
-    while: { decrement-it!, it >0? } do: {
-      if:    it % 2 =0?
+    while: { decrement-it!, it >0 } do: {
+      if:    it % 2 =0
       then:  { out( it & " is even" ) }
       else:  { out( it & " is odd"  ) } ;
     };
@@ -157,8 +157,8 @@ loop1/test
 To test-Loop2
   Scope
     3 it!
-    While --it! >0? Do
-      If it % 2 =0? Then
+    While --it! >0 Do
+      If it % 2 =0 Then
         out( it & " is even" )
       Else
         out( it & " is odd" )

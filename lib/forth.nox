@@ -77,6 +77,8 @@ forth-dialect
 : 2SWAP      2 swaps                  ;
 : ABORT"     ." ABORT " out           ;
 : ACCEPT     ." ACCEPT " out          ;
+: CELLS      size-of-cell             ;
+
 
 
 ( So, what do I need to implement a compliant Forth implementation? )

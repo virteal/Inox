@@ -6,7 +6,7 @@
 
 Iɴᴏx is a concatenative script language. It is designed to operate in the context of edge computing, with the Internet of Things, in Machine Learning times.
 
-It will hopefully run on nodejs (first), wasm (second), micro controlers (esp32), etc.
+It will hopefully run on nodejs, C++ targets, wasm (WIP), micro controlers (esp32), etc.
 
 It is a forth/smalltalk/erlang inspired stack based language with a virtual machine. The basic data element is a 64 bits cell made of two parts, a typed value and a name.
 
@@ -34,9 +34,9 @@ The Iɴᴏx programming language explores hopefully innovative features not foun
 So, what's new?
   - Named values - values have a name attached to them
   - Reactive sets - for distributed dataflow processing
-  - Actors - concurrency & message passing
+  - Actors - concurrency, asynchronicity & message passing
   - Ranges - smart references to slices of data
-  - Stacks - objects are stacks of named values
+  - Stacks - pervasive, even objects are stacks of named values
   - Variables - in the data stack, in the control stack or in some other stack
   - Verb - simple verbs are concatenated to make complex ones
   - Dialects - multiple predefined and custom dialects for different styles
@@ -65,7 +65,7 @@ A tale of two stacks
 
 Iɴᴏx don't mix the _control plane_ with the _data plane_, contrary to most languages.
 
-The good thing about that is that data can stay much longer in the stack instead of needing storage elsewhere.
+The good thing about that is that data can stay much longer in stacks instead of needing storage elsewhere.
 
 For example the idiomatic solution to build an array is to push some sentinel value onto the _data stack_, accumulate data on it thanks to some processing and collecting all the data down to the sentinel data when the data is ready for further processing somewhere else or sometimes later.
 
@@ -91,15 +91,15 @@ _Actors_ also handle enhanced stacks dedicated to the processing of a very power
 
 Thanks to the Toubkal dataflow engine, such data sets can travel thru multiple processing steps in a fully distributed and consistent manner. This is stream processing on steroïds.
 
-The vision is to have captors and reactors down to small devices like a smart bulb or a smoke detector in the house and up to massive AI enhanced processors that could make decisions based on changing external conditions.  Conditions like the weather for example when controlling the usage of electricity in a plant factory or even in a house with solar panels.
+The vision is to have captors and reactors down to small devices like a smart bulb or a smoke detector in the house and up to massive AI enhanced processors that could make decisions based on changing external conditions. Conditions like the weather for example when controlling the usage of electricity in a plant factory or even in a house with solar panels.
 
-On a large scale this is like a giant brain with neurons of diverse power that react to changing inputs by firing intelligently depending on their configuration and training capabilities, small and big.
+On a large scale this is like a giant brain with neurons of diverse power that react to changing inputs by firing intelligently depending on their configuration, mamory and training capabilities, small and big.
 
 
 Hints
 -----
 
-Interpreters are slow, this is inevitable to some extend. That disadvange is compensated by some additionnal level of safety. No more dangling pointers, overflow/underflow, off by one back doors, eisenbugs that disappear when observed and all the drama of low level debugging, core dumps, viruses and unanticipated corner cases. Less pain.
+Interpreters are slow, this is inevitable to some extend. That disadvange is compensated by some additionnal level of safety. No more dangling pointers, overflow/underflow, off by one back doors, eisenbugs that disappear when observed and all the drama of low level debugging, including core dumps, viruses and unanticipated corner cases. Less pain.
 
 Yet, no pain, no gain. If you dare, Iɴᴏx lets you enter adventure land. You then giveup asserts, type checking, boundaries guards and maybe even dynamic memory management in exhange for speed. Up to C speed for those who are willing to take the risk.
 
@@ -107,7 +107,7 @@ Runtime checks are enabled/disabled at user's will, at run time potentially. Thi
 
 Type checking at compile time is a mode that sustains the passage of time, it is not going to disappear soon. On the other end of the spectrum, script languages favor late binding and run time type identification. Let's try to unite these opposite styles, to the extend it is possible.
 
-Syntax is also a matter of taste. Iɴᴏx is rather opiniated about that. To some reasonnable extend it provide mechanisms to alter the syntax of the language, sometimes radically. Thank Forth for that.
+Syntax is also a matter of taste. Iɴᴏx is rather opiniated about that. To some reasonnable extend it provides mechanisms to alter the syntax of the language, sometimes radically. Thank Forth for that.
 
 It is up to each programmer to apply the style she prefers, life is brief. There is more than one way to do it as they say in the wonderfull world of Perl. The principle of least surprise is cautious but girls love bad guys, don't they?
 
@@ -160,9 +160,9 @@ to play
   loop: {
     out( "Guess? " )
     read-line, text-to-integer,
-    dup, if not integer? then: { drop,               continue }
-    dup, if: >?          then: { out( "Too big"   ), continue }
-    dup, if: <?          then: { out( "Too small" ), continue }
+    dup, if not integer? then: { drop,                     continue }
+    dup, if: >           then: { drop, out( "Too big"   ), continue }
+    dup, if: <           then: { drop, out( "Too small" ), continue }
     out( "Yes!" ), break
   }
   clear
@@ -202,7 +202,7 @@ to tell-to/  with /m /d, /{ out( "T " & m> & "t " && d> }
 
 This is an abbreviated syntax that is defined in the _standard library_. `xx{ ... }` is like `xx( ... )` but the former invokes the `xx{` verb with the block as sole argument whereas the later invokes the verb `xx` when `)` is reached.
 
-`/{` is like `{`, it marks the begining of a _block_, a sequence of verbs and literals. There is however an important difference, only `/{' creates a new _scope_. This is convenient to use _local variables_ that will be automaticaly discarded when the block execution ends.
+`/{` is like `{`, it marks the begining of a _block_, a sequence of verbs and literals. There is however an important difference, only `/{' creates a new _scope_. This is convenient to use _local variables_ that will be automaticaly discarded when the block execution ends, is when the variables become "out of scope".
 
 In the case of `/{` the _scope_ is filled with local variables that are the formal parameters of the function. The _scope_ and all the local variables in it is discarded when the function returns.
 
@@ -229,7 +229,7 @@ Verb redefinition
 =================
 
 ``` sh
-to FATAL  /FATAL-hook call-by-tag.  ~~ late binding
+to FATAL  /FATAL-hook run-by-tag.  ~~ late binding
 ```
 
 This kind of _late binding_ makes it easy to hook some new code to old verb definitions. Without those indirections there would be no solution for old verbs to use redefined verbs.
@@ -249,14 +249,14 @@ Blocks
 Blocks are sequences of _verbs_ enclosed between balanced `{` and `}`.
 
 ``` sh
-to tell-sign  if-else( <0?, { out( "negative" ) }, { out( "positive" ) }.
+to tell-sign  if-else( <0, { out( "negative" ) }, { out( "positive" ) } ).
 
 -1 tell-sign  ~~ outputs negative
 
 tell-sign( -1 )  ~~ idem, infix style`
 ```
 
-Two consecutive `~~` (tildes) introduce a comment that goes until the end of the line. Use `~|` and `|~` for multi lines comments.
+Two consecutive `~~` (tildes) introduce a comment that goes until the end of the line. Use `~|` and `|~` for multiple lines comments.
 
 
 Exceptions
@@ -434,17 +434,17 @@ Falsy values
 
 There is a `boolean` type of value with only two valid values, `true` and `false`.
 
-There are a few special values, _falsy_ values such as `0`, `void` or `""` (the empty text) that are often usefull when a _boolean_ value is expected. To check if a value is _falsy_ use the `?` operator. It's result is either `true` or `false`.
+There are also a few special values, _falsy_ values, such as `0`, `void` or `""` (the empty text) that are often usefull when a _boolean_ value is expected. To convert a value into a boolean value, use the `?` operator. It's result is either `true` or `false`.
 
 
 ```
-if: "" then out( "true" )      ~~ => type error, "" is not a boolean value
+if: "" then out( "true" )      ~~ nothing, "" is falsy
 if: "" ? then out( "true" )    ~~ nothing, "" is falsy
 if: void then out( "true" )    ~~ => type error, void is not a boolean
 if: void ? then out( "true" )  ~~ nothing, void is falsy
 ```
 
-Verbs that expect a _boolean_ value will sometimes _coerce_ the value of an unexpected type into a _boolean_ value, using a very simple rule : everything but boolean false is true. This is rarely something usefull and using `?`and the _falsy_ logic generaly makes more sense. But it is fast.
+Verbs that expect a _boolean_ value will usually _coerce_ the value of an other type into a _boolean_ value using a simple rule : everything whose value is zero is false, everthing else is true.
 
 Constants are verbs that push a specific value onto the data stack, like `true`, `false` and `void` that push `1`, `0` and `void` respectively.
 
@@ -669,26 +669,26 @@ Verbs agree on protocols to manipulate values on the data stack. The most basic,
 ```
 to fib
   dup
-  if: >? 2 then: {
+  if: > 2 then: {
     dup, fib( - 1 ) + fib( swap - 2 )
   }
 
 out( fib( 10 ) )  ~~ outputs the 10th number of the fibonacci suite
 ```
 
-In this example, `dup` duplicates the TOS (Top Of the Stack) and `swap` swaps it with the NOS (Next On Stack). Dealing this way with the stack can become rather complex quickly and using functions produces a solution that is more readable (but sligthly less fast).
+In this example, `dup` duplicates the TOS (Top Of the Stack) and `swap` swaps it with the NOS (Next On Stack). Dealing this way with the stack can become rather complex quickly and using functions produces a solution that is more readable (but sligthly slower).
 
 
 Function protocol
 -----------------
 
-This protocol is very common in most programming languages. It states that _functions_ get _parameters_ thanks to _arguments_ that the _caller_ function _provides_ to the callee function. That function is then expected to _consume_ these arguments in order to produce one or more results.
+This protocol is very common in most programming languages. It states that _functions_ get _parameters_ thanks to _arguments_ that the _caller_ function _provides_ to the _callee_ function. That function is then expected to _consume_ these arguments in order to _produce_ one or more results.
 
 ```
 to fib/  with nth/
 ~~ Compute the nth number of the Fibonacci suite
   function: {
-    if nth> >? 2 then: {
+    if: nth> > 2 then: {
       fib/( nth> - 1 ) + fib/( nth> - 2 )
     } else: {
       nth>
@@ -703,7 +703,7 @@ Unfortunately it does not apply to the fidonacci function because the actual las
 ```
 to fib
   dup
-  2 >? {
+  2 > {
     dup,  1, -, fib
     swap, 2, -, fib
     +
@@ -720,7 +720,7 @@ Another style is possible using named values in the data stack, ie _data variabl
 
 ```
 to fib  ~| nth:n ... -- nth:n ... fib:n |~
-  ( if: _nth >? 2 then: {
+  ( if: _nth > 2 then: {
     fib( _nth - 1 :nth ) + fib( _nth - 2 :nth ) )
   } )fib
 
@@ -733,7 +733,7 @@ Verbs often name their result. That way, it becomes easy to get theses results l
 
 When a verb returns multiple results, it should name each of them to respect the _named protocol_, this is just a convention however.
 
-When the results are no longer needed, they can be forgetten, ie removed from the data stack. Syntax `something/without` does that, it removes all the values from the top of the data stack up to the one named `something` included.
+When the results are no longer needed, they can be forgetten, ie removed from the data stack. Syntax `something/forget` does that, it removes all the values from the top of the data stack up to the one named `something` included.
 
 Note: The _function protocol_ uses a special version of `without`, named `without-control`, that operates on the _control stack_ instead of the _data stack_. That's because parameters and local variables are stored in the _control stack_, not the _data stack_.
 
@@ -1060,12 +1060,12 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | a-list? | true if TOS is a list |
 | nil? | true if TOS is an empty list |
 | list | make a new list, empty |
-| list-cons | make a new list, with TOS as head and NOS as tail |
-| list-car | get the head of a list |
-| list-length | number of elements in a list |
-| list-append | append two lists |
-| list-reverse | reverse a list |
-| list-equal? | true if two lists have the same elements in the same order |
+| list.cons | make a new list, with TOS as head and NOS as tail |
+| list.car | get the head of a list |
+| list.length | number of elements in a list |
+| list.append | append two lists |
+| list.reverse | reverse a list |
+| list.= | true if two lists have the same elements in the same order |
 | little-endian? | true if the machine is little endian |
 | a-primitive? | true if TOS tag is also the name of a primitive |
 | return | jump to return address |
@@ -1078,14 +1078,17 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | rename | change the name of the NOS value |
 | goto | jump to some absolue IP position, a branch |
 | a-void? | true if TOS was a void type of cell |
-| a-tag? | true if TOS is a tag |
 | a-boolean? | true if TOS was a boolean |
 | an-integer? | true if TOS was an integer |
+| is-a-float? | check if a value is a float |
+| a-tag? | true if TOS is a tag |
+| a-verb? | true if TOS was a verb |
 | a-text? | true if TOS was a text |
 | a-reference? | true if TOS was a reference to an object |
-| a-verb? | true if TOS was a verb |
 | a-proxy? | true if TOS was a reference to proxied object |
 | a-flow? | true if TOS was a flow |
+| a-list? | true if TOS was a list |
+| a-box? | true if TOS was a box |
 | push | push the void on the data stack |
 | drop | remove the top of the data stack |
 | drops | remove cells from the data stack |
@@ -1110,16 +1113,16 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | control-depth | number of elements on the control stack |
 | clear-control | clear the control stack, make it empty |
 | control-dump | dump the control stack, ie print it |
-| text-quote | turn a text into a valid text literal |
-| text-to-integer | convert a text literal to an integer |
-| text-to-integer | convert a text literal into an integer |
-| text-hex-to-integer | convert a text literal to an integer |
-| text-octal-to-integer | convert a text literal to an integer |
-| text-binary-to-integer | converts a text literal to an integer |
+| text.quote | turn a text into a valid text literal |
+| text.to-integer | convert a text literal to an integer |
+| text.to-integer | convert a text literal into an integer |
+| text.hex-to-integer | convert a text literal to an integer |
+| text.octal-to-integer | convert a text literal to an integer |
+| text.binary-to-integer | converts a text literal to an integer |
 | integer-to-hex | converts an integer to an hexadecimal text |
 | integer-to-octal | convert an integer to an octal text |
 | integer-to-binary | converts an integer to a binary text |
-| text-unquote | turns a JSON text into a text |
+| text.unquote | turns a JSON text into a text |
 | debugger | invoke host debugger, if any |
 | debug | activate lots of traces |
 | normal-debug | deactivate lots of traces, keep type checking |
@@ -1142,10 +1145,14 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | loop-until | loop until condition is met |
 | loop-while | loop while condition is met |
 | + | addition operator primitive |
-| =? | value equality |
-| <>? | value inequality, the boolean opposite of =? value equality. |
-| ==? | object identicallity, ie shallow equality, not deep equality. |
-| not==? | object inquality, boolean opposite of ==? shallow equality. |
+| add | like the + binary operator but it is not an operator |
+| integer.+ | add two integers |
+| = | value equality |
+| equal? | like = but it is not an operator |
+| <> | value inequality, the boolean opposite of =? value equality. |
+| different? | like <> but it is not an operator |
+| is | true if two objects or two values are the same one |
+| is-not | true unless two objects or two values are the same one |
 | ? | operator |
 | something? | operator |
 | void? | operator - true when TOS is of type void and value is 0. |
@@ -1154,7 +1161,6 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | not | unary boolean operator |
 | or | binary boolean operator |
 | and | binary boolean operator |
-| is-a-float? | check if a value is a float |
 | to-float | convert something into a float |
 | to-float | convert something into a float |
 | float-to-integer | convert a float to an integer |
@@ -1178,19 +1184,19 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | float-ceiling | ceiling of a float |
 | float-round | round a float |
 | float-truncate | truncate a float |
-| text-join | text concatenation operator |
-| & | text concatenation operator, see text-join |
-| text-cut | extract a cut of a text, remove a suffix |
-| text-length | length of a text |
-| text-but | remove a prefix from a text, keep the rest |
-| text-mid | extract a part of the text |
-| text-low | convert a text to lower case |
-| text-up | convert a text to upper case |
-| text=? | compare two texts |
-| text<>? | compare two texts |
-| text-find | find a piece in a text |
-| text-find-last | find a piece in a text |
-| text-line | extract a line from a text |
+| text.join | text concatenation operator |
+| & | text concatenation binary operator, see text.join |
+| text.cut | extract a cut of a text, remove a suffix |
+| text.length | length of a text |
+| text.but | remove a prefix from a text, keep the rest |
+| text.mid | extract a part of the text |
+| text.low | convert a text to lower case |
+| text.up | convert a text to upper case |
+| text.= | compare two texts |
+| text.<> | compare two texts |
+| text.find | find a piece in a text |
+| text.find-last | find a piece in a text |
+| text.line | extract a line from a text at some position |
 | as-text | textual representation |
 | dump | textual representation, debug style |
 | ""? | unary operator |
@@ -1219,45 +1225,50 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | make-fixed-object | create a fixed size object |
 | make-object | create a object of the given length |
 | extend-object | turn a fixed object into an extensible one |
-| object-get | access a data member of an object |
-| object-set | change a data member of an object |
-| stack-push | push a value onto a stack object |
-| stack-drop | drop the top of a stack object |
-| stack-drop-nice | drop the tof of a stack object, unless empty |
-| stack-fetch | get the nth entry of a stack object |
-| stack-fetch-nice | get the nth entry of a stack object, or void |
-| stack-length | get the depth of a stack object |
-| stack-capacity | get the capacity of a stack object |
-| stack-dup | duplicate the top of a stack object |
-| stack-clear | clear a stack object |
-| stack-swap | swap the top two values of a stack object |
-| stack-swap-nice | like swap but ok if stack is too short |
-| stack-enter | swith stack to the stack of an object |
-| stack-leave | revert to the previous data stack |
+| object.get | access a data member of an object |
+| object.set! | change a data member of an object |
+| stack.push | push a value onto a stack object |
+| stack.drop | drop the top of a stack object |
+| stack.drop-nice | drop the tof of a stack object, unless empty |
+| stack.fetch | get the nth entry of a stack object |
+| stack.fetch-nice | get the nth entry of a stack object, or void |
+| stack.length | get the depth of a stack object |
+| stack.capacity | get the capacity of a stack object |
+| stack.dup | duplicate the top of a stack object |
+| stack.clear | clear a stack object |
+| stack.swap | swap the top two values of a stack object |
+| stack.swap-nice | like swap but ok if stack is too short |
+| stack.enter | swith stack to the stack of an object |
+| stack.leave | revert to the previous data stack |
 | data-stack-base | return the base address of the data stack |
 | data-stack-limit | upper limit of the data stack |
 | control-stack-base | base address b of the control stack |
 | control-stack-limit | upper limit s of the control stack |
 | grow-data-stack | double the data stack if 80% full |
 | grow-control-stack | double the control stack if 80% full |
-| queue-push | add an element to the queue |
-| queue-length | number of elements in the queue |
-| queue-pull | extract the oldest element from the queue |
-| queue-capacity | maximum number of elements in the queue |
-| queue-clear | make the queue empty |
-| array-put | set the value of the nth element |
-| array-get | nth element |
-| array-length | number of elements in an array |
-| array-capacity | return the capacity of an array |
-| map-put | put a value in a map |
-| map-get | get a value from a map |
-| map-length | number of elements in a map |
+| queue.push | add an element to the queue |
+| queue.length | number of elements in the queue |
+| queue.pull | extract the oldest element from the queue |
+| queue.capacity | maximum number of elements in the queue |
+| queue.clear | make the queue empty |
+| array.put | set the value of the nth element |
+| array.get | nth element |
+| array.length | number of elements in an array |
+| array.capacity | return the capacity of an array |
+| map.put | put a value in a map |
+| map.get | get a value from a map |
+| map.length | number of elements in a map |
 | set-put | put a value in a set |
-| set-get | access a set element using a tag |
-| set-length | number of elements in a set |
-| set-extend | extend a set with another set |
-| set-union | union of two sets |
-| set-intersection | intersection of two sets |
+| set.get | access a set element using a tag |
+| set.length | number of elements in a set |
+| set.extend | extend a set with another set |
+| set.union | union of two sets |
+| set.intersection | intersection of two sets |
+| box | boxify the top of the data stack |
+| @ | unary operator to access a boxed value, work with bound ranges too |
+| at | like @ unary operator but it is not an operator |
+| @! | binary operator to set a boxed value, works with bound ranges too |
+| at! | like the @! binary operator but it is not an operator |
 | without-local | clear the control stack downto to specified local |
 | return-without-locals | like return but with some cleanup |
 | with-locals | prepare the control stack to handle local local variables |
@@ -1275,6 +1286,12 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | set-TOS | move the top of the data stack to some new address |
 | IP | access to the instruction pointer where the primitive was called |
 | set-IP | jump to some address |
+| ALLOT | allocate some memory by moving the HERE pointer forward |
+| HERE | the current value of the HERE pointer |
+| ALIGN | See Forth 2012, noop in Inox |
+| ALIGNED | See Forth 2012, noop in Inox |
+| CHAR+ | Forth, increment a character address |
+| STATE | Forth 2012, the current state of the interpreter |
 | inox-dialect | switch to the Inox dialect |
 | dialect | query current dialect text name |
 | forth-dialect | switch to the Forth dialect |
@@ -1294,7 +1311,7 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | tag | make a tag, from a text typically |
 | run-tag | run a verb by tag |
 | run-name | run a verb by text name |
-| run-verb | run a verb by verb id |
+| verb.run | run a verb |
 | definition | get the definition of a verb |
 | run | run a block or a verb definition |
 | run-definition | run a verb definition |
@@ -1335,3 +1352,4 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | the-void | push a void cell |
 | memory-visit | get a view of the memory |
 | source | evaluate the content of a file |
+
