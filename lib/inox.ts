@@ -35,7 +35,7 @@
  */
 
 /// 0: no debug, 1: some debug, 2: more debug, etc
-const INOX_DEBUG_LEVEL = 1;
+const INOX_DEBUG_LEVEL = 4;
 
 /// The initial size of the flat memory where the Inox interpreter will run
 // ToDo: make the size configurable at run time ?
@@ -1217,6 +1217,12 @@ static void  text_free( Cell );
 static void  proxy_free( Index );
 static void  box_free( Cell );
 static void  range_free( Area );
+static bool  range_is_free( Area );
+static void  range_set_type( Area, Index );
+static void  range_set_low( Area, Index );
+static void  range_set_high( Area, Index );
+static Length range_length( Area );
+static Value  range_get_bindind( Area );
 static Area  reference_of( Cell );
 static bool  is_sharable( Cell );
 static Cell  stack_preallocate( Length );
@@ -2622,8 +2628,14 @@ function lean_substr( str : Cell, start : Value, len : Value ) : Cell {
     len = str_len - start;
   }
 
+  // If same length, then return the whole string
+  if( len == str_len ){
+    lean_lock( str );
+    return str;
+  }
+
   // If the substring is empty, return the empty string
-  if( len == 0 ){
+  if( len <= 0 ){
     return the_empty_lean;
   }
 
@@ -2884,6 +2896,7 @@ static Text  short_dump( Cell );
 static Text  stacks_dump( void );
 static void  set_text_cell( Cell, ConstText );
 static Text  cell_to_text( Cell );
+static Text  float_to_text( Float );
 static Text  tag_to_text( Tag );
 static Text  type_to_text( Index );
 static Text  proxy_to_text( Cell );
@@ -3781,6 +3794,7 @@ function cells_free( c : Cell, n : Count ) : void {
  *  object or some kind of array whose size in store elsewhere. However,
  *  the reference counter is still neeed. That would not be the case
  *  if there were a garbage collector. This is fairly complex.
+ *  For (much) better allocator, see https://github.com/microsoft/mimalloc
  */
 
 
@@ -5128,7 +5142,7 @@ function register_symbol( name : TxtC ) : Index {
   if( index != 0 || teq( name, "void" ) ){
     return index;
   }
-  
+
   // Allocate a bigger array if needed, twice the size
   if( all_symbol_cells_length == all_symbol_cells_capacity ){
 
@@ -5895,8 +5909,9 @@ function cell_float( c : Cell ) : Float {
  *  of cells, aka a smart pointer to an Inox object.
  */
 
-function set_reference_cell( c : Cell, v : Value ){
-  set( c, type_reference, tag_reference, v );
+function set_reference_cell( c : Cell, v : Cell ){
+  de&&mand( area_is_busy( v ) );
+  set( c, type_reference, area_tag( v ), v );
 }
 
 
@@ -7336,6 +7351,12 @@ function push_proxy( proxy : Index ){
 }
 
 
+function push_reference( c : Cell ){
+  PUSH();
+  set_reference_cell( TOS, c );
+}
+
+
 /* ----------------------------------------------------------------------------
  *  Helpers to dump the memory
  */
@@ -8332,11 +8353,11 @@ function is_a_boolean_cell( c : Cell ) : boolean {
 const tag_is_a_boolean = tag( "a-boolean?" );
 
 function primitive_is_a_boolean(){
- const auto_it_is = is_a_boolean_cell( TOS );
- if( !auto_it_is ){
-   clear( TOS );
- }
- set( TOS, type_boolean, tag_is_a_boolean, auto_it_is ? 1 : 0 );
+  const auto_it_is = is_a_boolean_cell( TOS );
+  if( !auto_it_is ){
+    clear( TOS );
+  }
+  set( TOS, type_boolean, tag_is_a_boolean, auto_it_is ? 1 : 0 );
 }
 primitive( "a-boolean?", primitive_is_a_boolean );
 
@@ -8348,11 +8369,11 @@ primitive( "a-boolean?", primitive_is_a_boolean );
 const tag_is_an_integer = tag( "an-integer?" );
 
 function primitive_is_an_integer(){
-  const it_is = is_an_integer_cell( TOS );
-  if( !it_is ){
+  const auto_it_is = is_an_integer_cell( TOS );
+  if( !auto_it_is ){
     clear( TOS );
   }
-  set( TOS, type_boolean, tag_is_an_integer, it_is ? 1 : 0 );
+  set( TOS, type_boolean, tag_is_an_integer, auto_it_is ? 1 : 0 );
 }
 primitive( "an-integer?", primitive_is_an_integer );
 
@@ -9373,88 +9394,6 @@ function cell_looks_safe( c : Cell ) : boolean {
 }
 
 
-function cell_to_text( c : Cell ) : Text {
-
-  alloc_de&&mand( cell_looks_safe( c ) );
-
-  const v = value_of( c );
-  const i = info_of(  c );
-  const t = unpack_type( i );
-
-  switch( t ){
-
-    case type_void :
-      return no_text;
-
-    case type_boolean :
-      return v == 0 ? no_text : "false";
-
-    case type_integer :
-      return N( v );
-
-    case type_float :
-      return float_to_text( v );
-
-    case type_tag :
-      return tag_to_text( v );
-
-    case type_verb :
-      return tag_to_text( unpack_name( i ) );
-
-    case type_reference :
-
-      const class_tag = area_tag( v );
-
-      if( class_tag == tag_text ){
-        //c/ return LeanString( v );
-        /**/ return lean_to_native( v );
-      }
-
-      if(class_tag == tag_range ){
-
-        if( range_is_free( c ) ){
-          const length = range_length( c );
-          return integer_to_text( length );
-        }
-
-        const referenced_cell = range_get_binding( c );
-
-        // ToDo: check if it is a text
-        de&&mand( cell_looks_safe( referenced_cell ) );
-        // If it is a text, return a portion of it
-        if( type_of( referenced_cell ) == type_reference
-        && area_tag( referenced_cell ) == tag_text
-        ){
-          /*{
-            return LeanString(
-              referenced_cell,
-              range_get_low(  c ),
-              range_get_high( c )
-            );
-          }*/
-          /*ts{*/
-            return lean_to_native( lean_substr(
-              referenced_cell,
-              range_get_low( c ),
-              range_get_high( c )
-            ) );
-          /*}*/
-        }else{
-          // Otherwise, return the text representation of the cell
-          return cell_to_text( referenced_cell );
-        }
-      }
-      // ToDo: reenter the interpreter to call an as-text method?
-      return S() + "Reference(" + N( v ) + ")";
-
-    default :
-      FATAL( "Invalid type " + N( t ) + " at " + C( c ) );
-
-  }
-
-}
-
-
 /* ----------------------------------------------------------------------------
  *  Debug tool
  */
@@ -9679,9 +9618,9 @@ function dump( c : Cell ) : Text {
 
     case type_reference :
 
-      class_name_tag = name_of( v );
+      class_name_tag = area_tag( v );
 
-      if( class_name_tag = tag_text ){
+      if( class_name_tag == tag_text ){
         txt = cell_to_text( c );
         // ToDo: truncate somewhere else
         if( tlen( txt ) > 31 ){
@@ -9705,7 +9644,7 @@ function dump( c : Cell ) : Text {
           buf += " ( <INVALID_EMPTY_TEXT> )";
         }
 
-      }else if( class_name_tag = tag_proxy ){
+      }else if( class_name_tag == tag_proxy ){
         /**/ const obj = proxied_object_by_id( v );
         /**/ const proxy_class_name = obj.constructor.name;
         // ToDo: in C++, the instance of AbstractProxy should give the class name
@@ -9713,7 +9652,7 @@ function dump( c : Cell ) : Text {
         /**/ buf += tag_to_text( n )
         /**/ + "<proxied-" + proxy_class_name + C( v ) + ">";
 
-      }else if( class_name_tag = tag_flow ){
+      }else if( class_name_tag == tag_flow ){
         // ToDo: add name
         buf += tag_to_dump_text( n ) + ":<flow:" + N( v ) + ">";
 
@@ -11703,7 +11642,7 @@ primitive( "to-float", primitive_to_float );
 
 
 /*
- *  float-to-integer - convert a float to an integer
+ *  float.to-integer - convert a float to an integer
  */
 
 function pop_float() : Float {
@@ -11722,11 +11661,11 @@ function primitive_float_to_integer(){
   //c/ auto  i = ( int ) f;
   push_integer( i );
 }
-primitive( "float-to-integer", primitive_float_to_integer );
+primitive( "float.to-integer", primitive_float_to_integer );
 
 
 /*
- *  float-to-text - convert a float to a text
+ *  float.to-text - convert a float to a text
  */
 
 function float_to_text( f : Float ) : Text {
@@ -11756,7 +11695,7 @@ function float_to_text( f : Float ) : Text {
         f = -f;
       }
       // handle integer part
-      int intPart = (int)auto_f;
+      int intPart = (int)f;
       if (intPart == 0) {
         strcat(buf, "0");
       } else {
@@ -11776,7 +11715,7 @@ function float_to_text( f : Float ) : Text {
       }
 
       // handle fractional part
-      float fracPart = auto_f - (float)intPart;
+      float fracPart = f - (float)intPart;
       if (fracPart != 0) {
         strcat(buf, ".");
         char fracBuf[16];
@@ -11804,7 +11743,7 @@ function primitive_float_to_text(){
 
 
 /*
- *  float-add - add two floats
+ *  float.add - add two floats
  */
 
 function primitive_float_add(){
@@ -11812,11 +11751,11 @@ function primitive_float_add(){
   const auto_f1 = pop_float();
   push_float( auto_f1 + auto_f2 );
 }
-primitive( "float-add", primitive_float_add );
+primitive( "float.add", primitive_float_add );
 
 
 /*
- *  float-subtract - subtract two floats
+ *  float.subtract - subtract two floats
  */
 
 function primitive_float_subtract(){
@@ -11824,11 +11763,11 @@ function primitive_float_subtract(){
   const auto_f1 = pop_float();
   push_float( auto_f1 - auto_f2 );
 }
-primitive( "float-subtract", primitive_float_subtract );
+primitive( "float.subtract", primitive_float_subtract );
 
 
 /*
- *  float-multiply - multiply two floats
+ *  float.multiply - multiply two floats
  */
 
 function primitive_float_multiply(){
@@ -11836,11 +11775,11 @@ function primitive_float_multiply(){
   const auto_f1 = pop_float();
   push_float( auto_f1 * auto_f2 );
 }
-primitive( "float-multiply", primitive_float_multiply );
+primitive( "float.multiply", primitive_float_multiply );
 
 
 /*
- *  float-divide - divide two floats
+ *  float.divide - divide two floats
  */
 
 function primitive_float_divide(){
@@ -11848,11 +11787,11 @@ function primitive_float_divide(){
   const auto_f1 = pop_float();
   push_float( auto_f1 / auto_f2 );
 }
-primitive( "float-divide", primitive_float_divide );
+primitive( "float.divide", primitive_float_divide );
 
 
 /*
- *  float-remainder - remainder of two floats
+ *  float.remainder - remainder of two floats
  */
 
 function primitive_float_remainder(){
@@ -11862,11 +11801,11 @@ function primitive_float_remainder(){
   //c/ auto  auto_f = fmod( auto_f1, auto_f2 );
   push_float( auto_f );
 }
-primitive( "float-remainder", primitive_float_remainder );
+primitive( "float.remainder", primitive_float_remainder );
 
 
 /*
- *  float-power - power of two floats
+ *  float.power - power of two floats
  */
 
 function primitive_float_power(){
@@ -11879,7 +11818,7 @@ function primitive_float_power(){
 
 
 /*
- *  float-sqrt - square root of a float
+ *  float.sqrt - square root of a float
  */
 
 function primitive_float_sqrt(){
@@ -11888,11 +11827,11 @@ function primitive_float_sqrt(){
   //c/ auto  auto_f = sqrt( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-sqrt", primitive_float_sqrt );
+primitive( "float.sqrt", primitive_float_sqrt );
 
 
 /*
- *  float-sin - sine of a float
+ *  float.sin - sine of a float
  */
 
 function primitive_float_sin(){
@@ -11901,11 +11840,11 @@ function primitive_float_sin(){
   //c/ auto  auto_f = sin( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-sin", primitive_float_sin );
+primitive( "float.sin", primitive_float_sin );
 
 
 /*
- *  float-cos - cosine of a float
+ *  float.cos - cosine of a float
  */
 
 function primitive_float_cos(){
@@ -11914,11 +11853,11 @@ function primitive_float_cos(){
   //c/ auto  auto_f = cos( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-cos", primitive_float_cos );
+primitive( "float.cos", primitive_float_cos );
 
 
 /*
- *  float-tan - tangent of a float
+ *  float.tan - tangent of a float
  */
 
 function primitive_float_tan(){
@@ -11927,11 +11866,11 @@ function primitive_float_tan(){
   //c/ auto  auto_f = tan( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-tan", primitive_float_tan );
+primitive( "float.tan", primitive_float_tan );
 
 
 /*
- *  float-asin - arc sine of a float
+ *  float.asin - arc sine of a float
  */
 
 function primitive_float_asin(){
@@ -11940,11 +11879,11 @@ function primitive_float_asin(){
   //c/ auto  auto_f = asin( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-asin", primitive_float_asin );
+primitive( "float.asin", primitive_float_asin );
 
 
 /*
- *  float-acos - arc cosine of a float
+ *  float.acos - arc cosine of a float
  */
 
 function primitive_float_acos(){
@@ -11953,11 +11892,11 @@ function primitive_float_acos(){
   //c/ auto  auto_f = acos( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-acos", primitive_float_acos );
+primitive( "float.acos", primitive_float_acos );
 
 
 /*
- *  float-atan - arc tangent of a float
+ *  float.atan - arc tangent of a float
  */
 
 function primitive_float_atan(){
@@ -11966,11 +11905,11 @@ function primitive_float_atan(){
   //c/ auto  auto_f = atan( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-atan", primitive_float_atan );
+primitive( "float.atan", primitive_float_atan );
 
 
 /*
- *  float-log - natural logarithm of a float
+ *  float.log - natural logarithm of a float
  */
 
 function primitive_float_log(){
@@ -11979,11 +11918,11 @@ function primitive_float_log(){
   //c/ auto  auto_f = log( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-log", primitive_float_log );
+primitive( "float.log", primitive_float_log );
 
 
 /*
- *  float-exp - exponential of a float
+ *  float.exp - exponential of a float
  */
 
 function primitive_float_exp(){
@@ -11992,11 +11931,11 @@ function primitive_float_exp(){
   //c/ auto  auto_f = exp( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-exp", primitive_float_exp );
+primitive( "float.exp", primitive_float_exp );
 
 
 /*
- *  float-floor - floor of a float
+ *  float.floor - floor of a float
  */
 
 function primitive_float_floor(){
@@ -12005,11 +11944,11 @@ function primitive_float_floor(){
   //c/ auto  auto_f = floor( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-floor", primitive_float_floor );
+primitive( "float.floor", primitive_float_floor );
 
 
 /*
- *  float-ceiling - ceiling of a float
+ *  float.ceiling - ceiling of a float
  */
 
 function primitive_float_ceiling(){
@@ -12018,11 +11957,11 @@ function primitive_float_ceiling(){
   //c/ auto  auto_f = ceil( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-ceiling", primitive_float_ceiling );
+primitive( "float.ceiling", primitive_float_ceiling );
 
 
 /*
- *  float-round - round a float
+ *  float.round - round a float
  */
 
 function primitive_float_round(){
@@ -12031,11 +11970,11 @@ function primitive_float_round(){
   //c/ auto  auto_f = round( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-round", primitive_float_round );
+primitive( "float.round", primitive_float_round );
 
 
 /*
- *  float-truncate - truncate a float
+ *  float.truncate - truncate a float
  */
 
 function primitive_float_truncate(){
@@ -12044,7 +11983,7 @@ function primitive_float_truncate(){
   //c/ auto  auto_f = trunc( auto_f1 );
   push_float( auto_f );
 }
-primitive( "float-truncate", primitive_float_truncate );
+primitive( "float.truncate", primitive_float_truncate );
 
 
 /* -------------------------------------------------------------------------
@@ -14052,7 +13991,7 @@ primitive( "map.length", primitive_map_length );
   */
 
 /*
-  *  set-put - put a value in a set
+  *  set.put - put a value in a set
   */
 
 function primitive_set_put(){
@@ -14082,6 +14021,7 @@ function primitive_set_put(){
   move_cell( value_cell, set + ( set_length + 1 ) * ONE );
   TOS -= 3 * ONE;
 }
+primitive( "set.put", primitive_set_put );
 
 
 /*
@@ -14111,6 +14051,7 @@ function primitive_set_get(){
   FATAL( "set.get, key not found" );
   return;
 }
+primitive( "set.get", primitive_set_get );
 
 
 /*
@@ -14128,6 +14069,7 @@ function primitive_set_length(){
   set( TOS, type_integer, tag_set_length, set_length );
   set_tos_name( tag_set_length );
 }
+primitive( "set.length", primitive_set_length );
 
 
 /*
@@ -14155,6 +14097,7 @@ function primitive_set_extend(){
   clear( set_cell );
   TOS -= 2 * ONE;
 }
+primitive( "set.extend", primitive_set_extend );
 
 
 /*
@@ -14183,6 +14126,7 @@ function primitive_set_union(){
   clear( set_cell );
   TOS -= ONE;
 }
+primitive( "set.union", primitive_set_union );
 
 
 /*
@@ -14218,6 +14162,7 @@ function primitive_set_intersection(){
   clear( set_cell );
   TOS -= ONE;
 }
+primitive( "set.intersection", primitive_set_intersection );
 
 
 /* ----------------------------------------------------------------------------
@@ -14254,6 +14199,7 @@ function primive_box(){
   move_cell( TOS, allocated_cell );
   set( TOS, type_reference, kept_name, allocated_cell );
 }
+primitive( "box", primive_box );
 
 
 /*
@@ -14637,7 +14583,7 @@ function range_get_binding( c : Cell ) : Value {
 function set_range( c : Cell, start : Index, end : Index ){
   new_bound_range( c, range_type_mid, 0 );
   const range = value_of( c );
-  range_set_low( range, start );
+  range_set_low(  range, start );
   range_set_high( range, end );
   range_set_type( value_of( c ), range_type_mid );
   range_normalize( value_of( c ) );
@@ -14752,6 +14698,304 @@ function dereference_if_bound( c : Cell ) : Cell {
     return c;
   }
 }
+
+
+function range_textify_into( object : Cell, dest : Cell ){
+
+  let bound_object;
+
+  switch( range_get_type( object ) ){
+
+    case range_type_empty:
+      copy_cell( the_empty_text_cell, dest );
+      return;
+
+    case range_type_last:
+
+      bound_object = range_get_binding( object );
+
+      if( bound_object == 0 ){
+        copy_cell( the_empty_text_cell, dest );
+        return;
+      }
+
+      // Either a lean string or some array
+      switch( area_tag( bound_object ) ){
+
+        case tag_text:
+          copy_cell( bound_object, dest );
+          return;
+
+        case tag_box:
+          copy_cell( bound_object, the_tmp_cell );
+          cell_textify( the_tmp_cell );
+          move_cell( the_tmp_cell, dest );
+          return;
+
+        case tag_range:
+          // ToDo: range over range
+          debugger;
+          copy_cell( the_empty_text_cell, dest );
+          return;
+
+        default:
+          // ToDo: ??
+          debugger;
+          copy_cell( the_empty_text_cell, dest );
+      }
+      return;
+
+    case range_type_first:
+      return;
+
+    case range_type_all:
+      return;
+
+    case range_type_index:
+      return;
+
+    case range_type_begin:
+      return;
+
+    case range_type_end:
+      return;
+
+    case range_type_mid:
+      return;
+
+    case range_type_count:
+      return;
+    default:
+      return;
+  }
+}
+
+
+function reference_textify( c : Cell ){
+// Convert an object into a text object
+  const object = value_of( c );
+  switch( area_tag( object ) ){
+    case tag_text:
+      return;
+    case tag_box:
+      copy_cell( object, the_tmp_cell );
+      cell_textify( the_tmp_cell );
+      move_cell( the_tmp_cell, c );
+      return;
+    case tag_range:
+      range_textify_into( object, c );
+      return;
+    default:
+      if( area_length( object ) == 1 ){
+        copy_cell( object, the_tmp_cell );
+        cell_textify( the_tmp_cell );
+        move_cell( the_tmp_cell, c );
+        return;
+      }
+      // ToDo: invoke some Inox implemented method?
+  }
+}
+
+
+function cell_textify( c : Cell ){
+
+  switch( type_of( c ) & 0x7 ){
+
+    case type_void:
+      set_type( c, type_reference );
+      set_value( c, the_empty_text_cell  );
+      return;
+
+    case type_boolean:
+      if( value_of( c ) == 0 ){
+        set_type( c, type_reference );
+        set_value( c, the_empty_text_cell  );
+      }else{
+        set_text_cell( c, "1" );
+      }
+      return;
+
+    case type_integer:
+      set_text_cell( c, N( value_of( c ) ) );
+      return;
+
+    case type_float:
+      set_text_cell( c, float_to_text( value_of( c ) ) );
+      return;
+
+    case type_tag:
+      set_text_cell( c, tag_to_text( value_of( c ) ) );
+      return;
+
+    case type_verb:
+      set_text_cell( c, tag_to_text( unpack_name( info_of( c ) ) ) );
+      return;
+
+    case type_reference:
+      reference_textify( c );
+      return;
+
+    default:
+      FATAL( S() + "Invalid type for cell, " + N( type_of( c ) ) );
+      return;
+  }
+
+}
+
+
+function cell_to_text( c : Cell ) : Text {
+
+  alloc_de&&mand( cell_looks_safe( c ) );
+
+  const v = value_of( c );
+  const i = info_of(  c );
+  const t = unpack_type( i );
+  let   class_tag;
+
+  switch( t ){
+
+    case type_void :
+      return no_text;
+
+    case type_boolean :
+      if( v == 0 ){
+        return no_text;
+      }
+      return "1";
+
+    case type_integer :
+      return N( v );
+
+    case type_float :
+      return float_to_text( v );
+
+    case type_tag :
+      return tag_to_text( v );
+
+    case type_verb :
+      return tag_to_text( unpack_name( i ) );
+
+    case type_reference :
+
+      class_tag = area_tag( v );
+
+      if( class_tag == tag_text ){
+        //c/ return LeanString( v );
+        /**/ return lean_to_native( v );
+      }
+
+      if( class_tag == tag_range ){
+
+        const binding = range_get_binding( v );
+
+        // If not bound, return the length of the range
+        if( binding == 0 ){
+          const length = range_length( v );
+          return integer_to_text( length );
+        }
+
+        de&&mand( area_is_busy( binding ) );
+
+        // If it is a text, return a portion of it
+        const bound_reference_class = area_tag( binding );
+        if( bound_reference_class == tag_text ){
+          let low = range_get_low( v );
+          let len = range_get_high( v );
+          // Compute length if high limit is an index
+          if( range_get_type( v ) != range_type_count ){
+            if( len < 0 ){
+              len = area_payload_size( binding ) + len;
+            }else{
+              len = len - low;
+            }
+          }
+          //c/ return LeanString( binding, low, high );
+          /**/ return lean_to_native( lean_substr( binding, low, len ) );
+        }else{
+          // Otherwise, return the text representation of the cell
+          return cell_to_text( binding );
+        }
+      }
+      // ToDo: reenter the interpreter to call an as-text method?
+      return S() + "Reference(" + N( v ) + ")";
+
+    default :
+      FATAL( "Invalid type " + N( t ) + " at " + C( c ) );
+
+  }
+
+}
+
+/* ---------------------------------------------------------------------------
+ *  Range related primitives
+ */
+
+
+/*
+ *  range.from:to: - create a range from a low and a high index
+ */
+
+function primitive_range_from_to(){
+  const high = pop_integer();
+  const low  = pop_integer();
+  // 4 cells: type, low, high, binding
+  const r = allocate_area( tag_range, 4 * size_of_cell );
+  set( r          , type_integer, tag_range_type, range_type_mid );
+  set( r + 1 * ONE, type_integer, tag_range_low,  low  );
+  set( r + 2 * ONE, type_integer, tag_range_high, high );
+  set( r + 3 * ONE, type_integer, tag_range_binding, 0 );
+  range_normalize( r );
+  push_reference( r );
+}
+primitive( "range.from:to:", primitive_range_from_to );
+
+
+/*
+ *  .. - binary operator to create a range with two indices
+ */
+
+operator_primitive( "..", primitive_range_from_to );
+
+
+/*
+ *  range.from:for: - create a range from a low index and a length
+ */
+
+function primitive_range_from_for(){
+  const length = pop_integer();
+  const low    = pop_integer();
+  // 4 cells: type, low, high, binding
+  const r = allocate_area( tag_range, 4 * size_of_cell );
+  set( r          , type_integer, tag_range_type, range_type_count );
+  set( r + 1 * ONE, type_integer, tag_range_low,  low  );
+  set( r + 2 * ONE, type_integer, tag_range_high, length );
+  set( r + 3 * ONE, type_integer, tag_range_binding, 0 );
+  range_normalize( r );
+  push_reference( r );
+}
+primitive( "range.from:for:", primitive_range_from_for );
+
+
+/*
+ *  :: - binary operator to create a range with a low index and a length
+ */
+
+operator_primitive( "::", primitive_range_from_for );
+
+
+/*
+ *  range.over - bind a range to some composite value
+ */
+
+function primitive_range_over(){
+  const r = pop_reference();
+  const composite = pop_reference();
+  // ToDo: should return a new range
+  check_de&&mand( range_is_free( r ) );
+  range_set_binding( r, composite );
+  push_reference( r );
+}
+primitive( "range.over", primitive_range_over );
 
 
 /* ----------------------------------------------------------------------------
@@ -17022,50 +17266,59 @@ function extract_line( txt : TxtC, ii : Index ) : Text {
 
 
 function ch_is_limit( ch : TxtC, next_ch : TxtC ) : boolean {
+
+  // Space is always a delimiter
   if( teq( ch, " " ) )return true;
-  if( toker_eager_mode )return false;
-  if( tneq( the_style, "inox" ) )return false;
-  if( teq( ch, ":" )
-  ||  ( teq( ch, ";" ) ) // ToDo: ?
-  ||  ( teq( ch, "/" ) && tneq( next_ch, "(" ) ) // /a/b/c is /a /b /c, a/b/c is a/ b/ c
-//||  ch == "^"  // ToDo: ?
-//||  ch == "."  // ToDo: notation where x .b( c ) eqv c x .:b eqv c x /b .:
-//||  ch == "'"  // ToDo: xxx'yyy eqv xxx.yyy ?  _point'x _point'out()
-//||  ch == "`"  // ToDo: back tick for Lisp like quote ?
-  || ( teq( ch, "(" ) && teq( next_ch, ")" ) ) // x() is x( and then )
-  ){
-    return true;
-  }else{
-    return false;
-  }
+
+  // :, ;, / and ( are delimiters in some cases
+
+  // xxx:yyy is xxx: yyy, not xxx:yyy, unless xxx::yyy
+  if ( teq( ch, ":" ) && tneq( next_ch, ":" ) )return true;
+
+  // xxx; is xxx ; not xxx;, only when next character is some space
+  if ( teq( ch, ";" ) && tneq( next_ch, " " ) )return true;
+
+  // xxx/yyy is xxx/ yyy, not xxx/yyy, unless xxx/(
+  if( teq( ch, "/" ) && tneq( next_ch, "(" ) )return true;
+
+  // xxx()yyy is xxx( and then )yyy, not xxx()yyy
+  if( teq( ch, "(" ) && teq( next_ch, ")" ) )return true;
+
+  return false;
+
 }
 
 
 // Some small lookahead to detect some constructs
-/**/ let  next_ch  = "    ";
-//c/ static Text next_ch( "    " );
-let next_ch_ii = 0;
+/**/ let  toker_next  = "    ";
+//c/ static Text toker_next( "    " );
+
+/**/ let toker_next_1 = "";
+//c/ static Text toker_next_1( "" );
+
+// Position of those next character in source code
+let toker_next_ii = 0;
 
 
-
-function refill_next_ch( ii : Index ){
-  // Don't do it twice if same location
-  if( next_ch_ii == ii )return;
+function refill_next( ii : Index ){
+  // Don't do it twice if same location, for speed
+  if( toker_next_ii == ii )return;
   let jj;
-  next_ch = "";
+  toker_next = "";
   for( jj = 0 ; jj < 4 ; jj++ ){
     if( ( ii + jj ) >= toker_text_length ){
-      next_ch += " ";
+      toker_next += " ";
     }else{
-      /**/ next_ch += toker_text[ ii + jj ];
-      //c/ next_ch += tmid( toker_text, ii + jj, ii + jj + 1 );
+      /**/ toker_next += toker_text[ ii + jj ];
+      //c/ toker_next += tmid( toker_text, ii + jj, ii + jj + 1 );
       // Treat lf like a space
-      if( ch_is_eol( tmid( next_ch, jj, 1 ) ) ){
-        next_ch = tcut( next_ch, jj ) + " ";
+      if( ch_is_eol( tmid( toker_next, jj, 1 ) ) ){
+        toker_next = tcut( toker_next, jj ) + " ";
       }
     }
   }
-  next_ch_ii = ii;
+  toker_next_1 = tcut( toker_next, 1 );
+  toker_next_ii = ii;
 }
 
 
@@ -17380,6 +17633,17 @@ static char* fast_getline( int fd ){
 }*/
 
 
+/* -----------------------------------------------------------------------------
+ *  Tokenizer. It is a state machine that consumes characters from the input
+ *  stream and produce tokens.
+ *  There is a base state and 3 states for each token type: comments, texts and
+ *  words.
+ */
+
+/*
+ *  Tokenizer processing of whitespaces between tokens
+ */
+
 function process_whitespaces(){
   // EOF, end of file
   if( toker_ii == toker_text_length ){
@@ -17471,7 +17735,9 @@ function process_whitespaces(){
 } // process_whitespaces()
 
 
-
+/*
+ *  Tokenizer "base" state handling
+ */
 
 function process_base_state(){
 
@@ -17545,6 +17811,10 @@ function process_base_state(){
 } // process_base_state()
 
 
+/*
+ *  Tokenizer "comment" state handling
+ */
+
 function process_comment_state(){
 
   toker_buf += toker_ch;
@@ -17615,9 +17885,9 @@ function process_comment_state(){
   // If this terminates the multiline comment, emit the comment
   if( teq( toker_ch, comment_multine_last_ch )
   && teq( tcut( toker_buf, tlen(  comment_multiline_begin ) ),
-                            comment_multiline_begin )
+                                  comment_multiline_begin )
   && teq( tbut( toker_buf, -tlen( comment_multiline_end ) ),
-                            comment_multiline_end )
+                                  comment_multiline_end )
   ){
     // Emit token, without start & end of comment sequence
     token_type = token_comment_multiline;
@@ -17647,6 +17917,10 @@ function process_comment_state(){
 } // process_comment_state()
 
 
+/*
+ *  Tokenizer "text" state handling
+ */
+
 function process_text_state(){
 
   // " marks the end of the text token
@@ -17668,12 +17942,24 @@ function process_text_state(){
 } // process_text_state()
 
 
-function process_word_state(){
+/*
+ *  Tokenizer "word" state handling
+ */
+
+function token_eat() : boolean {
+// Add new character to being built token
+  toker_buf = toker_buf + toker_ch;
+  toker_ii++;
+  return false;
+}
+
+
+function process_word_state() : boolean {
 
   // ToDo: this assert fails, why? de&&mand( buf.length > 0 );
 
   // If a xxx: naming prefix was there, it will come next
-  if( toker_post_literal_name != "" ){
+  if( tneq( toker_post_literal_name, "" ) ){
     back_token_type  = token_type_word;
     back_token_text = toker_post_literal_name;
     // ToDo: position, line_no, column_no of back token
@@ -17687,7 +17973,7 @@ function process_word_state(){
     if( toker_eager_mode ){
       token_text = toker_buf;
       token_is_ready = true;
-      return;
+      return true;
     }
 
     // ToDo: this fails, why? de&&mand( buf.length > 0 );
@@ -17699,7 +17985,7 @@ function process_word_state(){
     if( token_type == token_type_comment ){
       token_text = toker_buf;
       token_is_ready = true;
-      return;
+      return true;
     }
 
     let auto_aliased = alias( toker_buf );
@@ -17710,6 +17996,7 @@ function process_word_state(){
         toker_buf = auto_aliased;
         token_text = toker_buf;
         token_is_ready = true;
+        return true;
       }else{
         token_de&&bug( S()+ "alias for " + toker_buf + " is " + auto_aliased );
         // When this happens, restart as if from new source, base state.
@@ -17723,85 +18010,85 @@ function process_word_state(){
         toker_ii = 0;
         toker_buf = "";
         toker_state = token_base;
+        return false;
       }
-      return;
     // Unless no alias or alias expands into more than a simple word
     }else if( tlen( auto_aliased ) == 0 ){
       token_text = toker_buf;
       token_is_ready = true;
-      return;
+      return true;
     }
 
     // Forth uses only spaces as delimiters
     if( style_is_forth ){
       token_text = toker_buf;
       token_is_ready = true;
-      return;
+      return true;
     }
   }
 
-  de&&mand( !toker_is_space );
-
-  // Comma is ignored, it is there for readability only, unless Forth
-  if( teq( toker_ch, "," )
-  &&  !style_is_forth
-  &&  !toker_eager_mode
-  ){
-    return;
-  }
+  legacy_de&&mand( !toker_is_space );
 
   // If eager mode then only space is a terminator
   if( style_is_forth
   ||  toker_eager_mode
   ){
     toker_buf += toker_ch;
-    return;
+    return false;
   }
 
   // ToDo: what comes next needs some serious refactoring
 
   // Get some next characters, some lookahead helps sometimes
-  refill_next_ch( toker_ii );
+  refill_next( toker_ii );
 
-  // Handle line continuation when \ is last character on line, unless Forth
+  // Comma is ignored when followed by space, it is there for readability only
+  if( teq( toker_ch, "," ) && teq( toker_next_1, " " ) ){
+    return;
+  }
+
+  // Handle line continuation when \ is last character on line
   // ToDo: should be defined by style
   if( teq( toker_ch, "\\" )
-  && ch_is_eol( tcut( next_ch, 1 ) )
+  && ch_is_space( toker_next_1 )
+  // ToDo: check that pseudo space is actually cr or lf
   ){
     toker_ii++;
-    // Handle crlf
-    if( teq( tcut( toker_ch, 1 ), "\r" )
-    &&  teq( tmid( next_ch, 1, 1 ), "\n" ) ){
+    // Handle crlf, skip cr when followed by lf
+    if( teq( toker_ch, "\r" ) &&  teq( toker_next_1, "\n" ) ){
       toker_ii++;
     }
-    return;
+    return false;
   }
 
   // . is a token if followed by some space
   if( teq( toker_ch, end_define ) ){
-    toker_is_limit = ch_is_space( tcut( next_ch, 1 ) );
+    toker_is_limit = ch_is_space( toker_next_1 );
 
   // ; is a token if followed by some space or .
   }else if( teq( toker_ch, terminator_sign ) ){
-    toker_is_limit = ch_is_space( tcut( next_ch, 1 ) )
-    || teq( tcut( next_ch, 1 ), end_define );
+    toker_is_limit
+    = ch_is_space( toker_next_1 ) || teq( toker_next_1, end_define );
 
   // Some other special characters are a limit too
   }else{
-    toker_is_limit = ch_is_limit( toker_ch, tcut( next_ch, 1 ) );
+    toker_is_limit = ch_is_limit( toker_ch, toker_next_1 );
   }
 
-  // If no limit is reached, keep going
-  if( !toker_is_limit ){
+  // If no delimiter is reached, keep going
+  if( ! toker_is_limit ){
     toker_buf += toker_ch;
-    return;
+    // ToDo: ? toker_ii++;
+    return false;
   }
 
-  // If there was nothing before the limit, emit a single char token
+  // Some potential limit is reached, deal with it
+
+  // If there was nothing before the non space delimiter, emit a single char
   if( tlen( toker_buf ) == 0 && ! toker_is_space ){
     if( teq( toker_ch, "/" ) ){
       toker_buf = "/";
-      return;
+      return false;
     }else{
       toker_start_ii = toker_ii - 1;
       toker_buf = toker_ch;
@@ -17812,35 +18099,41 @@ function process_word_state(){
   // If there was something before the limit, deal with that
   }else if( tlen( toker_buf ) >= 0 ){
 
-    // xx(, xx{, xx[ and xx" are words of a special type.
+    // ToDo: refactor, . should be configurable
+    if( teq( toker_ch, "." ) ){
+      // Don't token_eat(), it will stand for itself
+      if( tbut( toker_buf, -1 ) == "." ){
+        // Special case when consecutive dots, they go together
+        token_eat();
+      }
+
+    // xx(, xx{, xx[ and xx" are words of a special type
     // so is xxx: when before a space or /xxx/yyy which is /xxx
-    if( teq( toker_ch, "(" )
+    } else if( teq( toker_ch, "(" )
     ||  teq( toker_ch, '[' )
     ||  teq( toker_ch, '{' )
     ||  teq( toker_ch, '"' )
-    ||  ( teq( toker_ch, ':' ) && teq( tcut( next_ch, 1 ), " " ) )
-    || teq( toker_ch, '/' ) && tneq( tcut( toker_buf, 1 ), "/" )
+    ||  ( teq( toker_ch, ':' ) && teq( toker_next_1, " " ) )
+    ||  ( teq( toker_ch, '/' ) && tneq( tcut( toker_buf, 1 ), "/" ) )
     ){
-      toker_buf = toker_buf + toker_ch;
-      toker_ii++;
+      token_eat();
 
     // ) and } are also words of a special type
     } else if(
       ( teq( toker_ch, ")" ) || teq( toker_ch, "}" ) )
-    && ch_is_limit( tcut( next_ch, 1 ), "" )
+    && ch_is_limit( toker_next_1, "" )
     ){
-      toker_buf = toker_buf + toker_ch;
-      toker_ii++;
+      token_eat();
 
     // xxx:", xxx:123, xxx:-123, to name literals
     } else if( teq( toker_ch, ":" ) ){
 
       // End of word if : is before a literal or another delimiter
       // ToDo: enable :: in words?
-      if( teq( tcut( next_ch, 1 ), "\"" )
-      ||  teq( tcut( next_ch, 1 ), "-" )
-      ||  ch_is_digit( tcut( next_ch, 1 ) )
-      ||  ch_is_limit( tcut( next_ch, 1 ), "" )
+      if( teq( toker_next_1, "\"" )
+      ||  teq( toker_next_1, "-" )
+      ||  ch_is_digit( toker_next_1 )
+      ||  ch_is_limit( toker_next_1, "" )
       ){
         // ToDo: get rid of post_literal_name
         toker_post_literal_name = ":" + toker_buf;
@@ -17852,7 +18145,7 @@ function process_word_state(){
       }else{
         toker_buf += ":";
       }
-      return;
+      return false;
     }
 
     // A well separated word was collected, before or with the limit
@@ -17967,14 +18260,11 @@ function next_token(){
 
   token_is_ready = false;
 
-  while( !token_is_ready ){
+  while( ! token_is_ready ){
     detect_infinite_loop();
     process_whitespaces();
     if( token_is_ready )break;
-    // State machine:
-    // base -> word    -> base
-    // base -> text    -> base
-    // base -> comment -> base
+    // State machine
     switch( toker_state ){
       case token_base         : process_base_state();    break;
       case token_type_comment : process_comment_state(); break;
@@ -18125,10 +18415,10 @@ function test_tokenizer() : Index {
   test_token( token_type_word, "]"  );
   test_token( token_type_eof, ""    );
 
-  tokenizer_restart( "~~\n a, bc;,. [[ ]] #[ ]# x.[ ] };" );
+  tokenizer_restart( "~~\n a, b;,. [[ ]] #[ ]# x.[ ] };" );
   test_token( token_type_comment, "" );
   test_token( token_type_word, "a"   );
-  test_token( token_type_word, "bc;" );
+  test_token( token_type_word, "b;," );
   test_token( token_type_word, "."   );
   test_token( token_type_word, "[["  );
   test_token( token_type_word, "]]"  );
@@ -18159,13 +18449,14 @@ function test_tokenizer() : Index {
   test_token( token_type_eof,  ""   );
 
   tokenizer_restart(
-    "~~\n to aa ct: void is: as_v( void:0 );bb. .)."
+    "~~\n to aa ct: void .. is: as_v( void:0 );bb. .). .. X."
   );
   test_token( token_type_comment, "" );
   test_token( token_type_word, "to"    );
   test_token( token_type_word, "aa"    );
   test_token( token_type_word, "ct:"   );
   test_token( token_type_word, "void"  );
+  test_token( token_type_word, ".."     );
   test_token( token_type_word, "is:"   );
   test_token( token_type_word, "as_v(" );
   test_token( token_type_word, "0"     );
@@ -18173,6 +18464,9 @@ function test_tokenizer() : Index {
   test_token( token_type_word, ");bb"  );
   test_token( token_type_word, "."     );
   test_token( token_type_word, ".)"    );
+  test_token( token_type_word, "."     );
+  test_token( token_type_word, ".."    );
+  test_token( token_type_word, "X"     );
   test_token( token_type_word, "."     );
   test_token( token_type_eof, ""       );
 

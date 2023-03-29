@@ -386,13 +386,13 @@ The `make-object` verb creates an object and pushes it's identity onto the data 
 ```
 to make-point  make-object( x:0, y:0, point:2 )
 
-make-point, 2 _point.x!, 5 _point.y!, out( "x is " & _point.x )
+make-point, 2 _point .x!, 5 _point .y!, out( "x is " & _point.x )
 ```
 
 With the object class and the object variable, it becomes easy to define **method verbs** that manipulate the object.
 
 ```
-to point.dump  method: { out( "( x:" & it.x & ", y: " & it.y & ")" ) }.
+to point.dump  method: { out( "( x:" & it .x & ", y: " & it .y & ")" ) }.
 ```
 
 Such method verbs are typically defined using the `method:` verb. It creates a _scope_ and a local variable named **it** and then it runs the specified block. Some other language use _self_ or _this_ instead of _it_.
@@ -434,14 +434,14 @@ Falsy values
 
 There is a `boolean` type of value with only two valid values, `true` and `false`.
 
-There are also a few special values, _falsy_ values, such as `0`, `void` or `""` (the empty text) that are often usefull when a _boolean_ value is expected. To convert a value into a boolean value, use the `?` operator. It's result is either `true` or `false`.
+There are also a few special values, _falsy_ values, such as `0`, `void` or `""` (the empty text) that are often usefull when a _boolean_ value is expected. To convert a value into a boolean value, use the `?` operator. Note that a class can redefine `.?` to convert an object into a boolean value. The result is either `true` or `false`.
 
 
 ```
-if: "" then out( "true" )      ~~ nothing, "" is falsy
-if: "" ? then out( "true" )    ~~ nothing, "" is falsy
-if: void then out( "true" )    ~~ => type error, void is not a boolean
-if: void ? then out( "true" )  ~~ nothing, void is falsy
+if: ""    then: out( "true" );  ~~ nothing, "" is falsy
+if: void  then: out( "true" );  ~~ nothing, void is falsy
+if: 0     then: out( "true" );  ~~ nothing, 0 is falsy
+if: obj ? then: out( "true" );  ~~ nothing if method .? is defined and returns false
 ```
 
 Verbs that expect a _boolean_ value will usually _coerce_ the value of an other type into a _boolean_ value using a simple rule : everything whose value is zero is false, everthing else is true.
@@ -516,13 +516,17 @@ Ranges
 
 Ranges are like boxes, they reference some value. But instead of referencing a single value, they reference a range of values. They are usefull when you want to iterate over such a range of values. For example, if you want to iterate over the values from 1 to 10, you can use a range.
 
+``` sh
+( 1 ... 10 ) iterate{ out( it ) } ~~ outputs 1 2 3 4 5 6 7 8 9 10
+```
+
 Ranges are also very efficient to reference a portion of a text, ie a *slice*. For example, if you want to reference the first 10 characters of a text, you can use a range. That works too with other types of values, like stacks, arrays, maps, etc.
 
-The range can either be between two indices or between a start index and a length. When an index is negative, it is relative to the end instead of the beginning. For example, if the range starts at -10 and run for 5 items, it will  reference 5 items starting from 10 items before the end.
+The range can either be between two indices or between a start index and a length. When an index is negative, it is relative to the end instead of the beginning. For example, if the range starts at -10 and run for 5 items, it will reference 5 items starting from 10 items before the end.
 
 The syntax differs depending on the type of the range, either by indices only or with an index and a length. The `..` binary operator creates a range using two indices. The `...` binary operator creates a range too but including the upper limit. The `::` binary operator creates a range using an index and a length.
 
-There exist convient shortcuts for specifying the end of someting or the beginning of something. The `^..` operator can be used with a single operand to specify the beginning of something, up to some limit. The `$::` operator can be used with a single operand to specify the ending of something.
+There exist convenient shortcuts for specifying the end of someting or the beginning of something. The `^..` operator can be used with a single operand to specify the beginning of something, up to some limit. The `::$` operator can be used with a single operand to specify the ending of something.
 
 All the combinations are possible, including the `^..$` operator that creates a range that references the whole thing and also `[^]`, `[$]` and `[]` to reference a single element, either at the beginning, at the end or at some specified position.
 
@@ -532,16 +536,16 @@ Using a bound range, it becomes easy to either extract or replace a portion of a
 
 
 ``` sh
-  "Hello world" 0 5 .. @ out ~~ print Hello, postfix style
-  out( "Hello world" @ 0 .. 5 ) ~~ print Hello too, infix style
-  "Hello world" 0 .. 5 "Inox" @! ~~ print Hello Inox
-  out( "Hello world" @! 0 .. 5 "Inox" )" ~~ print World
+  "Hello world", 0 5 .. @, out ~~ print Hello, postfix style
+  out( "Hello world", @( 0 .. 5 ) ) ~~ print Hello too, infix style
+  "Hello world", ( 0 .. 5 ), "Inox", @!, out ~~ print Inox world
+  out( "Hello world", @!( 0 .. 5, "Inox" ) )" ~~ print Inox world too
 ```
 
 
 Ranges work over ranges too, this creates sub ranges. When such ranges are made of index ranges, it describe a *path* to a sub value. When such ranges are made of slice ranges, it describes a sub *slice* of a thing.
 
-So a ranges can be many things that would be rather complex to implement without them. They get even more powerfull when tags are used to express limits and offsets inside complex objects, instead of integer positions.
+So a ranges can be many things that would be rather complex to implement without them. They get even more powerfull when tags are used to express limits and offsets inside complex objects, instead of integer positions (ToDo).
 
 This range concept will be enhanced in the future to support more complex things like pattern matching, unification and maybe even backtracking, as in Prolog.
 
@@ -558,15 +562,20 @@ class( xxx> )  ~~ get the class of the thing in the xxx local variable.
 - `thing`
   - `value`
     - `void`
+    - "boolean"
+    - number
+      - `integer`
+      - `float`
     - `tag`
-    - `integer`
-    - `float`
+    - `verb`
     - `text`
     - `reference`
-    - `verb`
+    - `range`
    - `object`
      - `native`
      - `proxy`
+     - `stack`
+     - `queue`
      - `array`
      - `map`
 
@@ -576,15 +585,15 @@ As a consequence `class( something )` produces a single tag, the name of the cla
 
 That basic solution is extensible by defining a `my_class.method` that is free to lookup for the desired method the way it wants. See also `.missing-method` about _virtual methods_ whose definition is determined _on the fly_ at _run time_, a sometimes slow but otherwise radically flexible solution.
 
-There are some optimizations involved to speed up the method lookup using caches to avoid multiple lookups for the same combination of class name and method name. This is optional and when it is turned on for a class is the responsability of that class to properly invalidate the cache when appropriate.
+There are some optimizations involved to speed up the method lookup using caches to avoid multiple lookups for the same combination of class name and method name. This is optional and when it is turned on for a class it is the responsability of that class to properly invalidate the cache when appropriate.
 
-One important distinction is when comparing two things. If both things are compared _by value_ then the _=?_ operator should be invoked. If things are objects, it is generaly the identity that matters and the _==?_ operator should be invoked. This is _by reference_ instead of _by value_. When communicating, two entities must agree on weither they communicate informations by value or by reference.
+One important distinction is when comparing two things. If both things are compared _by value_ then the _=_ operator should be invoked. If things are objects, it is generaly the identity that matters and the _same?_ operator should be invoked. This is _by reference_ instead of _by value_. When communicating, two entities must agree on weither they communicate informations by value or by reference.
 
 
 Stacks
 ======
 
-_stacks_ are lists of values with an easy access to the value at the top of the stack or nearby.
+_stacks_ are lists of values with an easy access to the values at the top of the stack or nearby.
 
 
 The data stack
@@ -710,7 +719,7 @@ to fib
   } if
 ```
 
-Note: the `,` (comma) is purely cosmetic, it is just there to make the source code clear, somehow.
+Note: `, ` (comma + space) is purely cosmetic, it is  there just to make the source code clear, somehow.
 
 
 Named parameters protocol
@@ -1145,14 +1154,14 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | loop-until | loop until condition is met |
 | loop-while | loop while condition is met |
 | + | addition operator primitive |
-| add | like the + binary operator but it is not an operator |
 | integer.+ | add two integers |
-| = | value equality |
-| equal? | like = but it is not an operator |
-| <> | value inequality, the boolean opposite of =? value equality. |
-| different? | like <> but it is not an operator |
-| is | true if two objects or two values are the same one |
-| is-not | true unless two objects or two values are the same one |
+| = | value equality binary operator |
+| equal? | like = but it is not an operator, value equality |
+| <> | value inequality, the opposite of = value equality |
+| inequal? | like <> but it is not an operator |
+| same? | true if two objects or two values are the same one |
+| identical? | like same? but it is not an operator |
+| different? | true unless two objects or two values are the same one |
 | ? | operator |
 | something? | operator |
 | void? | operator - true when TOS is of type void and value is 0. |
@@ -1163,27 +1172,27 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | and | binary boolean operator |
 | to-float | convert something into a float |
 | to-float | convert something into a float |
-| float-to-integer | convert a float to an integer |
-| float-to-text | convert a float to a text |
-| float-add | add two floats |
-| float-subtract | subtract two floats |
-| float-multiply | multiply two floats |
-| float-divide | divide two floats |
-| float-remainder | remainder of two floats |
-| float-power | power of two floats |
-| float-sqrt | square root of a float |
-| float-sin | sine of a float |
-| float-cos | cosine of a float |
-| float-tan | tangent of a float |
-| float-asin | arc sine of a float |
-| float-acos | arc cosine of a float |
-| float-atan | arc tangent of a float |
-| float-log | natural logarithm of a float |
-| float-exp | exponential of a float |
-| float-floor | floor of a float |
-| float-ceiling | ceiling of a float |
-| float-round | round a float |
-| float-truncate | truncate a float |
+| float.to-integer | convert a float to an integer |
+| float.to-text | convert a float to a text |
+| float.add | add two floats |
+| float.subtract | subtract two floats |
+| float.multiply | multiply two floats |
+| float.divide | divide two floats |
+| float.remainder | remainder of two floats |
+| float.power | power of two floats |
+| float.sqrt | square root of a float |
+| float.sin | sine of a float |
+| float.cos | cosine of a float |
+| float.tan | tangent of a float |
+| float.asin | arc sine of a float |
+| float.acos | arc cosine of a float |
+| float.atan | arc tangent of a float |
+| float.log | natural logarithm of a float |
+| float.exp | exponential of a float |
+| float.floor | floor of a float |
+| float.ceiling | ceiling of a float |
+| float.round | round a float |
+| float.truncate | truncate a float |
 | text.join | text concatenation operator |
 | & | text concatenation binary operator, see text.join |
 | text.cut | extract a cut of a text, remove a suffix |
@@ -1221,7 +1230,7 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | upper-data | non local access to a data variable |
 | set-upper-local | set a local variable in the nth upper frame |
 | set-upper-data | set a data variable in the nth upper frame |
-| without-data | remove stack elements until a previous variable, included |
+| forget-data | remove stack elements until a previous variable, included |
 | make-fixed-object | create a fixed size object |
 | make-object | create a object of the given length |
 | extend-object | turn a fixed object into an extensible one |
@@ -1258,7 +1267,7 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | map.put | put a value in a map |
 | map.get | get a value from a map |
 | map.length | number of elements in a map |
-| set-put | put a value in a set |
+| set.put | put a value in a set |
 | set.get | access a set element using a tag |
 | set.length | number of elements in a set |
 | set.extend | extend a set with another set |
@@ -1269,7 +1278,12 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | at | like @ unary operator but it is not an operator |
 | @! | binary operator to set a boxed value, works with bound ranges too |
 | at! | like the @! binary operator but it is not an operator |
-| without-local | clear the control stack downto to specified local |
+| range.from:to: | create a range from a low and a high index |
+| .. | binary operator to create a range with two indices |
+| range.from:for: | create a range from a low index and a length |
+| :: | binary operator to create a range with a low index and a length |
+| range.over | bind a range to some composite value |
+| forget-local | clear the control stack downto to specified local |
 | return-without-locals | like return but with some cleanup |
 | with-locals | prepare the control stack to handle local local variables |
 | return-without-it | internal, run-with-it uses it |
@@ -1352,4 +1366,3 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | the-void | push a void cell |
 | memory-visit | get a view of the memory |
 | source | evaluate the content of a file |
-

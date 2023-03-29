@@ -109,27 +109,27 @@
 | and | binary boolean operator |
 | to-float | convert something into a float |
 | to-float | convert something into a float |
-| float-to-integer | convert a float to an integer |
-| float-to-text | convert a float to a text |
-| float-add | add two floats |
-| float-subtract | subtract two floats |
-| float-multiply | multiply two floats |
-| float-divide | divide two floats |
-| float-remainder | remainder of two floats |
-| float-power | power of two floats |
-| float-sqrt | square root of a float |
-| float-sin | sine of a float |
-| float-cos | cosine of a float |
-| float-tan | tangent of a float |
-| float-asin | arc sine of a float |
-| float-acos | arc cosine of a float |
-| float-atan | arc tangent of a float |
-| float-log | natural logarithm of a float |
-| float-exp | exponential of a float |
-| float-floor | floor of a float |
-| float-ceiling | ceiling of a float |
-| float-round | round a float |
-| float-truncate | truncate a float |
+| float.to-integer | convert a float to an integer |
+| float.to-text | convert a float to a text |
+| float.add | add two floats |
+| float.subtract | subtract two floats |
+| float.multiply | multiply two floats |
+| float.divide | divide two floats |
+| float.remainder | remainder of two floats |
+| float.power | power of two floats |
+| float.sqrt | square root of a float |
+| float.sin | sine of a float |
+| float.cos | cosine of a float |
+| float.tan | tangent of a float |
+| float.asin | arc sine of a float |
+| float.acos | arc cosine of a float |
+| float.atan | arc tangent of a float |
+| float.log | natural logarithm of a float |
+| float.exp | exponential of a float |
+| float.floor | floor of a float |
+| float.ceiling | ceiling of a float |
+| float.round | round a float |
+| float.truncate | truncate a float |
 | text.join | text concatenation operator |
 | & | text concatenation binary operator, see text.join |
 | text.cut | extract a cut of a text, remove a suffix |
@@ -204,7 +204,7 @@
 | map.put | put a value in a map |
 | map.get | get a value from a map |
 | map.length | number of elements in a map |
-| set-put | put a value in a set |
+| set.put | put a value in a set |
 | set.get | access a set element using a tag |
 | set.length | number of elements in a set |
 | set.extend | extend a set with another set |
@@ -215,6 +215,11 @@
 | at | like @ unary operator but it is not an operator |
 | @! | binary operator to set a boxed value, works with bound ranges too |
 | at! | like the @! binary operator but it is not an operator |
+| range.from:to: | create a range from a low and a high index |
+| .. | binary operator to create a range with two indices |
+| range.from:for: | create a range from a low index and a length |
+| :: | binary operator to create a range with a low index and a length |
+| range.over | bind a range to some composite value |
 | forget-local | clear the control stack downto to specified local |
 | return-without-locals | like return but with some cleanup |
 | with-locals | prepare the control stack to handle local local variables |

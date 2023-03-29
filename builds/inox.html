@@ -107,27 +107,27 @@
 <tr><td>and</td><td>binary boolean operator</td></tr>
 <tr><td>to-float</td><td>convert something into a float</td></tr>
 <tr><td>to-float</td><td>convert something into a float</td></tr>
-<tr><td>float-to-integer</td><td>convert a float to an integer</td></tr>
-<tr><td>float-to-text</td><td>convert a float to a text</td></tr>
-<tr><td>float-add</td><td>add two floats</td></tr>
-<tr><td>float-subtract</td><td>subtract two floats</td></tr>
-<tr><td>float-multiply</td><td>multiply two floats</td></tr>
-<tr><td>float-divide</td><td>divide two floats</td></tr>
-<tr><td>float-remainder</td><td>remainder of two floats</td></tr>
-<tr><td>float-power</td><td>power of two floats</td></tr>
-<tr><td>float-sqrt</td><td>square root of a float</td></tr>
-<tr><td>float-sin</td><td>sine of a float</td></tr>
-<tr><td>float-cos</td><td>cosine of a float</td></tr>
-<tr><td>float-tan</td><td>tangent of a float</td></tr>
-<tr><td>float-asin</td><td>arc sine of a float</td></tr>
-<tr><td>float-acos</td><td>arc cosine of a float</td></tr>
-<tr><td>float-atan</td><td>arc tangent of a float</td></tr>
-<tr><td>float-log</td><td>natural logarithm of a float</td></tr>
-<tr><td>float-exp</td><td>exponential of a float</td></tr>
-<tr><td>float-floor</td><td>floor of a float</td></tr>
-<tr><td>float-ceiling</td><td>ceiling of a float</td></tr>
-<tr><td>float-round</td><td>round a float</td></tr>
-<tr><td>float-truncate</td><td>truncate a float</td></tr>
+<tr><td>float.to-integer</td><td>convert a float to an integer</td></tr>
+<tr><td>float.to-text</td><td>convert a float to a text</td></tr>
+<tr><td>float.add</td><td>add two floats</td></tr>
+<tr><td>float.subtract</td><td>subtract two floats</td></tr>
+<tr><td>float.multiply</td><td>multiply two floats</td></tr>
+<tr><td>float.divide</td><td>divide two floats</td></tr>
+<tr><td>float.remainder</td><td>remainder of two floats</td></tr>
+<tr><td>float.power</td><td>power of two floats</td></tr>
+<tr><td>float.sqrt</td><td>square root of a float</td></tr>
+<tr><td>float.sin</td><td>sine of a float</td></tr>
+<tr><td>float.cos</td><td>cosine of a float</td></tr>
+<tr><td>float.tan</td><td>tangent of a float</td></tr>
+<tr><td>float.asin</td><td>arc sine of a float</td></tr>
+<tr><td>float.acos</td><td>arc cosine of a float</td></tr>
+<tr><td>float.atan</td><td>arc tangent of a float</td></tr>
+<tr><td>float.log</td><td>natural logarithm of a float</td></tr>
+<tr><td>float.exp</td><td>exponential of a float</td></tr>
+<tr><td>float.floor</td><td>floor of a float</td></tr>
+<tr><td>float.ceiling</td><td>ceiling of a float</td></tr>
+<tr><td>float.round</td><td>round a float</td></tr>
+<tr><td>float.truncate</td><td>truncate a float</td></tr>
 <tr><td>text.join</td><td>text concatenation operator</td></tr>
 <tr><td>&</td><td>text concatenation binary operator, see text.join</td></tr>
 <tr><td>text.cut</td><td>extract a cut of a text, remove a suffix</td></tr>
@@ -202,7 +202,7 @@
 <tr><td>map.put</td><td>put a value in a map</td></tr>
 <tr><td>map.get</td><td>get a value from a map</td></tr>
 <tr><td>map.length</td><td>number of elements in a map</td></tr>
-<tr><td>set-put</td><td>put a value in a set</td></tr>
+<tr><td>set.put</td><td>put a value in a set</td></tr>
 <tr><td>set.get</td><td>access a set element using a tag</td></tr>
 <tr><td>set.length</td><td>number of elements in a set</td></tr>
 <tr><td>set.extend</td><td>extend a set with another set</td></tr>
@@ -213,6 +213,11 @@
 <tr><td>at</td><td>like @ unary operator but it is not an operator</td></tr>
 <tr><td>@!</td><td>binary operator to set a boxed value, works with bound ranges too</td></tr>
 <tr><td>at!</td><td>like the @! binary operator but it is not an operator</td></tr>
+<tr><td>range.from:to:</td><td>create a range from a low and a high index</td></tr>
+<tr><td>..</td><td>binary operator to create a range with two indices</td></tr>
+<tr><td>range.from:for:</td><td>create a range from a low index and a length</td></tr>
+<tr><td>::</td><td>binary operator to create a range with a low index and a length</td></tr>
+<tr><td>range.over</td><td>bind a range to some composite value</td></tr>
 <tr><td>forget-local</td><td>clear the control stack downto to specified local</td></tr>
 <tr><td>return-without-locals</td><td>like return but with some cleanup</td></tr>
 <tr><td>with-locals</td><td>prepare the control stack to handle local local variables</td></tr>
@@ -297,4 +302,4 @@
 <tr><td>memory-visit</td><td>get a view of the memory</td></tr>
 <tr><td>source</td><td>evaluate the content of a file</td></tr>
 </table>
-<p>Found 295 primitives.</p></body></html>
+<p>Found 300 primitives.</p></body></html>

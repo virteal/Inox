@@ -5,6 +5,14 @@
  |
  |~
 
+~~ Range related
+ ~~ to over( .over().  inline
+ to @     .over().  inline
+
+~~ "Hello world" over( 0 .. -1 ) inox-out
+"Hello world" ( 0 :: 5 ) @ inox-out
+"Hello world" @( 0 :: 5 ) inox-out
+
 ~~ Some basic vocabulary, primitive
 to while                while-1 while-2 while-3. inline
 to until                while-1 while-2 until-3. inline
@@ -62,7 +70,7 @@ to global:is:    make-global
 to local:is:     swap, rename, to-control
 
 to init-globals
-  constant: /inox-version      is: "v0.3.1";
+  constant: /inox-version      is: "v0.3.2";
   constant: /inox-version-time is: 1674589501; ~~ ToDo: overflow when ms
   constant: /true              is: cast( true:1,    1 );
   constant: /false             is: cast( false:0,   1 );
