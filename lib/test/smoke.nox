@@ -7,10 +7,114 @@
 
 inox-dialect
 
+to scope
+~~ Helper to setup a scope for local variables
+~~ ToDo: make it primitive?
+  R>
+    /it         >R
+    #forget-it# >R
+  >R
+
+
+to local  the-void make-local.
+
+to test ~| name |~
+~~ Helper to test verbs. It runs the test/xxx testing verb
+  "Testing " prefix out
+  /test-sentinel, over
+  "test/" swap text.join, .run()
+  ~~ checks that stack is unchanged, ie sentinel is still at the top
+  /test-sentinel <> { out( "Stack mismatch!" ) FATAL } if
+  "End of test " prefix out
+  drop
+
+
+to debug-test ~| name |~
+ ~~ Helper for tests that needs to be debugged
+  scope
+  >test-name
+  out( "Testing " & $test-name )
+  verb.from( "test/" & $test-name )
+  dup, .definition(), definition-to-text, out
+  debug, .run(), normal-debug
+  ~~ ToDo: developer must also check that data stack is unchanged
+  out( "End of debug-test for " & test-name> )
+  FATAL
+
+
+To stack-effect-checker  ~| block expected-offset |~
+~~ check the side effect of a block about the stack depth
+  scope
+  ~~ remove 3 because of TOS value, effect offset & block parameter
+  ( TOS - 3 )
+  ~~ apply the offset to compute what the final TOS should be
+  + >expected-tos
+  ~~ run block with it
+  .run()
+  ( TOS - 1 ) >final-tos
+  If $final-tos not= $expected-tos Then
+    out(
+      "stack-effect-checker: expected " & $expected-tos
+      & " but got " & $final-tos
+      & ", delta is " & ( $final-tos - $expected-tos )
+    )
+    If $final-tos > $expected-tos Then
+      out( "stack-effect-checker: too many items on stack" )
+    Else
+      out( "stack-effect-checker: too few items on stack" )
+    EndIf
+    FATAL
+  EndIf
+
+to stack-effect-neutral{ 0    stack-effect-checker
+to stack-effect{         swap stack-effect-checker
+
+to test/stack-effect
+  stack-effect-neutral{ 1 2 3, 3 drops }
+  "a", "b", -2 stack-effect{ drop drop }
+stack-effect/test
+
+
+To output-meet-expectation?
+~~ is the output of TOS matching the expected output?
+  capture/enable/log, finally{ capture/disable/log }
+  inox-out
+  If $test-expectation expect/log Then
+    true
+  Else
+    inox-out( "EXPECTED " & $test-expectation & "." )
+    false
+  EndIf
+
+to test-output{  ~| xx text block -- xx |~
+~~ expect text to match the output of the block
+  scope, >test-block, >test-expectation
+  ~~ duplicate xx to be able to replay the block in case of mismatch
+  dup
+  $test-block .run()
+  If not output-meet-expectation? Then
+    ~~ redo, with the debugger this time
+    $test-block debug .run()
+    inox-out
+    test-expectation>
+    ~~ developper should now compare the actual output and the TOS
+    debugger
+    ~~ ToDo: should try to restore a valid stack
+    FATAL
+  Else
+    drop
+  EndIf
+
+to test/test-output
+  stack-effect-neutral{
+    "Hi" test-output{ "Hi" }
+  }
+test-output/test
+
 
 to point.make  x:0 y:0 point:3 make-object
 
-to test-point
+to test/point
   point.make
   dump
   1 _point .x!  ~~ ToDo: _point x:1 .! or even x:1 .!
@@ -22,7 +126,7 @@ point/test
 
 to point.out  method: { out( "( x:" & it .x & ", y:" & it .y & " )" ) };.
 
-to test-method-call
+to test/method-call
   point.make
   _point .:out
   _point .out()
@@ -30,7 +134,7 @@ to test-method-call
 method-call/test
 
 
-to test-it-operations
+to test/it-operations
   0 it{
     out( "Initial it should be 0, is " & it )
     increment-it!
@@ -48,19 +152,19 @@ to test-it-operations
 it-operations/test
 
 
-to test-false-while
+to test/false-while
   while: { false } do: { out( "!!! never reached" ) };
 false-while/test
 
 
-to test-times-do
+to test/times-do
   times: 3 do: { out( "Time goes on" ) } ;
 times-do/test
 
 
 to swap/  with /a /b  /{ a> >A, b> >B, B> A> }.
 
-to test-swap/
+to test/swap/
   2 3 swap/()
   "2 3 swap/(), top should be 2, is "  prefix out
   if: <> 2 then: { out( "Expected 2 but got " prefix ) debugger };
@@ -71,12 +175,12 @@ to test-swap/
 "swap/" test
 
 
-to test-break
+to test/break
   while: { true } do: { break }. ~~ ToDo: issue with dot, use token-debugger
 break/test
 
 
-to test-forever-while
+to test/forever-while
   while: { true } do: {
     out( "forever" )
     while: { true } do: {
@@ -96,7 +200,7 @@ to test-forever-while
 forever-while/test
 
 
-to test-loop-break
+to test/loop-break
   1 it{
     loop: {
       out( "loop-while body" )
@@ -118,9 +222,9 @@ forth-dialect ( forth )
 inox-dialect  ~~ back to inox
 
 
-to test-HELLO
+to test/HELLO
   say: "Hello" to: "Smalltalk world!";
-  "HELLO" run-name
+  "HELLO" text.run
   "HELLO" definition run
   { HELLO } run
   true { hello } if
@@ -132,7 +236,7 @@ to test-HELLO
 HELLO/test
 
 
-to test-loop1
+to test/loop1
   0 it{
     3 it!
     while: { decrement-it!, it >0 } do: {
@@ -154,7 +258,7 @@ to test-loop1
 loop1/test
 
 
-To test-Loop2
+To test/Loop2
   Scope
     3 it!
     While --it! >0 Do
@@ -182,7 +286,7 @@ Loop2/test
 set-literate: true;
 
 In order
-  To test-literate
+  To test/literate
 programming experimental mode, I just need to make sure that this test-literal verb does no more than
   Out( "test-literate ok" ).
 
@@ -197,6 +301,53 @@ It does work with forth uppercase verbs because the rule about uppercase does no
 
 and then I need to restore the non literate mode using
   Set-literate( False )
+
+to ...             range-to     . operator
+to ..              range-but    . operator
+to ^..     0 swap  range-but    . operator
+to ^...    0 swap  range-to     . operator
+to ::              range-for    . operator
+to ^::     0 swap  range-for    . operator
+to ..$       -1    range-but    . operator
+to ...$      -1    range-to     . operator
+to ::$       -1    range-to     . operator
+to ^..$    0 -1    range-but    . operator
+to ^...$   0 -1    range-to     . operator
+to ^::$    0 -1    range-to     . operator
+to []      dup     range-to  @  . operator
+to [^]     0  1    range-to  @  . operator
+to [$]    -1 -1    range-to  @  . operator
+to []!     dup     range-to  @! . operator
+to [^]!    0  1    range-to  @! . operator
+to [$]!   -1 -1    range-to  @! . operator
+
+
+to test-hello-range{ ~| expected block |~
+  scope >block >expected
+  "Hello ranges" expected> block> "test-output{" .run()
+
+to test/ranges
+  "He"             test-hello-range{    (   0 ::  2  ) @  }
+  "Hello"          test-hello-range{   @(   0 ::  5  )    }
+  "He"             test-hello-range{    (   0 ..  2  ) @  }
+  "Hello"          test-hello-range{   @(   0 ..  5  )    }
+  "ello"           test-hello-range{   @(   1 ..  5  )    }
+  "ello"           test-hello-range{   @(   1 ::  4  )    }
+  "ello"           test-hello-range{   @(   1 ... 3  )    }
+  "He"             test-hello-range{   @(   ^..   2  )    }
+  "Hel"            test-hello-range{   @(   ^...  2  )    }
+  "He"             test-hello-range{   @(   ^::   2  )    }
+  "Hello range"    test-hello-range{   @(   ^..$     )    }
+  "Hello ranges"   test-hello-range{   @(   ^::$     )    }
+  "Hello range"    test-hello-range{   @(  0 ..$     )    }
+  "Hello ranges"   test-hello-range{   @(  0 ::$     )    }
+  "s"              test-hello-range{   @( -1 ::$     )    }
+  "es"             test-hello-range{   @( -2 ::$     )    }
+  "Hello range"    test-hello-range{   @(  0 ..$     )    }
+  "Hello ranges"   test-hello-range{   @(  0 ::$     )    }
+  "ranges"         test-hello-range{   @( -6 ::$     )    }
+  "ranges"         test-hello-range{   @( -6 ... -1  )    }
+ranges/test
 
 
 out( "End of Inox smoke test" )

@@ -6,12 +6,7 @@
  |~
 
 ~~ Range related
- ~~ to over( .over().  inline
- to @     .over().  inline
-
-~~ "Hello world" over( 0 .. -1 ) inox-out
-"Hello world" ( 0 :: 5 ) @ inox-out
-"Hello world" @( 0 :: 5 ) inox-out
+ to range.at    range.over. inline
 
 ~~ Some basic vocabulary, primitive
 to while                while-1 while-2 while-3. inline
@@ -19,20 +14,21 @@ to until                while-1 while-2 until-3. inline
 to immediate!           immediate
 
 ~~ Some synonyms, shorter than the original name
-to forget              forget-data
+to forget              forget-control
 to clear               clear-data
 
 to basic-out           inox-out
-to out                 /basic-out run-tag  ~~ late binding
+to out                 /basic-out tag.run  ~~ late binding
 
 to ToDo                "ToDo: " swap text.join out
 to toDo                ToDo  ~~ Literate mode friendly, it becomes ToDo
 
 ~~ Some more, using keyword syntax for ease
-to do             run.           inline
+to do             .run().        inline
 to if:then:       if.            inline
 to if:then:else:  if-else.       inline
 to if:do:         if:then:.      inline
+to unless:then:   not if:do:.    inline
 to unless:do:     not if:do:.    inline
 to while:do:      while.         inline
 to until:do:      until.         inline
@@ -45,6 +41,10 @@ to and{           if.            inline
 to or{            if-not.        inline
 to then{          if.            inline
 to else{          if-not.        inline
+to otherwise{     if-not.        inline
+to then{          if.            inline
+to else{          if-not.        inline
+to finally{       on-return.     inline
 
 to {}             noop
 to {drop}         /drop definition literal. immediate!
@@ -59,10 +59,10 @@ to missing-method   "missing-method "   over text.join out clear-stacks
 to missing-operator "missing-operator " over text.join out clear-stacks
 
 to FATAL-hook    "FATAL" out debugger clear-stacks
-to FATAL         /FATAL-hook run-tag
+to FATAL         /FATAL-hook tag.run
 
 to ASSERT-hook   "ASSERT" out debugger clear-stacks
-to ASSERT        /ASSERT-hook run-tag
+to ASSERT        /ASSERT-hook tag.run
 to assert{       assert. inline
 
 to constant:is:  make-constant
@@ -198,10 +198,10 @@ to do-with-it     run-with-it
 
 to times:do:
   it{
-    it >block, it!
+    it >runable, it!
     if: it >0 then: {
       while: { it--! >0 } do: {
-        block> run
+        runable> .run()
       };
     };
   }
@@ -230,30 +230,30 @@ to ll!           /it 3 upper!
 
 to from:to:do:
   it{
-    it >block, >ii-to, ii!
+    it >runable, >ii-to, ii!
     if: ii <= ii-to> then: {
-      do: { block> run } while: { ii-to> > ++it! };
+      do: { runable> .run() } while: { ii-to> > ++it! };
     };
   }
 
 to from:down-to:do:
   it{
-    it >block, >ii-down-to, ii!
+    it >runable, >ii-down-to, ii!
     if: ii >= ii-down-to> then: {
-      do: { block> run } while: { ii-to> > --it! };
+      do: { runable> .run() } while: { ii-to> > --it! };
     };
   }
 
 to from:to:by:do:
   it{
-    it >block, >ii-by, >ii-to, ii!
+    it >runable, >ii-by, >ii-to, ii!
     if: ii-by> >0 then: {
       if: ii <= ii-to> then: {
-        do: { block> run } while: { ii + ii-by>, ii!, ii <= ii-to> };
+        do: { runable> .run() } while: { ii + ii-by>, ii!, ii <= ii-to> };
       };
     } else: {
       if: ii >= ii-to> then: {
-        do: { block> run } while: { ii + ii-by>, ii!, ii >= ii-to> };
+        do: { runable> .run() } while: { ii + ii-by>, ii!, ii >= ii-to> };
       };
     };
   };
@@ -284,13 +284,13 @@ to try:catch:finally:
   >inox-try:catch:finally
   >inox-try:catch
   try
-  inox-try:catch:finally> run
+  inox-try:catch:finally> .run()
   inox-try:catch:finaly/forget
 
 to try:finally:
   >inox-try:finally
   try-run
-  inox-try:finally> run
+  inox-try:finally> .run()
   inox-try:finaly/forget
 
 
@@ -324,45 +324,38 @@ to text.last          text.but
 ~~ text.join-characters
 
 
-to test ~| name |~
-~~ Helper to test verbs. It runs the test-xxx testing verb.
-  "Testing " prefix out
-  /test-sentinel, over
-  "test-" swap text.join, run-name
-  ~~ checks that stack is unchanged, ie sentinel is still at the top
-  /test-sentinel <> { out( "Stack mismatch!" ) debugger } if
-  "End of test " prefix out
-  drop
+to text.to-tag    tag
+to text.defined?  tag.defined?()
 
-to debug-test  ~~ Helper for tests that needs to be debugged
-  "Testing " prefix out
-  dup
-  "test-" swap text.join, debug, run-name, normal-debug
-  ~~ ToDo: developer must also check that data stack is unchanged
-  "End of debug-test for " prefix out
-  drop
+~~ tag class
+to tag.from  .to-tag
+
+
+to verb.definition  definition
 
 
 to InoxStyle
   ~~ ToDo: some literate-inox dialect
   inox-dialect
   alias(  "To"           "to"               )
-  alias(  "While"        " while: { "       )
-  alias(  "Do"           " } do: { "        )
+  alias(  "While"        " while: { ( "     )
+  alias(  "Do"           " ) } do: { "      )
   alias(  "EndWhile"     " } ; "            )
   alias(  "Loop"         " loop: { "        )
-  alias(  "Until"        " } until: { "     )
+  alias(  "Until"        " } until: {  "    )
   alias(  "EndLoop"      " } ; "            )
   alias(  "Break"        "break"            )
-  alias(  "If"           " if: "            )
-  alias(  "Then"         " then: { "        )
+  alias(  "If"           " if: ( "          )
+  alias(  "Then"         " ) then: { "      )
   alias(  "Else"         " } else: { "      )
   alias(  "EndIf"        " } ; "            )
-  alias(  "Times"        "times: "          )
+  alias(  "Times"        "times:  "         )
   alias(  "Begin"        "{"                )
   alias(  "End"          "}"                )
   alias(  "Scope"        "0 {"              )
   alias(  "EndScope"     " } do-with-it "   )
+  alias(  "It"           "{"                )
+  alias(  "EndIt"        " } do-with-it "   )
 InoxStyle
 
 To False  false.

@@ -1,10 +1,10 @@
 # The Iɴᴏx programming language
-"Programming, with style."
+"Programming with style"
 
 "Le style, c'est l'homme" - Buffon, 1753.
 
 
-Iɴᴏx is a concatenative script language. It is designed to operate in the context of edge computing, with the Internet of Things, in Machine Learning times.
+Iɴᴏx is a concatenative script language. It is designed to operate in the context of edge computing, with the Internet of Things (IoT), in Machine Learning (ML) times.
 
 It will hopefully run on nodejs, C++ targets, wasm (WIP), micro controlers (esp32), etc.
 
@@ -25,7 +25,7 @@ Yours,
 Why?
 ====
 
-Keep reading only if you care about programming language design. You've been warned. Welcome.
+Hello. Keep reading only if you care about programming language design. You've been warned. Welcome.
 
 The _grand plan_ is an AI driven distributed system, a computerized living organism that evolves according to the _law of evolution_.
 
@@ -160,9 +160,9 @@ to play
   loop: {
     out( "Guess? " )
     read-line, text-to-integer,
-    dup, if not integer? then: { drop,                     continue }
-    dup, if: >           then: { drop, out( "Too big"   ), continue }
-    dup, if: <           then: { drop, out( "Too small" ), continue }
+    dup, if not an-integer? then: { drop,                     continue }
+    dup, if: >              then: { drop, out( "Too big"   ), continue }
+    dup, if: <              then: { drop, out( "Too small" ), continue }
     out( "Yes!" ), break
   }
   clear
@@ -202,7 +202,7 @@ to tell-to/  with /m /d, /{ out( "T " & m> & "t " && d> }
 
 This is an abbreviated syntax that is defined in the _standard library_. `xx{ ... }` is like `xx( ... )` but the former invokes the `xx{` verb with the block as sole argument whereas the later invokes the verb `xx` when `)` is reached.
 
-`/{` is like `{`, it marks the begining of a _block_, a sequence of verbs and literals. There is however an important difference, only `/{' creates a new _scope_. This is convenient to use _local variables_ that will be automaticaly discarded when the block execution ends, is when the variables become "out of scope".
+`/{` is like `{`, it marks the begining of a _block_, a sequence of verbs and literals. There is however an important difference, only `/{' creates a new _scope_. This is convenient to use _local variables_ that will be automaticaly discarded when the block execution ends, ie when the variables become "out of scope".
 
 In the case of `/{` the _scope_ is filled with local variables that are the formal parameters of the function. The _scope_ and all the local variables in it is discarded when the function returns.
 
@@ -246,7 +246,7 @@ The default implementation in the _standard library_ uses `inox-FATAL`. That pri
 Blocks
 ======
 
-Blocks are sequences of _verbs_ enclosed between balanced `{` and `}`.
+Blocks are sequences of _verbs_ and literals enclosed between balanced `{` and `}`.
 
 ``` sh
 to tell-sign  if-else( <0, { out( "negative" ) }, { out( "positive" ) } ).
@@ -281,6 +281,17 @@ Both `finally` and `catch` blocks are optional. There is some _overhead_ when ex
 
 When the _catch_ block runs, it has access to the stacks, both the _data stack_ and the _control stack_. There are two options. Either the exception is _recoverable_ and in that situation the exception does not need to propagate because the program aborts. Or the exception needs to be propagated further using `raise`.
 
+Note: `finally{` also exists as a standalone verb. The attached block is executed when the current scope is discarded, ie when the current block or function returns. This is usefull to clean up resources.
+
+``` sh
+  open( "data.txt" ) >fd, finally{ fd> close, fd/forget }
+  "" >data
+  loop{
+    fd> read-line >data!  ~~ read data
+    if: data> not a-text? then: {break};
+    data> process
+  }
+```
 
 Keywords
 ========
@@ -353,19 +364,35 @@ Local variables
 
 ``` sh
 to say-to  >{ >msg
-  out( "Say " & msg> & " to " & it )
+  out( "Say " & $msg & " to " & it )
 }
 
 say-to( "Hello", "Bob" )  ~~ outputs Say Hello to Bob
 ```
 
-Local variables are variables stored into another stack, the _control stack_. Syntax `>xyz` creates such variables using values from the top of the _data stack_. It reads _"create local variable x"_. Use syntax `xyz>` to retrieve the value of the local variable. It reads _"get local variable x's value"_.
+Local variables are variables stored into another stack, the _control stack_. Syntax `>xyz` creates such variables using values from the top of the _data stack_. It reads _"create and initialize local variable x"_. Use either `$xyz` or `xyz>` to later retrieve the value of the local variable. It reads _"get local variable x's value"_.
 
-To set the value of a local variable using the top of the stack, use `>xyz!`. `!` (exclamation point) means "set" in this context and by convention it means _"some side effect or surprise involved"_ is a more general sense.
+To set the value of a local variable using the top of the stack, use `>xyz!`. `!` (exclamation point) means "set" in this context and by convention it means _"some side effect or surprise involved"_ is a more general sense. `$xyz!` is a valid syntax too, it means the exact same thing.
 
 ``>{`` and `}` specify respectively the begining and the end of the **scope** within which local variables are created and used. These scopes can nest in such a way that a local variable created by a verb can be accessed from the other verbs invoked while the scope exists, unless that verb created another local variable with the same name.
 
 This type of scoping for variables is named _"dynamic"_ by opposition to the more frequent static style named _"lexical"_ where a local variable stays purely local to the function that created it. Note: changing the value of a local variable outside the verb that created it is usually considered _"harmful"_ and should be avoided.
+
+When a verb needs to use local variables, it must also delete them when it is done. This can be done using the `forget` verb. It is a good practice to use `forget` in a `finally{` block. Another way to do this is to use the `scope` verb. It is a verb that creates a scope and deletes all local variables when the scope is left.
+
+``` sh
+to say-to
+  scope >dest >msg
+  out( "Say " & $msg & " to " & $dest )
+}
+
+to say-to
+  >dest >msg, finally{ dest/forget }
+  out( "Say " & $msg & " to " & $dest )
+}
+```
+
+Note: there is no _assignment_ operator in Inox. The `!` (exclamation point) is used to set the value of an already existing variable. The `=` (equal sign) is used to compare values. This is a common convention in many programming languages but not in all. For example in the C language, the `=` (equal sign) is used to assign a value to a variable and the `==` (double equal sign) is used to compare values.
 
 
 Object variables
@@ -418,7 +445,7 @@ To push such a data variable onto the data stack, it's initial value can also be
 out( "Hello" & _x )  ~~ output Hello3
 ```
 
-Note that values stays on the _data stack_ until some verb _consume_ them. When extra values remain, you may empty the stack down to some named value using `/some-name without-data`.
+Note that values stays on the _data stack_ until some verb _consume_ them. When extra values remain, you may empty the stack down to some named value using `/some-name forget-data` or, slightly shorter, `some-name/forget-data`.
 
 
 Values
@@ -496,15 +523,15 @@ When the interpreter is executing some compiled code, if the instruction pointer
 
 Contrary to verbs, the definition of a primitive is not made of verbs or literal, it is defined in the native language of the interpreter. When the interpreter is compiled using Typescript, the primitive is a Javascript function. When the interpreter in compiled using C++, the primitive is a C or C++ function.
 
-The propotype of such functions is simple: they take no parameters and return no value. That's because they have access to the internal *register* of the Inox virtual machine. There are 4 of them : *IP*, "TOS", "CSP" and *ACTOR*.
+The propotype of such functions is simple: they take no parameters and return no value. That's because they have access to the internal *register* of the Inox virtual machine. There are 4 of them : *IP*, *TOS*, *CSP* and *actor*.
 
-The *IP* is the instruction pointer, it points to the next instruction to be executed. The *TOS* is the top of stack, it points to the top of the data stack. The *CSP* is the control stack pointer, it points to the top of the control stack (named "return stack" or "call stack" usually). The *ACTOR* is the current actor, it points to the current *actor* object, something similar to a thread, a task, a process, etc.
+The *IP* is the instruction pointer, it points to the next instruction to be executed. The *TOS* is the top of stack, it points to the top of the data stack. The *CSP* is the control stack pointer, it points to the top of the control stack (named "return stack" or "call stack" usually). The *actor* is the current actor, it points to the current *actor* object, something similar to a thread, a task, a process, etc.
 
 
 Boxes
 =====
 
-Boxes are a special type of value that can hold any type of value. They are usefull when you want to pass a value by reference. For example, if you want to pass a value to a function and have the function modify the value, you can pass a box instead of the value itself. The function will then modify the value inside the box.
+Boxes are a special type of values that can hold any type of value. They are usefull when you want to pass a value by reference. For example, if you want to pass a value to a function and have the function modify the value, you must pass a box instead of the value itself. The function will then modify the value inside the box.
 
 This is similar to pointers in C. The difference is that boxes are much more safe than pointers. When a box is copied, the copy points to the same underlying boxed value. They are dynamically allocated and only disappear when they are no longer referenced.
 
@@ -522,13 +549,13 @@ Ranges are like boxes, they reference some value. But instead of referencing a s
 
 Ranges are also very efficient to reference a portion of a text, ie a *slice*. For example, if you want to reference the first 10 characters of a text, you can use a range. That works too with other types of values, like stacks, arrays, maps, etc.
 
-The range can either be between two indices or between a start index and a length. When an index is negative, it is relative to the end instead of the beginning. For example, if the range starts at -10 and run for 5 items, it will reference 5 items starting from 10 items before the end.
+The range can either be between two indices (including or execluding the latter one) or between a start index and a length. When an index is negative, it is relative to the end instead of the beginning. For example, if the range starts at -10 and run for 5 items, it will reference 5 items starting from 10 items before the end.
 
 The syntax differs depending on the type of the range, either by indices only or with an index and a length. The `..` binary operator creates a range using two indices. The `...` binary operator creates a range too but including the upper limit. The `::` binary operator creates a range using an index and a length.
 
-There exist convenient shortcuts for specifying the end of someting or the beginning of something. The `^..` operator can be used with a single operand to specify the beginning of something, up to some limit. The `::$` operator can be used with a single operand to specify the ending of something.
+There exist convenient shortcuts for specifying the end of someting or the beginning of something. The `^..` operator can be used with a single operand to specify the beginning of something, up to some limit, not included. The `::$` operator can be used with a single operand to specify the ending of something.
 
-All the combinations are possible, including the `^..$` operator that creates a range that references the whole thing and also `[^]`, `[$]` and `[]` to reference a single element, either at the beginning, at the end or at some specified position.
+All the combinations are possible, including the `^...$` operator that creates a range that references the whole thing and also `[^]`, `[$]` and `[]` to reference a single element, either at the beginning, at the end or at some specified position.
 
 A range is either *bound* or *free*. A bound range is a range that references a specific thing. A free range is a range that does not reference something, yet.
 
@@ -539,7 +566,7 @@ Using a bound range, it becomes easy to either extract or replace a portion of a
   "Hello world", 0 5 .. @, out ~~ print Hello, postfix style
   out( "Hello world", @( 0 .. 5 ) ) ~~ print Hello too, infix style
   "Hello world", ( 0 .. 5 ), "Inox", @!, out ~~ print Inox world
-  out( "Hello world", @!( 0 .. 5, "Inox" ) )" ~~ print Inox world too
+  out( "Hello world", @!( 0 ... 4, "Inox" ) )" ~~ print Inox world too
 ```
 
 
@@ -548,6 +575,8 @@ Ranges work over ranges too, this creates sub ranges. When such ranges are made 
 So a ranges can be many things that would be rather complex to implement without them. They get even more powerfull when tags are used to express limits and offsets inside complex objects, instead of integer positions (ToDo).
 
 This range concept will be enhanced in the future to support more complex things like pattern matching, unification and maybe even backtracking, as in Prolog.
+
+Under the hood there are 3 types of ranges: _to_, _but_ and _for_. _to_ ranges have an indexed upper limit. _but_ have an indexed upper limit to but it is not included in the range. _for_ range have a length instead of an upper limit. The `..` operators create a _but_ range, the `...` operators creates a _to_ ranges and the `::` operators create a _for_ ranges.
 
 
 The class hierarchy
@@ -581,7 +610,7 @@ class( xxx> )  ~~ get the class of the thing in the xxx local variable.
 
 Sometimes some things have a class that is the combination of multiple base classes. For example a text and an array are both iterable things even thougth one is a value whereas the other one is an object made of multiple values. To avoid extra complexity Iɴᴏx provide a single inheritance default solution.
 
-As a consequence `class( something )` produces a single tag, the name of the class of the thing considered. Verb `ìmplements?( thing, /method )` tells about the existence of said method for the class of said thing. By default things implements their own methods and inherit the method of their _super class_, ie the class they _extend_.
+As a consequence `class( something )` produces a single tag, the name of the class of the thing considered. Verb `ìmplement?( thing, /method )` tells about the existence of said method for the class of said thing. By default things implement their own methods and inherit the method of their _super class_, ie the class they _extend_.
 
 That basic solution is extensible by defining a `my_class.method` that is free to lookup for the desired method the way it wants. See also `.missing-method` about _virtual methods_ whose definition is determined _on the fly_ at _run time_, a sometimes slow but otherwise radically flexible solution.
 
@@ -733,7 +762,7 @@ to fib  ~| nth:n ... -- nth:n ... fib:n |~
     fib( _nth - 1 :nth ) + fib( _nth - 2 :nth ) )
   } )fib
 
-out( fib( nth:10 ) ) drop  ~~ Now the parameter needs to be named and manualy removed
+out( fib( nth:10 ) )  ~~ Now the parameter needs to be named
 ```
 
 In this example `:nth` _renames_ the TOS (Top Of the Stack). It is necessary to do so because verb `fib` uses `_nth` to get it's parameter. That's a different verb _protocol_ than the ones of the previous definitions of `fib`, it's the `named parameters` protocol.
@@ -744,7 +773,7 @@ When a verb returns multiple results, it should name each of them to respect the
 
 When the results are no longer needed, they can be forgetten, ie removed from the data stack. Syntax `something/forget` does that, it removes all the values from the top of the data stack up to the one named `something` included.
 
-Note: The _function protocol_ uses a special version of `without`, named `without-control`, that operates on the _control stack_ instead of the _data stack_. That's because parameters and local variables are stored in the _control stack_, not the _data stack_.
+Note: The _function protocol_ uses a special version of `forget`, named `forget-control`, that operates on the _control stack_ instead of the _data stack_. That's because function parameters and local variables are stored in the _control stack_, not the _data stack_.
 
 
 Other stacks

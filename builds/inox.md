@@ -69,6 +69,8 @@
 | integer-to-octal | convert an integer to an octal text |
 | integer-to-binary | converts an integer to a binary text |
 | text.unquote | turns a JSON text into a text |
+| text.pad | pads a text with spaces |
+| text.trim | trims a text |
 | debugger | invoke host debugger, if any |
 | debug | activate lots of traces |
 | normal-debug | deactivate lots of traces, keep type checking |
@@ -86,6 +88,11 @@
 | unpack-type | Unpack type from an integer, see pack-info |
 | unpack-name | Unpack name from an integer, see pack-info |
 | class-of | Get the most specific type name (as a tag) |
+| if | run a block if condition is met |
+| if-not | run a block if condition is not met |
+| if-else | run one of two blocks depending on condition |
+| on-return | run a block when the current block returns |
+| while | while condition block produces true, run body block |
 | break | exit loop |
 | sentinel | install a sentinel inside the control stack |
 | loop-until | loop until condition is met |
@@ -95,7 +102,8 @@
 | = | value equality binary operator |
 | equal? | like = but it is not an operator, value equality |
 | <> | value inequality, the opposite of = value equality |
-| inequal? | like <> but it is not an operator |
+| not= | value inequality, the opposite of = value equality |
+| inequal? | like <> and not= but it is not an operator |
 | same? | true if two objects or two values are the same one |
 | identical? | like same? but it is not an operator |
 | different? | true unless two objects or two values are the same one |
@@ -134,30 +142,39 @@
 | & | text concatenation binary operator, see text.join |
 | text.cut | extract a cut of a text, remove a suffix |
 | text.length | length of a text |
+| text.some? | test if a text is not empty |
+| text.none? | test if a text is empty |
 | text.but | remove a prefix from a text, keep the rest |
 | text.mid | extract a part of the text |
+| text.at | extract one character at position or "" if out of range |
 | text.low | convert a text to lower case |
 | text.up | convert a text to upper case |
 | text.= | compare two texts |
 | text.<> | compare two texts |
-| text.find | find a piece in a text |
-| text.find-last | find a piece in a text |
+| text.not= | compare two texts |
+| text.find | find a piece in a text, return first position or -1 |
+| text.find-last | find a piece in a text, return last position or -1 |
 | text.line | extract a line from a text at some position |
+| text.line-no | extract line from text, given a line number |
 | as-text | textual representation |
 | dump | textual representation, debug style |
 | ""? | unary operator |
 | ""? | unary operator - true if TOS is the empty text |
 | named? | operator - true if NOS's name is TOS tag |
-| peek | Get the value of a cell, using a cell's address. |
-| poke | Set the value of a cell, using a cell's address. |
+| definition-to-text | decompile a definition |
+| verb.to-text-definition | decompile a verb definition |
+| verb.from | convert into a verb if verb is defined |
+| peek | get the value of a cell, using a cell's address |
+| poke | set the value of a cell, using a cell's address |
 | make-constant | using a value and a name, create a constant |
-| tag-defined? | true if text described tag is defined |
-| defined? | true if text described verb is defined |
+| tag.defined? | true if text described tag is defined |
+| verb.defined? | true if text described verb is defined |
+| tag.to_verb | convert a tag to a verb or void |
 | make-global | create a global variable and verbs to get/set it |
 | make-local | create a local variable in the control stack |
-| return-without-parameters | internal |
+| forget-parameters | internal, return from functio with parameters |
 | run-with-parameters | run a block with the "function" protocol |
-| local | copy a control variable to the data stack |
+| get-local | copy a control variable to the data stack |
 | set-local | assign a value to a local variable |
 | data | lookup for a named value in the data stack and copy it to the top |
 | set-data | change the value of an existing data variable |
@@ -220,7 +237,7 @@
 | range.from:for: | create a range from a low index and a length |
 | :: | binary operator to create a range with a low index and a length |
 | range.over | bind a range to some composite value |
-| forget-local | clear the control stack downto to specified local |
+| forget-control | clear the control stack downto to specified local |
 | return-without-locals | like return but with some cleanup |
 | with-locals | prepare the control stack to handle local local variables |
 | return-without-it | internal, run-with-it uses it |
@@ -260,11 +277,10 @@
 | inline | make the last defined verb inline |
 | last-token | return the last tokenized item |
 | tag | make a tag, from a text typically |
-| run-tag | run a verb by tag |
-| run-name | run a verb by text name |
+| tag.run | run a verb by tag |
+| text.run | run a verb by text name |
 | verb.run | run a verb |
 | definition | get the definition of a verb |
-| run | run a block or a verb definition |
 | run-definition | run a verb definition |
 | block | push the start address of the block at IP |
 | block | push the start address of the block at IP. |
@@ -285,14 +301,15 @@
 | compile-definition-begin | Entering a new verb definition |
 | compile-definition-end | Leaving a verb definition |
 | compiling? | Is the interpreter compiling? |
+| debug-info | set debug info about the instruction beeing executed |
 | compiler-expecting? | Is the compiler expecting the verb to define? |
 | compile-literal | Add a literal to the verb beeing defined |
 | compile-verb | add a verb to the beeing defined block or new verb |
 | compile-quote | avoid executing the next token, just compile it |
 | compile-block-begin | Start the definition of a new block |
 | compile-block-end | Close the definition of a new block |
-| eval | Run from source code text coming from the default input stream |
-| eval | evaluate a source code text |
+| eval | run source code coming from the default input stream |
+| eval | evaluate some source code |
 | trace | output text to console.log(), preserve TOS |
 | inox-out | output text to the default output stream |
 | trace-stacks | dump user friendly stacks trace |

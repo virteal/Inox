@@ -67,6 +67,8 @@
 <tr><td>integer-to-octal</td><td>convert an integer to an octal text</td></tr>
 <tr><td>integer-to-binary</td><td>converts an integer to a binary text</td></tr>
 <tr><td>text.unquote</td><td>turns a JSON text into a text</td></tr>
+<tr><td>text.pad</td><td>pads a text with spaces</td></tr>
+<tr><td>text.trim</td><td>trims a text</td></tr>
 <tr><td>debugger</td><td>invoke host debugger, if any</td></tr>
 <tr><td>debug</td><td>activate lots of traces</td></tr>
 <tr><td>normal-debug</td><td>deactivate lots of traces, keep type checking</td></tr>
@@ -84,6 +86,11 @@
 <tr><td>unpack-type</td><td>Unpack type from an integer, see pack-info</td></tr>
 <tr><td>unpack-name</td><td>Unpack name from an integer, see pack-info</td></tr>
 <tr><td>class-of</td><td>Get the most specific type name (as a tag)</td></tr>
+<tr><td>if</td><td>run a block if condition is met</td></tr>
+<tr><td>if-not</td><td>run a block if condition is not met</td></tr>
+<tr><td>if-else</td><td>run one of two blocks depending on condition</td></tr>
+<tr><td>on-return</td><td>run a block when the current block returns</td></tr>
+<tr><td>while</td><td>while condition block produces true, run body block</td></tr>
 <tr><td>break</td><td>exit loop</td></tr>
 <tr><td>sentinel</td><td>install a sentinel inside the control stack</td></tr>
 <tr><td>loop-until</td><td>loop until condition is met</td></tr>
@@ -93,7 +100,8 @@
 <tr><td>=</td><td>value equality binary operator</td></tr>
 <tr><td>equal?</td><td>like = but it is not an operator, value equality</td></tr>
 <tr><td><></td><td>value inequality, the opposite of = value equality</td></tr>
-<tr><td>inequal?</td><td>like <> but it is not an operator</td></tr>
+<tr><td>not=</td><td>value inequality, the opposite of = value equality</td></tr>
+<tr><td>inequal?</td><td>like <> and not= but it is not an operator</td></tr>
 <tr><td>same?</td><td>true if two objects or two values are the same one</td></tr>
 <tr><td>identical?</td><td>like same? but it is not an operator</td></tr>
 <tr><td>different?</td><td>true unless two objects or two values are the same one</td></tr>
@@ -132,30 +140,39 @@
 <tr><td>&</td><td>text concatenation binary operator, see text.join</td></tr>
 <tr><td>text.cut</td><td>extract a cut of a text, remove a suffix</td></tr>
 <tr><td>text.length</td><td>length of a text</td></tr>
+<tr><td>text.some?</td><td>test if a text is not empty</td></tr>
+<tr><td>text.none?</td><td>test if a text is empty</td></tr>
 <tr><td>text.but</td><td>remove a prefix from a text, keep the rest</td></tr>
 <tr><td>text.mid</td><td>extract a part of the text</td></tr>
+<tr><td>text.at</td><td>extract one character at position or "" if out of range</td></tr>
 <tr><td>text.low</td><td>convert a text to lower case</td></tr>
 <tr><td>text.up</td><td>convert a text to upper case</td></tr>
 <tr><td>text.=</td><td>compare two texts</td></tr>
 <tr><td>text.<></td><td>compare two texts</td></tr>
-<tr><td>text.find</td><td>find a piece in a text</td></tr>
-<tr><td>text.find-last</td><td>find a piece in a text</td></tr>
+<tr><td>text.not=</td><td>compare two texts</td></tr>
+<tr><td>text.find</td><td>find a piece in a text, return first position or -1</td></tr>
+<tr><td>text.find-last</td><td>find a piece in a text, return last position or -1</td></tr>
 <tr><td>text.line</td><td>extract a line from a text at some position</td></tr>
+<tr><td>text.line-no</td><td>extract line from text, given a line number</td></tr>
 <tr><td>as-text</td><td>textual representation</td></tr>
 <tr><td>dump</td><td>textual representation, debug style</td></tr>
 <tr><td>""?</td><td>unary operator</td></tr>
 <tr><td>""?</td><td>unary operator - true if TOS is the empty text</td></tr>
 <tr><td>named?</td><td>operator - true if NOS's name is TOS tag</td></tr>
-<tr><td>peek</td><td>Get the value of a cell, using a cell's address.</td></tr>
-<tr><td>poke</td><td>Set the value of a cell, using a cell's address.</td></tr>
+<tr><td>definition-to-text</td><td>decompile a definition</td></tr>
+<tr><td>verb.to-text-definition</td><td>decompile a verb definition</td></tr>
+<tr><td>verb.from</td><td>convert into a verb if verb is defined</td></tr>
+<tr><td>peek</td><td>get the value of a cell, using a cell's address</td></tr>
+<tr><td>poke</td><td>set the value of a cell, using a cell's address</td></tr>
 <tr><td>make-constant</td><td>using a value and a name, create a constant</td></tr>
-<tr><td>tag-defined?</td><td>true if text described tag is defined</td></tr>
-<tr><td>defined?</td><td>true if text described verb is defined</td></tr>
+<tr><td>tag.defined?</td><td>true if text described tag is defined</td></tr>
+<tr><td>verb.defined?</td><td>true if text described verb is defined</td></tr>
+<tr><td>tag.to_verb</td><td>convert a tag to a verb or void</td></tr>
 <tr><td>make-global</td><td>create a global variable and verbs to get/set it</td></tr>
 <tr><td>make-local</td><td>create a local variable in the control stack</td></tr>
-<tr><td>return-without-parameters</td><td>internal</td></tr>
+<tr><td>forget-parameters</td><td>internal, return from functio with parameters</td></tr>
 <tr><td>run-with-parameters</td><td>run a block with the "function" protocol</td></tr>
-<tr><td>local</td><td>copy a control variable to the data stack</td></tr>
+<tr><td>get-local</td><td>copy a control variable to the data stack</td></tr>
 <tr><td>set-local</td><td>assign a value to a local variable</td></tr>
 <tr><td>data</td><td>lookup for a named value in the data stack and copy it to the top</td></tr>
 <tr><td>set-data</td><td>change the value of an existing data variable</td></tr>
@@ -218,7 +235,7 @@
 <tr><td>range.from:for:</td><td>create a range from a low index and a length</td></tr>
 <tr><td>::</td><td>binary operator to create a range with a low index and a length</td></tr>
 <tr><td>range.over</td><td>bind a range to some composite value</td></tr>
-<tr><td>forget-local</td><td>clear the control stack downto to specified local</td></tr>
+<tr><td>forget-control</td><td>clear the control stack downto to specified local</td></tr>
 <tr><td>return-without-locals</td><td>like return but with some cleanup</td></tr>
 <tr><td>with-locals</td><td>prepare the control stack to handle local local variables</td></tr>
 <tr><td>return-without-it</td><td>internal, run-with-it uses it</td></tr>
@@ -258,11 +275,10 @@
 <tr><td>inline</td><td>make the last defined verb inline</td></tr>
 <tr><td>last-token</td><td>return the last tokenized item</td></tr>
 <tr><td>tag</td><td>make a tag, from a text typically</td></tr>
-<tr><td>run-tag</td><td>run a verb by tag</td></tr>
-<tr><td>run-name</td><td>run a verb by text name</td></tr>
+<tr><td>tag.run</td><td>run a verb by tag</td></tr>
+<tr><td>text.run</td><td>run a verb by text name</td></tr>
 <tr><td>verb.run</td><td>run a verb</td></tr>
 <tr><td>definition</td><td>get the definition of a verb</td></tr>
-<tr><td>run</td><td>run a block or a verb definition</td></tr>
 <tr><td>run-definition</td><td>run a verb definition</td></tr>
 <tr><td>block</td><td>push the start address of the block at IP</td></tr>
 <tr><td>block</td><td>push the start address of the block at IP.</td></tr>
@@ -283,14 +299,15 @@
 <tr><td>compile-definition-begin</td><td>Entering a new verb definition</td></tr>
 <tr><td>compile-definition-end</td><td>Leaving a verb definition</td></tr>
 <tr><td>compiling?</td><td>Is the interpreter compiling?</td></tr>
+<tr><td>debug-info</td><td>set debug info about the instruction beeing executed</td></tr>
 <tr><td>compiler-expecting?</td><td>Is the compiler expecting the verb to define?</td></tr>
 <tr><td>compile-literal</td><td>Add a literal to the verb beeing defined</td></tr>
 <tr><td>compile-verb</td><td>add a verb to the beeing defined block or new verb</td></tr>
 <tr><td>compile-quote</td><td>avoid executing the next token, just compile it</td></tr>
 <tr><td>compile-block-begin</td><td>Start the definition of a new block</td></tr>
 <tr><td>compile-block-end</td><td>Close the definition of a new block</td></tr>
-<tr><td>eval</td><td>Run from source code text coming from the default input stream</td></tr>
-<tr><td>eval</td><td>evaluate a source code text</td></tr>
+<tr><td>eval</td><td>run source code coming from the default input stream</td></tr>
+<tr><td>eval</td><td>evaluate some source code</td></tr>
 <tr><td>trace</td><td>output text to console.log(), preserve TOS</td></tr>
 <tr><td>inox-out</td><td>output text to the default output stream</td></tr>
 <tr><td>trace-stacks</td><td>dump user friendly stacks trace</td></tr>
@@ -302,4 +319,4 @@
 <tr><td>memory-visit</td><td>get a view of the memory</td></tr>
 <tr><td>source</td><td>evaluate the content of a file</td></tr>
 </table>
-<p>Found 300 primitives.</p></body></html>
+<p>Found 317 primitives.</p></body></html>
