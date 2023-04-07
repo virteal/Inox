@@ -39,6 +39,7 @@ So, what's new?
   - Stacks - pervasive, even objects are stacks of named values
   - Variables - in the data stack, in the control stack or in some other stack
   - Verb - simple verbs are concatenated to make complex ones
+  - Notations - prefix, infix or postfix notation, your choice
   - Dialects - multiple predefined and custom dialects for different styles
 
 
@@ -137,11 +138,11 @@ This defines a **verb** named `hello`. Then the verb is invoked and as a result 
 
 Verbs take their arguments from the _data stack_. They can also push results onto that stack.
 
-Verb `to` starts a verb _definition_ that an often optional `.` (dot) terminates. Inside that defintion there are other verbs and litteral values like numbers or pieces of text.
+Verb `to` starts a verb _definition_ that an often optional `.` (dot) terminates. Inside that definition there are other verbs and litteral values like numbers or pieces of text.
 
 Note: the name of a _verb_ can be made of anything, not just letters. As a result `even?` is a valid name for a verb, it could be the name of a verb that tests if a number is even. By convention verbs with a `?` suffix are _predicates_, their result is a _boolean value_ that is either true or false.
 
-As a convenience the verb to invoke can be specified before the pushed data, using the `( )` paranthesis. This is the _infix_ notation.
+As a convenience the verb to invoke can be specified before the pushed data, using the `( )` parentheses. This is the _infix_ notation.
 
 ``` sh
 say( "hello" )  ~~ "infix" style
@@ -149,6 +150,32 @@ say( "hello" )  ~~ "infix" style
 ```
 
 It is the responsabily of whoever invokes a verb to first push onto the stack the arguments required by that verb, in the proper order, in the proper number, etc. Each verb can define it's own _protocol_ about that. There are a few common protocols, described below.
+
+
+Prefix, infix and postfix notations
+===================================
+
+It is a matter of style often but sometimes a notation is preferable to another.
+
+The _prefix_ notation is the one where the verb is specified first, then the arguments. This is a common notation and it is the only one in Lisp style languages. It mimics the style of mathematical functions.
+
+The _infix_ notation is the one where operators are specified between operands. It also derives from the notation in mathematics. It is the most common notation in most programming languages where the concept of _expression_ is used, it is very common.
+
+The _postfix_ notation is the one where the verb is specified last, after the arguments. This is the most common notation in Forth style languages. The _postfix_ notation is also called the _reverse polish notation_. That notation is the one that describes the actual order of execution at teh CPU level with the most fidelity.
+
+``` sh
+  out( "hello" )                  ~~ prefix style
+  out( &( "hello", " world!" ) )  ~~ pure prefix style
+  out( "hello" & " world!" )      ~~ mixed prefix and infix style
+  "hello" " world!" & out         ~~ pure postfix style
+  ( "hello" & " world!" ) out     ~~ mixed infix and postfix style
+```
+
+When a verb is to be used as an operator, the `operator` verb must be invoked right after the verb definition. There is currently no precedence mechanism, all operators have the same precedence and left associativity.
+
+``` sh
+to & text.join. operator ~~ this is how the & operator is actually defined
+```
 
 
 Control structures

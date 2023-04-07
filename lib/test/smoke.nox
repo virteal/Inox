@@ -7,17 +7,6 @@
 
 inox-dialect
 
-to scope
-~~ Helper to setup a scope for local variables
-~~ ToDo: make it primitive?
-  R>
-    /it         >R
-    #forget-it# >R
-  >R
-
-
-to local  the-void make-local.
-
 to test ~| name |~
 ~~ Helper to test verbs. It runs the test/xxx testing verb
   "Testing " prefix out
@@ -301,25 +290,6 @@ It does work with forth uppercase verbs because the rule about uppercase does no
 
 and then I need to restore the non literate mode using
   Set-literate( False )
-
-to ...             range-to     . operator
-to ..              range-but    . operator
-to ^..     0 swap  range-but    . operator
-to ^...    0 swap  range-to     . operator
-to ::              range-for    . operator
-to ^::     0 swap  range-for    . operator
-to ..$       -1    range-but    . operator
-to ...$      -1    range-to     . operator
-to ::$       -1    range-to     . operator
-to ^..$    0 -1    range-but    . operator
-to ^...$   0 -1    range-to     . operator
-to ^::$    0 -1    range-to     . operator
-to []      dup     range-to  @  . operator
-to [^]     0  1    range-to  @  . operator
-to [$]    -1 -1    range-to  @  . operator
-to []!     dup     range-to  @! . operator
-to [^]!    0  1    range-to  @! . operator
-to [$]!   -1 -1    range-to  @! . operator
 
 
 to test-hello-range{ ~| expected block |~

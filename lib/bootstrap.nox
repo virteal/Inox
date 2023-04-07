@@ -5,8 +5,6 @@
  |
  |~
 
-~~ Range related
- to range.at    range.over. inline
 
 ~~ Some basic vocabulary, primitive
 to while                while-1 while-2 while-3. inline
@@ -67,10 +65,14 @@ to assert{       assert. inline
 
 to constant:is:  make-constant
 to global:is:    make-global
-to local:is:     swap, rename, to-control
+to local:is:     make-local
+
+to constant      the-void make-constant
+to global        the-void make-global
+to local         the-void make-local
 
 to init-globals
-  constant: /inox-version      is: "v0.3.2";
+  constant: /inox-version      is: "v0.4.0";
   constant: /inox-version-time is: 1674589501; ~~ ToDo: overflow when ms
   constant: /true              is: cast( true:1,    1 );
   constant: /false             is: cast( false:0,   1 );
@@ -100,6 +102,13 @@ to :off?      name-of /off     =
 to :yes?      name-of /yes     =
 to :no?       name-of /no      =
 
+to scope
+~~ Helper to setup a scope for local variables
+~~ ToDo: make it primitive?
+  from-control
+    /it         to-control
+    #forget-it# to-control
+  to-control
 
 ~~ Class hierarchy
 
@@ -332,6 +341,26 @@ to tag.from  .to-tag
 
 
 to verb.definition  definition
+
+~~ Range related
+to ...             range-to     . operator
+to ..              range-but    . operator
+to ^..     0 swap  range-but    . operator
+to ^...    0 swap  range-to     . operator
+to ::              range-for    . operator
+to ^::     0 swap  range-for    . operator
+to ..$       -1    range-but    . operator
+to ...$      -1    range-to     . operator
+to ::$       -1    range-to     . operator
+to ^..$    0 -1    range-but    . operator
+to ^...$   0 -1    range-to     . operator
+to ^::$    0 -1    range-to     . operator
+to []      dup     range-to  @  . operator
+to [^]     0  1    range-to  @  . operator
+to [$]    -1 -1    range-to  @  . operator
+to []!     dup     range-to  @! . operator
+to [^]!    0  1    range-to  @! . operator
+to [$]!   -1 -1    range-to  @! . operator
 
 
 to InoxStyle
