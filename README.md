@@ -38,7 +38,7 @@ So, what's new?
   - Ranges - smart references to slices of data
   - Stacks - pervasive, even objects are stacks of named values
   - Variables - in the data stack, in the control stack or in some other stack
-  - Verb - simple verbs are concatenated to make complex ones
+  - Verbs - simple verbs are concatenated to make complex ones
   - Notations - prefix, infix or postfix notation, your choice
   - Dialects - multiple predefined and custom dialects for different styles
 
@@ -142,18 +142,18 @@ Verb `to` starts a verb _definition_ that an often optional `.` (dot) terminates
 
 Note: the name of a _verb_ can be made of anything, not just letters. As a result `even?` is a valid name for a verb, it could be the name of a verb that tests if a number is even. By convention verbs with a `?` suffix are _predicates_, their result is a _boolean value_ that is either true or false.
 
-As a convenience the verb to invoke can be specified before the pushed data, using the `( )` parentheses. This is the _infix_ notation.
+As a convenience the verb to invoke can be specified before the pushed data, using the `( )` parentheses. This is the _prefix_ notation.
 
 ``` sh
-say( "hello" )  ~~ "infix" style
-"hello" say     ~~ "postfix" style
+say( "hello" )  ~~ frefix style
+"hello" say     ~~ postfix style
 ```
 
 It is the responsabily of whoever invokes a verb to first push onto the stack the arguments required by that verb, in the proper order, in the proper number, etc. Each verb can define it's own _protocol_ about that. There are a few common protocols, described below.
 
 
-Prefix, infix and postfix notations
-===================================
+Prefix, infix and postfix styles
+================================
 
 It is a matter of style often but sometimes a notation is preferable to another.
 
@@ -177,6 +177,49 @@ When a verb is to be used as an operator, the `operator` verb must be invoked ri
 to & text.join. operator ~~ this is how the & operator is actually defined
 ```
 
+There is yet another style named _keyword_ style. It is the one where the verb is specified using mutliple parts with a `:` at the end of each part and a final `;`. The Smalltalk language introduced that style.
+
+``` sh
+
+to say:to:  scope >dest >msg, out( "Say: " $msg & " to " & $dest );
+
+say: "Hello" to: "the world!";
+
+```
+
+The `scope` verb is used to create a _scope_ for local variables. Such variables are created and initialized using the top of the data stack. The syntax is `>xxx` where xxx is the name of the local variable. The local variables are then accessible using either `$xxx` syntax or the `xxx>`. Both syntaxes are equivalent and means pushing the value of the local variable onto the data stack.
+
+``` sh
+  msg> out ~~ postfix style
+  out( $msg ) ~~ prefix style
+```
+
+Because using names if so frequent when programming in the Iɴᴏx language, there is a _concise_ shortcut to invoke a verb with parameters that are names only.
+
+``` sh
+  white/color/led-setup
+  on/led-toggle
+  small/led-toggle-delay
+```
+
+This is equivalent to:
+
+``` sh
+  /white /color led-setup
+  /on           led-toggle
+  /small        led-toggle-delay
+```
+
+Which is also equivalent to:
+
+``` sh
+  led-setup( /white, /color )
+  led-toggle( /on )
+  led-toggle-delay( /small )
+```
+
+Which style you prefer is a matter of taste. The last one is the most readable if you already know a classical programming language like C, TypeScript or Python. It is also the most verbose. The first one is the most concise and the most cryptic until you are familiar with the Iɴᴏx syntax. The second one is somewhere between the two and will please Forth programmers.
+
 
 Control structures
 ==================
@@ -187,9 +230,9 @@ to play
   loop: {
     out( "Guess? " )
     read-line, text-to-integer,
-    dup, if not an-integer? then: { drop,                     continue }
-    dup, if: >              then: { drop, out( "Too big"   ), continue }
-    dup, if: <              then: { drop, out( "Too small" ), continue }
+    dup, if not an-integer? then: { drop,                     continue };
+    dup, if: >              then: { drop, out( "Too big"   ), continue };
+    dup, if: <              then: { drop, out( "Too small" ), continue };
     out( "Yes!" ), break
   }
   clear
@@ -199,7 +242,7 @@ This code is a small game where the player must guess a number between 0 and 100
 
 `dup` duplicates the value on the top of the data stack whereas `drop` removes it, while `clear` empties the entire stack.
 
-`while: { ... } do: { ... }` and `do: { ... } until: { ... }` are special versions of the more general `loop: { ... }` structure where the loop breaks or continues depending on some condition.
+`while: { ... } do: { ... };` and `do: { ... } until: { ... };` are special versions of the more general `loop: { ... };` structure where the loop breaks or continues depending on some condition.
 
 
 Functions
@@ -209,7 +252,7 @@ Functions are special verbs with named _parameters_ to access _arguments_ in an 
 
 ``` sh
 to tell-to/  with /msg /dest  function: {
-  out( "Tell " & msg> & "to " & dest> )
+  out( "Tell " & $msg & " to " & $dest )
 }
 
 tell-to/( "Hello", "Alice" )
@@ -218,13 +261,13 @@ tell-to/( "Hello", "Alice" )
 
 By convention the names of functions terminates with a `/` that means _applied on_. When the function is invoked, it's actual arguments are moved from the _data stack_ onto another stack named the _control stack_. In the process these values get renamed so that the names of the actual arguments get's replaced by the names of the formal parameters.
 
-The `{}` enclosed _block_ that defines the function can then access the arguments, using the name of the corresponding formal parameter with a `>` suffix. This is the syntax for _local variables_ too.
+The `{}` enclosed _block_ that defines the function can then access the arguments, using the name of the corresponding formal parameter with a `$` prefix or a `>` suffix. This is the syntax for _local variables_ too.
 
 `&` is an operator that joins two pieces of text found on the top of the stack.
 
 
 ```
-to tell-to/  with /m /d, /{ out( "T " & m> & "t " && d> }
+to tell-to/  with /m /d /{ out( "Tell " & $m & " to " && $d }
 ```
 
 This is an abbreviated syntax that is defined in the _standard library_. `xx{ ... }` is like `xx( ... )` but the former invokes the `xx{` verb with the block as sole argument whereas the later invokes the verb `xx` when `)` is reached.
@@ -280,7 +323,7 @@ to tell-sign  if-else( <0, { out( "negative" ) }, { out( "positive" ) } ).
 
 -1 tell-sign  ~~ outputs negative
 
-tell-sign( -1 )  ~~ idem, infix style`
+tell-sign( -1 )  ~~ idem, prefix style`
 ```
 
 Two consecutive `~~` (tildes) introduce a comment that goes until the end of the line. Use `~|` and `|~` for multiple lines comments.
@@ -355,7 +398,7 @@ to if:then:else  ~| cond block block -- |~
 to tell-sign  <0? { "negative" out } { "positive" out } if-else.
 ```
 
-This definition of the verb `tell-sign` uses a style that is unusual, it is a _postfix_ notation. This is compact but sometimes difficult to read. Depending on your preferences you may use either that _postfix_ style, a classical _infix_ function call style or the multi parts _keyword_ style.
+This definition of the verb `tell-sign` uses a style that is unusual, it is a _postfix_ notation. This is compact but sometimes difficult to read. Depending on your preferences you may use either that _postfix_ style, a classical _prefix_ function call style or the multi parts _keyword_ style.
 
 The form changes but the meaning keeps the same.
 
@@ -419,7 +462,7 @@ to say-to
 }
 ```
 
-Note: there is no _assignment_ operator in Inox. The `!` (exclamation point) is used to set the value of an already existing variable. The `=` (equal sign) is used to compare values. This is a common convention in many programming languages but not in all. For example in the C language, the `=` (equal sign) is used to assign a value to a variable and the `==` (double equal sign) is used to compare values.
+Note: there is no _assignment_ operator in Iɴᴏx. The `!` (exclamation point) is used to set the value of an already existing variable. The `=` (equal sign) is used to compare values. This is a common convention in many programming languages but not in all. For example in the C language, the `=` (equal sign) is used to assign a value to a variable and the `==` (double equal sign) is used to compare values.
 
 
 Object variables
@@ -534,7 +577,7 @@ Objects have a value and an identity. The value is made of the class of the obje
 Data types
 ==========
 
-The usual suspects are there : boolean, integer, float, text and objects. There are also some more exotic types that make Inox a bit more interesting.
+The usual suspects are there : boolean, integer, float, text and objects. There are also some more exotic types that make Iɴᴏx a bit more interesting.
 
 This includes voids, tags, boxes and ranges.
 
@@ -542,7 +585,7 @@ This includes voids, tags, boxes and ranges.
 Voids
 =====
 
-In addition to the ubiquitous `void` value, there are also `void` integers. They are mostly usefull for reasons that are internal to the Inox interpreter. However, in some cases, they can be usefull to the programmer too.
+In addition to the ubiquitous `void` value, there are also `void` integers. They are mostly usefull for reasons that are internal to the Iɴᴏx interpreter. However, in some cases, they can be usefull to the programmer too.
 
 For example to signal the reason of the void. It could be an error code for example.
 
@@ -550,7 +593,7 @@ When the interpreter is executing some compiled code, if the instruction pointer
 
 Contrary to verbs, the definition of a primitive is not made of verbs or literal, it is defined in the native language of the interpreter. When the interpreter is compiled using Typescript, the primitive is a Javascript function. When the interpreter in compiled using C++, the primitive is a C or C++ function.
 
-The propotype of such functions is simple: they take no parameters and return no value. That's because they have access to the internal *register* of the Inox virtual machine. There are 4 of them : *IP*, *TOS*, *CSP* and *actor*.
+The propotype of such functions is simple: they take no parameters and return no value. That's because they have access to the internal *register* of the Iɴᴏx virtual machine. There are 4 of them : *IP*, *TOS*, *CSP* and *actor*.
 
 The *IP* is the instruction pointer, it points to the next instruction to be executed. The *TOS* is the top of stack, it points to the top of the data stack. The *CSP* is the control stack pointer, it points to the top of the control stack (named "return stack" or "call stack" usually). The *actor* is the current actor, it points to the current *actor* object, something similar to a thread, a task, a process, etc.
 
@@ -591,11 +634,10 @@ Using a bound range, it becomes easy to either extract or replace a portion of a
 
 ``` sh
   "Hello world", 0 5 .. @, out ~~ print Hello, postfix style
-  out( "Hello world", @( 0 .. 5 ) ) ~~ print Hello too, infix style
-  "Hello world", ( 0 .. 5 ), "Inox", @!, out ~~ print Inox world
-  out( "Hello world", @!( 0 ... 4, "Inox" ) )" ~~ print Inox world too
+  out( "Hello world", @( 0 .. 5 ) ) ~~ print Hello too, prefix style
+  "Hello world", ( 0 .. 5 ), "Iɴᴏx", @!, out ~~ print Iɴᴏx world
+  out( "Hello world", @!( 0 ... 4, "Iɴᴏx" ) )" ~~ print Iɴᴏx world too
 ```
-
 
 Ranges work over ranges too, this creates sub ranges. When such ranges are made of index ranges, it describe a *path* to a sub value. When such ranges are made of slice ranges, it describes a sub *slice* of a thing.
 
@@ -664,7 +706,7 @@ Operators are verbs that typically use TOS (unary operators) and sometimes TOS a
 ```
 3 2 + out  ~~ outputs 5
 
-out( 3 + 2 )  ~~ Idem, with an "infix" notation instead of "postfix"
+out( 3 + 2 )  ~~ Idem, with a mixed prefix and infix notation instead of postfix
 ```
 
 It is very common and advised to break long verbs into smaller verbs with good names. This makes the source code easy to understand. Verbs must be defined before they are used. As a result it is common to first define verbs for some special vocabulary and then use these simple verbs to solve a bigger problem.
@@ -1116,7 +1158,7 @@ None yet. _That's all folk!_
 BTW: there are many bugs in the sample code, can you spot them?
 
 
-# Inox primitives
+# Iɴᴏx primitives
 
 This is a list of the primitives that are currently implemented in the Iɴᴏx compiler. This list is automatically generated from the source code.
 
@@ -1375,18 +1417,18 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | set-IP | jump to some address |
 | ALLOT | allocate some memory by moving the HERE pointer forward |
 | HERE | the current value of the HERE pointer |
-| ALIGN | See Forth 2012, noop in Inox |
-| ALIGNED | See Forth 2012, noop in Inox |
+| ALIGN | See Forth 2012, noop in Iɴᴏx |
+| ALIGNED | See Forth 2012, noop in Iɴᴏx |
 | CHAR+ | Forth, increment a character address |
 | STATE | Forth 2012, the current state of the interpreter |
-| inox-dialect | switch to the Inox dialect |
+| inox-dialect | switch to the Iɴᴏx dialect |
 | dialect | query current dialect text name |
 | forth-dialect | switch to the Forth dialect |
 | set-dialect | set current dialect |
 | alias | add an alias to the current dialect |
 | dialect-alias | add an alias to a dialect |
 | import-dialect | import a dialect into the current one |
-| literal | add a literal to the Inox verb beeing defined, |
+| literal | add a literal to the Iɴᴏx verb beeing defined, |
 | machine-code | add a machine code id to the verb beeing defined, |
 | inox | add next token as code for the verb beeing defined, |
 | quote | push next instruction instead of executing it. |

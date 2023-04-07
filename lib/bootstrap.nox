@@ -71,6 +71,11 @@ to constant      the-void make-constant
 to global        the-void make-global
 to local         the-void make-local
 
+to  ->           set-local.   operator
+to $->           set-local.   operator
+to _->           set-data.    operator
+to .->           set-object.  operator
+
 to init-globals
   constant: /inox-version      is: "v0.4.0";
   constant: /inox-version-time is: 1674589501; ~~ ToDo: overflow when ms
