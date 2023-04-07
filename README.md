@@ -645,7 +645,7 @@ So a ranges can be many things that would be rather complex to implement without
 
 This range concept will be enhanced in the future to support more complex things like pattern matching, unification and maybe even backtracking, as in Prolog.
 
-Under the hood there are 3 types of ranges: _to_, _but_ and _for_. _to_ ranges have an indexed upper limit. _but_ have an indexed upper limit to but it is not included in the range. _for_ range have a length instead of an upper limit. The `..` operators create a _but_ range, the `...` operators creates a _to_ ranges and the `::` operators create a _for_ ranges.
+Under the hood there are 3 types of ranges: _to_, _but_ and _for_. _to_ ranges have an indexed upper limit. _but_ have an indexed upper limit too but it is not included in the range. _for_ range have a length instead of an upper limit. The `..` operators create a _but_ range, the `...` operators creates a _to_ range and the `::` operators create a _for_ range.
 
 
 The class hierarchy
@@ -907,14 +907,23 @@ Because accessing variables the stacks is frequent, there are shorthands to do i
 Here are the short forms and the corresponding longer forms:
 
 ```sh
-_d   ~~ /d data           ~~ get the value of the d data variable
-_d!  ~~ /d set-data       ~~ change the value of the d data variable
->c   ~~ /c make-control   ~~ initialize a new c local variable
-c>   ~~ /c control        ~~ get the value of the c local variable
->c!  ~~ /c set-control    ~~ change the value of the c local variable
+
+"Hi" >c   ~~ "Hi" /c make-control ~~ initialize a new c local variable
+c>        ~~ /c control           ~~ get the value of the c local variable
+$c                                ~~ idem
+"Hi" >c!  ~~ "Hi" /c set-control  ~~ change the value of the local variable
+"Hi" $c!                          ~~ idem
+( "Hi" -> /c )                    ~~ idem
+( "Hi" >-> /c )                   ~~ idem
+
+_d        ~~ /d data              ~~ get the value of the d data variable
+"Hi" _d!  ~~ "Hi" /d set-data     ~~ change the value of the d data variable
+( "Hi" _-> /d )                   ~~ idem
+d:"Hi"                            ~~ idem
+
 ```
 
-To assign the value of a local variable to another one the shorthand is ``a> >b!``. The `!` is there to remind that this is a _side effect_. Whenever possible, it is better to create a new local variable instead of changing an existing one, this is easy: `a> >b`. The absence of `!` signals that the assignment does not _mutate_ anything. Avoiding mutations is often a good idea to avoid bugs.
+To assign the value of a local variable to another one, one of the shorthands is ``a> >b!``. The `!` is there to remind that this is a _side effect_. Whenever possible, it is better to create a new local variable instead of changing an existing one, this is easy: `a> >b`. The absence of `!` signals that the assignment does not _mutate_ anything. Avoiding mutations is often a good idea to avoid bugs.
 
 
 Modules
