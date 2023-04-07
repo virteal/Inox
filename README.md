@@ -161,7 +161,7 @@ The _prefix_ notation is the one where the verb is specified first, then the arg
 
 The _infix_ notation is the one where operators are specified between operands. It also derives from the notation in mathematics. It is the most common notation in most programming languages where the concept of _expression_ is used, it is very common.
 
-The _postfix_ notation is the one where the verb is specified last, after the arguments. This is the most common notation in Forth style languages. The _postfix_ notation is also called the _reverse polish notation_. That notation is the one that describes the actual order of execution at teh CPU level with the most fidelity.
+The _postfix_ notation is the one where the verb is specified last, after the arguments. This is the most common notation in Forth style languages. The _postfix_ notation is also called the _reverse polish notation_. That notation is the one that describes the actual order of execution at the CPU level with the most fidelity.
 
 ``` sh
   out( "hello" )                  ~~ prefix style
