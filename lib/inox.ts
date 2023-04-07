@@ -2113,7 +2113,7 @@ function lean_init_empty() : Cell {
 
 
 //c/ static bool lean_is_valid( Cell ); // Forward
-//c/ static Length lean_strlen( Cell ); // Forward
+//c/ static Length lean_length( Cell ); // Forward
 
 function lean_is_empty( area : Area ) : boolean {
   if( area == the_empty_lean ){
@@ -2122,7 +2122,7 @@ function lean_is_empty( area : Area ) : boolean {
   // Only the empty lean string is empty
   if( alloc_de ){
     mand( lean_is_valid( area ) );
-    const len = lean_strlen( area );
+    const len = lean_length( area );
     mand_neq( len, 0 );
   }
   return false;
@@ -2249,7 +2249,7 @@ function lean_byte_at( area : Area, index : Index ) : Value {
   if( alloc_de ){
     mand( lean_is_valid( area ) );
     mand( index >= 0 );
-    mand( index < lean_strlen( area ) );
+    mand( index < lean_length( area ) );
   }
   return lean_unchecked_byte_at( area, index );
 }
@@ -2281,7 +2281,7 @@ function lean_byte_at_from( dst : Area, d_i : Index, src : Area, s_i : Index ){
 
 //c/ static Size area_payload_size( Cell ); // Forward
 
-function lean_strlen( area : Area ) : Length {
+function lean_length( area : Area ) : Length {
 // Return the length of a lean string
   alloc_de&&mand( lean_is_valid( area ) );
   // Fast path for empty strings
@@ -2347,7 +2347,7 @@ function lean_new_from_native( str : TxtC ) : Area {
 
   // ToDo: AssemblyScript version
 
-  alloc_de&&mand_eq( lean_strlen( area ), str_len );
+  alloc_de&&mand_eq( lean_length( area ), str_len );
   return area;
 }
 
@@ -2369,7 +2369,7 @@ function lean_to_native( area : Area ) : TxtC {
     // Return the empty string?
     if( area == the_empty_lean )return "";
     // ToDo:: optimize this a lot, using a Javascript TextDecoder
-    const len = lean_strlen( area );
+    const len = lean_length( area );
     let str = "";
     let ii;
     for( ii = 0; ii < len; ii++ ){
@@ -2461,7 +2461,7 @@ static bool lean_streq_with_c_str( Cell cell1, TxtC str ){
     return str[ 0 ] == 0;
   }
 
-  const len1 = lean_strlen( cell1 );
+  const len1 = lean_length( cell1 );
   const len2 = strlen( str );
   if( len1 != len2 ){
     return false;
@@ -2479,8 +2479,8 @@ function lean_strcmp( cell1 : Cell, cell2 : Cell ) : Value {
 
   // TypeScript version
   /*ts{*/
-    const len1 = lean_strlen( cell1 );
-    const len2 = lean_strlen( cell2 );
+    const len1 = lean_length( cell1 );
+    const len2 = lean_length( cell2 );
     const len = len1 < len2 ? len1 : len2;
     let ii;
     for( ii = 0 ; ii < len ; ii++ ){
@@ -2504,8 +2504,8 @@ function lean_strcmp( cell1 : Cell, cell2 : Cell ) : Value {
   // C++ version uses strncmp()
   // ToDo: is it correct or should it be strcmp()?
   /*c{
-    auto len1 = lean_strlen( cell1 );
-    auto len2 = lean_strlen( cell2 );
+    auto len1 = lean_length( cell1 );
+    auto len2 = lean_length( cell2 );
     auto r = memcmp(
       (char*) to_ptr( cell1 ),
       (char*) to_ptr( cell2 ),
@@ -2524,13 +2524,13 @@ function lean_new_from_strcat( area1 : Area, area2 : Area ) : Area {
 // Concatenate two lean strings, returns a new string
 
   // Deal with the empty strings
-  const len1 = lean_strlen( area1 );
+  const len1 = lean_length( area1 );
   if( len1 == 0 ){
     lean_lock( area2 );
     return area2;
   }
 
-  const len2 = lean_strlen( area2 );
+  const len2 = lean_length( area2 );
   if( len2 == 0 ){
     lean_lock( area1 );
     return area1;
@@ -2573,7 +2573,7 @@ function lean_new_from_strcat( area1 : Area, area2 : Area ) : Area {
     }
   /*}*/
 
-  alloc_de&&mand_eq( lean_strlen( new_area ), len - 1 );
+  alloc_de&&mand_eq( lean_length( new_area ), len - 1 );
   return new_area;
 
 }
@@ -2583,8 +2583,8 @@ function lean_strindex( target : Cell, pattern : Cell ) : Value {
 // Find the first occurence of str2 in str1
 
   // ToDo: fast C++ version
-  const len_target  = lean_strlen( target );
-  const len_pattern = lean_strlen( pattern );
+  const len_target  = lean_length( target );
+  const len_pattern = lean_length( pattern );
 
   // Can't find big in small
   if( len_pattern > len_target )return -1;
@@ -2620,8 +2620,8 @@ function lean_strrindex( target : Cell, pattern : Cell ) : Value {
   let ii = 0;
   let jj = 0;
 
-  const len_target = lean_strlen( target );
-  const len_pattern = lean_strlen( pattern );
+  const len_target = lean_length( target );
+  const len_pattern = lean_length( pattern );
 
   // Can't find big in small
   if( len_pattern > len_target )return -1;
@@ -2651,7 +2651,7 @@ function lean_substr( str : Cell, start : Value, len : Value ) : Cell {
 // Extract a substring from a lean string, return a new string
 
   // If past the end, return the empty string
-  const str_len = lean_strlen( str );
+  const str_len = lean_length( str );
 
   // Handle negative start position
   if( start < 0 ){
@@ -2861,7 +2861,7 @@ class LeanString {
 
   // Returns the length of the string
   size_t length() const {
-    return lean_strlen( to_cell( cstr ) );
+    return lean_length( to_cell( cstr ) );
   }
 
   // Return a substring
@@ -15047,22 +15047,6 @@ function range_get_binding( c : Cell ) : Value {
 }
 
 
-function set_range( c : Cell, start : Index, end : Index ){
-  new_bound_range( c, range_type_but, 0 );
-  const range = value_of( c );
-  range_set_low(  range, start );
-  range_set_high( range, end );
-  range_set_type( value_of( c ), range_type_but );
-}
-
-
-function set_range_counted( c : Cell, start : Index, count : Length ){
-  new_bound_range( c, range_type_for, 0 );
-  range_set_low( value_of( c ), start );
-  range_set_high( value_of( c ), count );
-}
-
-
 function range_length( c : Cell ) : Length {
 // Return the maximum possible length of the range
   let low;
@@ -15100,11 +15084,6 @@ function range_length( c : Cell ) : Length {
       debugger;
       return 0;
   }
-}
-
-
-function range_bind_to( c : Cell, to : Value ){
-  range_set_binding( value_of( c ), to );
 }
 
 
@@ -15303,21 +15282,26 @@ function cell_to_text( c : Cell ) : Text {
         // If it is a text, return a portion of it
         const bound_reference_class = area_tag( binding );
         if( bound_reference_class == tag_text ){
-          let low = range_get_low(  v );
-          let len = range_get_high( v );
-          let typ = range_get_type( v );
-          // Compute length if high limit is an index
-          if( typ == range_type_but ){
-            if( len < 0 ){
-              len = area_payload_size( binding ) + len - low - 1;
-            }else{
-              len = len - low - 1;
+          let len  = lean_length( binding );
+          let typ  = range_get_type( v );
+          // Adjust negative start index into positive one
+          let low  = range_get_low(  v );
+          if( low < 0 ){
+            low = len + low;
+          }
+          if( typ == range_type_for ){
+            len = range_get_high( v );
+          }else{
+            // Adjust negative end index into positive one
+            let high = range_get_high( v );
+            if( high < 0 ){
+              high = len + high;
             }
-          }else if( typ == range_type_to ){
-            if( len < 0 ){
-              len = area_payload_size( binding ) + len - low;
+            // Compute length with or without end index included
+            if( typ == range_type_but ){
+              len = high - low;
             }else{
-              len = len - low;
+              len = high - low + 1;
             }
           }
           //c/ return LeanString( binding, low, high );
@@ -21479,7 +21463,7 @@ function bootstrap(){
   eval_file( "forth.nox" );
   if( de ){
     eval_file( "test/smoke.nox" );
-    primitive_memory_visit();
+    // primitive_memory_visit();
   }
   /**/ }catch( e ){ breakpoint(); throw e; }
 }

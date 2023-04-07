@@ -106,7 +106,7 @@
 <tr><td>identical?</td><td>like same? but it is not an operator</td></tr>
 <tr><td>different?</td><td>true unless two objects or two values are the same one</td></tr>
 <tr><td>?</td><td>operator</td></tr>
-<tr><td>something?</td><td>operator</td></tr>
+<tr><td>something?</td><td>operator, true unless void? is true</td></tr>
 <tr><td>void?</td><td>operator - true when TOS is of type void and value is 0.</td></tr>
 <tr><td>true?</td><td>operator</td></tr>
 <tr><td>false?</td><td>operator</td></tr>
@@ -161,7 +161,7 @@
 <tr><td>named?</td><td>operator - true if NOS's name is TOS tag</td></tr>
 <tr><td>definition-to-text</td><td>decompile a definition</td></tr>
 <tr><td>verb.to-text-definition</td><td>decompile a verb definition</td></tr>
-<tr><td>verb.from</td><td>convert into a verb if verb is defined</td></tr>
+<tr><td>verb.from</td><td>convert into a verb if verb is defined, or void if not</td></tr>
 <tr><td>peek</td><td>get the value of a cell, using a cell's address</td></tr>
 <tr><td>poke</td><td>set the value of a cell, using a cell's address</td></tr>
 <tr><td>make-constant</td><td>using a value and a name, create a constant</td></tr>
@@ -230,10 +230,9 @@
 <tr><td>at</td><td>like @ unary operator but it is not an operator</td></tr>
 <tr><td>@!</td><td>binary operator to set a boxed value, works with bound ranges too</td></tr>
 <tr><td>at!</td><td>like the @! binary operator but it is not an operator</td></tr>
-<tr><td>range.from:to:</td><td>create a range from a low and a high index</td></tr>
-<tr><td>..</td><td>binary operator to create a range with two indices</td></tr>
-<tr><td>range.from:for:</td><td>create a range from a low index and a length</td></tr>
-<tr><td>::</td><td>binary operator to create a range with a low index and a length</td></tr>
+<tr><td>range-to</td><td>create a range from a low to a high index, included</td></tr>
+<tr><td>range-but</td><td>create a range from a low to a high index, excluded</td></tr>
+<tr><td>range-for</td><td>create a range from a low index and a length</td></tr>
 <tr><td>range.over</td><td>bind a range to some composite value</td></tr>
 <tr><td>forget-control</td><td>clear the control stack downto to specified local</td></tr>
 <tr><td>return-without-locals</td><td>like return but with some cleanup</td></tr>
@@ -315,8 +314,8 @@
 <tr><td>ascii-code</td><td>return ascii code of first character of TOS as text</td></tr>
 <tr><td>now</td><td>return number of milliseconds since start</td></tr>
 <tr><td>instructions</td><td>number of instructions executed so far</td></tr>
-<tr><td>the-void</td><td>push a void cell</td></tr>
+<tr><td>the-void</td><td>push the void, typed void, named void, valued 0</td></tr>
 <tr><td>memory-visit</td><td>get a view of the memory</td></tr>
 <tr><td>source</td><td>evaluate the content of a file</td></tr>
 </table>
-<p>Found 317 primitives.</p></body></html>
+<p>Found 316 primitives.</p></body></html>

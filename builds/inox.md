@@ -108,7 +108,7 @@
 | identical? | like same? but it is not an operator |
 | different? | true unless two objects or two values are the same one |
 | ? | operator |
-| something? | operator |
+| something? | operator, true unless void? is true |
 | void? | operator - true when TOS is of type void and value is 0. |
 | true? | operator |
 | false? | operator |
@@ -163,7 +163,7 @@
 | named? | operator - true if NOS's name is TOS tag |
 | definition-to-text | decompile a definition |
 | verb.to-text-definition | decompile a verb definition |
-| verb.from | convert into a verb if verb is defined |
+| verb.from | convert into a verb if verb is defined, or void if not |
 | peek | get the value of a cell, using a cell's address |
 | poke | set the value of a cell, using a cell's address |
 | make-constant | using a value and a name, create a constant |
@@ -232,10 +232,9 @@
 | at | like @ unary operator but it is not an operator |
 | @! | binary operator to set a boxed value, works with bound ranges too |
 | at! | like the @! binary operator but it is not an operator |
-| range.from:to: | create a range from a low and a high index |
-| .. | binary operator to create a range with two indices |
-| range.from:for: | create a range from a low index and a length |
-| :: | binary operator to create a range with a low index and a length |
+| range-to | create a range from a low to a high index, included |
+| range-but | create a range from a low to a high index, excluded |
+| range-for | create a range from a low index and a length |
 | range.over | bind a range to some composite value |
 | forget-control | clear the control stack downto to specified local |
 | return-without-locals | like return but with some cleanup |
@@ -317,6 +316,6 @@
 | ascii-code | return ascii code of first character of TOS as text |
 | now | return number of milliseconds since start |
 | instructions | number of instructions executed so far |
-| the-void | push a void cell |
+| the-void | push the void, typed void, named void, valued 0 |
 | memory-visit | get a view of the memory |
 | source | evaluate the content of a file |

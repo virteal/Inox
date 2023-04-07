@@ -327,13 +327,14 @@ to test-hello-range{ ~| expected block |~
   "Hello ranges" expected> block> "test-output{" .run()
 
 to test/ranges
+  "range"          test-hello-range{   @( -6 ..  -1  )    }
   "He"             test-hello-range{    (   0 ::  2  ) @  }
   "Hello"          test-hello-range{   @(   0 ::  5  )    }
   "He"             test-hello-range{    (   0 ..  2  ) @  }
   "Hello"          test-hello-range{   @(   0 ..  5  )    }
   "ello"           test-hello-range{   @(   1 ..  5  )    }
   "ello"           test-hello-range{   @(   1 ::  4  )    }
-  "ello"           test-hello-range{   @(   1 ... 3  )    }
+  "ell"            test-hello-range{   @(   1 ... 3  )    }
   "He"             test-hello-range{   @(   ^..   2  )    }
   "Hel"            test-hello-range{   @(   ^...  2  )    }
   "He"             test-hello-range{   @(   ^::   2  )    }
