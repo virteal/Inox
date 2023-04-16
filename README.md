@@ -43,6 +43,38 @@ So, what's new?
   - Dialects - multiple predefined and custom dialects for different styles
 
 
+Overview
+========
+
+Here is a short presentation of some of the main characteristics of the Iɴᴏx programming language. There is no stable set of features yet but it gives some ideas about the general spirit of the language.
+
+This introduction is more like a tutorial than a reference manual. That manual will come next, when design gets stable. Enjoy and stay tuned!
+
+
+Control structures
+==================
+
+ ``` sh
+to play
+  random-no( 100 )
+  loop: {
+    out( "Guess? " )
+    read-line, text-to-integer,
+    dup, if not an-integer? then: { drop,                     continue };
+    dup, if: >              then: { drop, out( "Too big"   ), continue };
+    dup, if: <              then: { drop, out( "Too small" ), continue };
+    out( "Yes!" ), break
+  }
+  clear
+```
+
+This code is a small game where the player must guess a number between 0 and 100. It illustrates two important _control structures_: _loops_ and _conditionnals_.
+
+`dup` duplicates the value on the top of the data stack whereas `drop` removes it, while `clear` empties the entire stack.
+
+`while: { ... } do: { ... };` and `do: { ... } until: { ... };` are special versions of the more general `loop: { ... };` structure where the loop breaks or continues depending on some condition.
+
+
 Named values
 ------------
 
@@ -117,14 +149,6 @@ So, be surprised, be surprising, get inspirational if you can, endorse the Iɴ�
 Vive Iɴᴏx ! Or else, stay calm and carry on, c'est la vie, a tale maybe.
 
 
-Overview
-========
-
-Here is a short presentation of some of the main characteristics of the Iɴᴏx programming language. There is no stable set of features yet but it gives some ideas about the general spirit of the language.
-
-This introduction is more like a tutorial than a reference manual. That manual will come next, when design gets stable. Enjoy and stay tuned!
-
-
 Verbs
 =====
 
@@ -151,8 +175,7 @@ say( "hello" )  ~~ frefix style
 
 It is the responsabily of whoever invokes a verb to first push onto the stack the arguments required by that verb, in the proper order, in the proper number, etc. Each verb can define it's own _protocol_ about that. There are a few common protocols, described below.
 
-
-Prefix, infix and postfix styles
+   Prefix, infix and postfix styles
 ================================
 
 It is a matter of style often but sometimes a notation is preferable to another.
@@ -219,30 +242,6 @@ Which is also equivalent to:
 ```
 
 Which style you prefer is a matter of taste. The last one is the most readable if you already know a classical programming language like C, TypeScript or Python. It is also the most verbose. The first one is the most concise and the most cryptic until you are familiar with the Iɴᴏx syntax. The second one is somewhere between the two and will please Forth programmers.
-
-
-Control structures
-==================
-
- ``` sh
-to play
-  random-no( 100 )
-  loop: {
-    out( "Guess? " )
-    read-line, text-to-integer,
-    dup, if not an-integer? then: { drop,                     continue };
-    dup, if: >              then: { drop, out( "Too big"   ), continue };
-    dup, if: <              then: { drop, out( "Too small" ), continue };
-    out( "Yes!" ), break
-  }
-  clear
-```
-
-This code is a small game where the player must guess a number between 0 and 100. It illustrates two important _control structures_: _loops_ and _conditionnals_.
-
-`dup` duplicates the value on the top of the data stack whereas `drop` removes it, while `clear` empties the entire stack.
-
-`while: { ... } do: { ... };` and `do: { ... } until: { ... };` are special versions of the more general `loop: { ... };` structure where the loop breaks or continues depending on some condition.
 
 
 Functions
@@ -902,7 +901,7 @@ Note: the _target_ of a _method_ does not need to be a _reference_ to an object,
 Stack shorthands
 ----------------
 
-Because accessing variables the stacks is frequent, there are shorthands to do it, both to get values and to set values.
+Because accessing variables from stacks is so frequent, there are shorthands to do it, both to get values and to set values.
 
 Here are the short forms and the corresponding longer forms:
 

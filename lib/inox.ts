@@ -35,7 +35,7 @@
  */
 
 /// 0: no debug, 1: some debug, 2: more debug, etc
-const INOX_DEBUG_LEVEL = 1;
+const INOX_DEBUG_LEVEL = 4;
 
 /// The initial size of the flat memory where the Inox interpreter will run
 // ToDo: make the size configurable at run time ?
@@ -1376,7 +1376,7 @@ let all_symbol_cells_length = 0;
 /*c{
 
 static bool trace( char* msg ){
-  if( !can_log )return true;
+  if( ! can_log )return true;
   // 1 is stdout
   int len = strlen( msg );
   msg[ len ] = '\n';
@@ -1412,11 +1412,10 @@ function breakpoint() : boolean {
 
 /* ----------------------------------------------------------------------------
  *  'mand' is short for "demand" or "mandatory". It's functions that check
- *  if some condition is true. If it is not, it raises an exception. This
+ *  if some condition is true. If it is not, they raise an exception. This
  *  implements assertions checking.
  *  There are various flavors of mand() to check various types of conditions.
  */
-
 
 /*ts{*/
 
@@ -2089,15 +2088,14 @@ const init_cell_allocator_done = init_cell_allocator();
 
 // When the area is freed, that header is overwritten with this tag
 // This is precomputed, see init_symbols()
-const tag_dynamic_next_area = 9;
+const the_tag_for_dynamic_next_area = 0;
 
 // The second cell of the header is the size of the area, including the header
 // This is precomputed, see init_symbols()
-const tag_dynamic_area_size = 8;
+const the_tag_for_dynamic_area_size = 8;
 
 // This is where to find the size, relative to the area first header address.
 const offset_of_area_size = ONE;
-
 
 // There is a special empty string
 //c/ static Cell lean_init_empty( void ); // Forward
@@ -2180,7 +2178,7 @@ function lean_allocate_cells_for_bytes( sz : Size ) : Area {
   set_value( header + 0 * ONE, 1 );
 
   // Header 1 is total size in bytes, including the two headers, not aligned
-  set_info(  header + 1 * ONE, pack( type_integer, tag_dynamic_area_size ) );
+  set_info(  header + 1 * ONE, pack( type_integer, the_tag_for_dynamic_area_size ) );
   set_value( header + 1 * ONE, 2 * size_of_cell + sz );
 
   // The convention is to address the first byte of the payload
@@ -3160,26 +3158,15 @@ static Text tmid( const Text& t, int start, int end ){
  *     I.e. text "at" some position.
  */
 
-/**/ function tat( t : Text, pos : Index ){
-/**/   return t.slice( pos, 1 );
-/**/ }
-
-/*c{
-
-static Text tat( const Text& t, int pos ){
-  int len = t.length();
+function tat( t : Text, pos : Index ) : Text {
+  const len = t.length;
   if( pos < 0 ){
     pos = len + pos;
-    if( pos < 0 ){
-      return no_text;
-    }
   }
-  if( pos >= len ){
-    return no_text;
-  }
-  return t.substr( pos, 1 );
+  if( pos < 0 || pos >= len )return no_text;
+  /**/ return t[ pos ];
+  //c/ return t.substr( pos, 1 );
 }
-}*/
 
 
 /*
@@ -3353,6 +3340,28 @@ function tidx( s : ConstText, sub : ConstText ) : Index {
 function tidxr( s : ConstText, sub : ConstText ) : Index {
   /**/ return s.lastIndexOf( sub );
   //c/ return s.rfind( sub );
+}
+
+
+/*
+ *  tpre( prefix, text ) true if text starts with prefix
+ */
+
+function tpre( pre : ConstText, txt : ConstText ) : boolean {
+  /**/ return txt.startsWith( pre );
+  // ToDo: implement txt.start_with( pre )
+  //c/ return txt.find( pre ) == 0;
+}
+
+
+/*
+ *  tsuf( suffix, text ) true if text ends with suffix
+ */
+
+function tsuf( suf : ConstText, txt : ConstText ) : boolean {
+  /**/ return txt.endsWith( suf );
+  // ToDo: implement txt.ends_with( suf )
+  //c/ return txt.rfind( suf ) == txt.length() - suf.length();
 }
 
 
@@ -3895,8 +3904,9 @@ function init_area_allocator() : Index {
   the_first_free_area = 0;
 
   // Check precomputed tags
-  de&&mand_eq( tag( "_dynxt" ), tag_dynamic_next_area );
-  de&&mand_eq( tag( "_dynsz" ), tag_dynamic_area_size );
+  // de&&mand_eq( tag( "_dynxt" ), tag_dynamic_next_area );
+  de&&mand_eq( tag( "void" ),   the_tag_for_dynamic_next_area );
+  de&&mand_eq( tag( "_dynsz" ), the_tag_for_dynamic_area_size );
 
   // This completes the low level bootstrap phase 1
   bootstrapping = false;
@@ -3929,9 +3939,9 @@ function area_turn_busy( area : Area, klass : Tag, sz : Size ){
 // Set the reference counter header of a free byte area to 1, ie it becomes busy
   const header = area_to_header( area );
   // Before it becomes busy, it was free, so it must have a next_area header
-  alloc_de&&mand_cell_name( header, tag_dynamic_next_area );
+  alloc_de&&mand_cell_name( header, the_tag_for_dynamic_next_area );
   set( header, type_integer, klass, 1 );
-  alloc_de&&mand_cell_name( header + ONE, tag_dynamic_area_size );
+  alloc_de&&mand_cell_name( header + ONE, the_tag_for_dynamic_area_size );
   set_value( header + ONE, sz );
 }
 
@@ -3939,7 +3949,7 @@ function area_turn_busy( area : Area, klass : Tag, sz : Size ){
 function area_turn_free( area : Area, next_area : Area ){
 // Set the tag of the header of a byte area to tag_dynamic_next_area
   const header = area_to_header( area );
-  set( header, type_integer, tag_dynamic_next_area, next_area );
+  set( header, type_void, the_tag_for_dynamic_next_area, next_area );
 }
 
 
@@ -3947,21 +3957,21 @@ function area_init_busy( area : Area, klass : Tag, size : Count ){
 // Initialize a new busy area
   const header = area_to_header( area );
   set( header, type_integer, klass, 1 );
-  set( header + ONE, type_integer, tag_dynamic_area_size, size );
+  set( header + ONE, type_integer, the_tag_for_dynamic_area_size, size );
 }
 
 
 function area_is_busy( area : Area ) : boolean {
 // Return true if the area is busy, false if it is free
   alloc_de&&mand( area_is_safe( area ) );
-  return name_of( area_to_header( area ) ) != tag_dynamic_next_area;
+  return name_of( area_to_header( area ) ) != the_tag_for_dynamic_next_area;
 }
 
 
 function area_is_free( area : Area ) : boolean {
 // Return true if the area is free, false if it is busy
   alloc_de&&mand( area_is_safe( area ) );
-  return name_of( area_to_header( area ) ) == tag_dynamic_next_area;
+  return name_of( area_to_header( area ) ) == the_tag_for_dynamic_next_area;
 }
 
 
@@ -3969,9 +3979,9 @@ function area_cell_is_area( cell : Cell ) : boolean {
 // Return true if the cell is the first cell of a dynamic area, false otherwise
   // This is maybe not 100% reliable, but it is good enough
   const first_header = area_to_header( cell );
-  if( name_of( first_header + ONE ) == tag_dynamic_area_size ){
-    if( type_of( first_header ) == type_integer ){
-      if( name_of( first_header ) == tag_dynamic_next_area ){
+  if( name_of( first_header + ONE ) == the_tag_for_dynamic_area_size ){
+    if( type_of( first_header ) == type_void ){
+      if( name_of( first_header ) == the_tag_for_dynamic_next_area ){
         alloc_de&&mand( area_is_free( cell ) );
       }else{
         alloc_de&&mand( area_is_busy( cell ) );
@@ -4035,7 +4045,7 @@ function area_set_size( area : Area, sz : Size ) : void {
 // Set the size of the area, including the size of the header, but not aligned
   const header = area_to_header( area );
   // The second header is after the first one, ie after the reference counter
-  set( header + ONE, type_integer, tag_dynamic_area_size, sz );
+  set( header + ONE, type_integer, the_tag_for_dynamic_area_size, sz );
 }
 
 
@@ -4377,7 +4387,7 @@ function allocate_area( klass : Tag , sz : Size ) : Area {
   area = cells + 2 * ONE;
 
   // Pretend it is a busy area and then free it to add it to the heap
-  area_init_busy( area, tag_void, needed_cells * size_of_cell );
+  area_init_busy( area, 1, needed_cells * size_of_cell );
   alloc_de&&mand( area_is_busy( area ) );
   area_free( area );
 
@@ -4561,7 +4571,7 @@ function area_is_safe( area : Cell ) : boolean {
   }
 
   // When busy
-  if( name_of( header ) != tag_dynamic_next_area ){
+  if( name_of( header ) != the_tag_for_dynamic_next_area ){
 
     // The reference counter must be an integer
     alloc_de&&mand( type_of( header ) == type_integer );
@@ -4584,10 +4594,10 @@ function area_is_safe( area : Cell ) : boolean {
       return false;
     }
 
-  }else if( name_of( header ) == tag_dynamic_next_area ){
+  }else if( name_of( header ) == the_tag_for_dynamic_next_area ){
 
     // The value should be the integer address of a next free area, or zero
-    alloc_de&&mand( type_of( header ) == type_integer );
+    alloc_de&&mand_eq( type_of( header ), type_void );
     if( area_is_safe_entered == area ){
       debugger;
       area_is_safe_entered = 0;
@@ -4642,7 +4652,7 @@ function area_is_safe( area : Cell ) : boolean {
   }
 
   // The second header must be named tag_dynamic_area_size
-  if( name_of( header + 1 * ONE ) != tag_dynamic_area_size ){
+  if( name_of( header + 1 * ONE ) != the_tag_for_dynamic_area_size ){
     FATAL( S()+ "Invalid area, bad size header, " + C( area ) );
     return false;
   }
@@ -4704,11 +4714,11 @@ function decrement_object_ref_count( area : Area ){
 
 function area_test_suite(){
   // This was generated by copilot, it is very insufficent
-  const the_area = allocate_area( tag_void, 10 );
+  const the_area = allocate_area( 1, 10 );
   de&&mand( area_is_busy( the_area ) );
   area_free( the_area );
   de&&mand( area_is_free( the_area ) );
-  const the_area2 = allocate_area( tag_void, 10 );
+  const the_area2 = allocate_area( 1, 10 );
   de&&mand( area_is_busy( the_area2 ) );
   area_lock( the_area2 );
   de&&mand( area_is_busy( the_area2 ) );
@@ -6850,7 +6860,7 @@ function register_method_definition( verb_tag : Tag, def : Cell ){
   if( dot_position > 0 ){
     const auto_class_name  = tcut( auto_fullname, dot_position );
     const auto_method_name = tbut( auto_fullname, dot_position + 1 );
-    if( auto_method_name != "" ){
+    if( tsome( auto_method_name ) ){
       const class_tag  = tag( auto_class_name );
       const method_tag = tag( auto_method_name );
       cache_method( class_tag, method_tag, def );
@@ -7893,7 +7903,7 @@ function build_targets(){
     line = ts[ ii ];
 
     // Skip empty lines
-    if( line == "" ){ // /^\s*$/ ) ){
+    if( tnone( line ) ){ // /^\s*$/ ) ){
       blank_lines = blank_lines + 1;
       c_source += line + "\n";
       continue;
@@ -9093,7 +9103,8 @@ function HEX( n : Value ) : Text {
 function text_quote( txt : TxtC ) : Text {
   let auto_buf = S();
   let ii = 0;
-  for( ii = 0; ii < tlen( txt ) ; ii++ ){
+  const len = tlen( txt );
+  for( ii = 0; ii < len ; ii++ ){
     const auto_ch = tat( txt, ii );
     if( teq( auto_ch, "\r" ) ){
       auto_buf += "\\r";
@@ -9372,9 +9383,12 @@ function primitive_integer_to_binary(){
 function text_unquote( txt : TxtC ) : Text {
   let auto_buf = S();
   let ii = 0;
-  while( ii < tlen( txt ) ){
-    const auto_ch = tat( txt, ii );
+  const len = tlen( txt );
+  while( ii < len ){
+    let auto_ch = tat( txt, ii );
+    ii++;
     if( teq( auto_ch, "\\" ) ){
+      auto_ch = tat( txt, ii );
       ii++;
       if( teq( auto_ch, "r" ) ){
         auto_buf += "\r";
@@ -9389,20 +9403,19 @@ function text_unquote( txt : TxtC ) : Text {
       }else if( teq( auto_ch, "x" ) ){
         ii++;
         const auto_ch1 = tat( txt, ii );
-        const auto_ch2 = tat( txt, ii + 1 );
+        ii++;
+        const auto_ch2 = tat( txt, ii );
         const auto_hex = auto_ch1 + auto_ch2;
         const auto_dec = parseInt( auto_hex, 16 );
         /**/ auto_buf += String.fromCharCode( auto_dec );
         // In C++, get char code of first charactor of string
         //c/ auto_buf += char( auto_dec );
-        ii++;
       }else{
         bug( S() + "Invalid escape sequence, \\" + auto_ch );
       }
     }else{
       auto_buf += auto_ch;
     }
-    ii++;
   }
   return auto_buf;
 }
@@ -9420,11 +9433,12 @@ primitive( "text.unquote", primitive_text_unquote );
  *  text.pad - pads a text with spaces
  */
 
-function text_pad( txt : TxtC, len : Value ) : Text {
+function text_pad( txt : TxtC, pad_len : Count ) : Text {
   let auto_buf = S();
   let ii = 0;
-  while( ii < len ){
-    if( ii < tlen( txt ) ){
+  const len = tlen( txt );
+  while( ii < pad_len ){
+    if( ii < len ){
       auto_buf += tat( txt, ii );
     }else{
       auto_buf += " ";
@@ -9447,16 +9461,44 @@ function primitive_text_pad(){
  */
 
 function text_trim( txt : TxtC ) : Text {
+  // First trim leading spaces
   let auto_buf = S();
   let ii = 0;
-  while( ii < tlen( txt ) ){
-    const auto_ch = tat( txt, ii );
-    if( auto_ch != " " ){
-      auto_buf += auto_ch;
+  let len = tlen( txt );
+  let only_spaces = true;
+  let ch = "";
+  while( ii < len ){
+    ch = tat( txt, ii );
+    if( only_spaces ){
+      if( tneq( ch, " " ) ){
+        only_spaces = false;
+      }else{
+        // Skip leading spaces
+        continue;
+      }
     }
+    auto_buf += ch;
     ii++;
   }
-  return auto_buf;
+  // Then trim trailing spaces
+  let auto_buf2 = S();
+  len = tlen( auto_buf );
+  ii = len - 1;
+  only_spaces = true;
+  while( ii >= 0 ){
+    ch = tat( auto_buf, ii );
+    if( only_spaces ){
+      if( tned( ch, " " ) ){
+        only_spaces = false;
+      }else{
+        // Skip trailing spaces
+        continue;
+      }
+    }
+    auto_buf2 = ch + auto_buf2;
+    ii--;
+  }
+  return auto_buf2;
 }
 
 function primitive_text_trim(){
@@ -9670,6 +9712,17 @@ function dump( c : Cell ) : Text {
         }
       }
 
+      if( n == the_tag_for_dynamic_next_area ){
+        // Check integrity of free dynamic area
+        if( !area_is_safe( header_to_area( c ) ) ){
+          dump_invalid_cell = c;
+          buf += "Invalid dynamic free area, ";
+        }else{
+          cell_dump_entered = false;
+          return "free, next: " + C( v );
+        }
+      }
+
       if( v == 0 ){
         // buf += ":<void>";
       }else{
@@ -9708,17 +9761,7 @@ function dump( c : Cell ) : Text {
 
     case type_integer :
 
-      if( n == tag_dynamic_next_area ){
-        // Check integrity of free dynamic area
-        if( !area_is_safe( header_to_area( c ) ) ){
-          dump_invalid_cell = c;
-          buf += "Invalid dynamic free area, ";
-        }else{
-          cell_dump_entered = false;
-          return "free, next: " + C( v );
-        }
-
-      }else if( n == tag_dynamic_area_size ){
+      if( n == the_tag_for_dynamic_area_size ){
         // Check integrity of dynamic area
         if( !area_is_safe( header_to_area( c - ONE ) ) ){
           dump_invalid_cell = c;
@@ -12482,7 +12525,7 @@ primitive( "text.length", primitive_text_length );
 
 function primitive_text_some(){
   const auto_t = pop_as_text();
-  push_boolean( tlen( auto_t ) > 0 );
+  push_boolean( tsome( auto_t ) );
 }
 primitive( "text.some?", primitive_text_some );
 
@@ -12493,7 +12536,7 @@ primitive( "text.some?", primitive_text_some );
 
 function primitive_text_none(){
   const auto_t = pop_as_text();
-  push_boolean( tlen( auto_t ) == 0 );
+  push_boolean( tnone( auto_t ) );
 }
 primitive( "text.none?", primitive_text_none );
 
@@ -12528,9 +12571,9 @@ primitive( "text.mid", primitive_text_mid );
  */
 
 function primitive_text_at(){
-  const i = pop_integer();
+  const pos = pop_integer();
   const auto_t = pop_as_text();
-  push_text( tat( auto_t, i ) );
+  push_text( tat( auto_t, pos ) );
 }
 primitive( "text.at", primitive_text_at );
 
@@ -12610,6 +12653,56 @@ function primitive_text_find_last(){
   push_integer( tidxr( auto_t1, auto_t2 ) );
 }
 primitive( "text.find-last", primitive_text_find_last );
+
+
+/*
+ *  text.start? - operator, test if a text starts another text
+ */
+
+function primitive_text_does_start(){
+  const auto_txt = pop_as_text();
+  const auto_pre = pop_as_text();
+  push_boolean( tpre( auto_pre, auto_txt ) );
+}
+operator_primitive( "text.start?", primitive_text_does_start );
+
+
+/*
+ *  text.start-with? - test if a text starts with a piece
+ */
+
+function primitive_text_start_with(){
+  const auto_pre = pop_as_text();
+  const auto_txt = pop_as_text();
+  push_boolean( tpre( auto_pre, auto_txt ) );
+}
+primitive( "text.start-with?", primitive_text_start_with );
+
+
+/*
+ *  text.end? - operator, test if a text ends another text
+ */
+
+function primitive_text_does_end(){
+  const auto_txt = pop_as_text();
+  const auto_end = pop_as_text();
+  push_boolean( tsuf( auto_end, auto_txt ) );
+}
+operator_primitive( "text.end?", primitive_text_does_end );
+
+
+/*
+ *  text.end-with? - test if a text ends with a piece
+ */
+
+function primitive_text_ends_with(){
+  const auto_end = pop_as_text();
+  const auto_txt = pop_as_text();
+  push_boolean( tsuf( auto_end, auto_txt ) );
+}
+
+primitive( "text.end-with?", primitive_text_ends_with );
+
 
 
 /*
@@ -12773,6 +12866,12 @@ function inox_machine_code_cell_to_text( c : Cell ) : Text {
     }
 
     fun = get_primitive( n );
+    // Special case for debug-info
+    if( fun == primitive_debug_info ){
+      return S()
+      + "debug-info ( cell " + C( c )
+      + ", " + debug_info_to_text( value_of( c ) ) + " )";
+    }
     name_text = tag_to_text( n );
     return S()+ name_text + " ( cell " + C( c )
     + " is primitive " + F( fun ) + " )";
@@ -13657,7 +13756,7 @@ function make_circular_object_from_js( obj : any, met : Map< string, any> ) : Ce
   while( ii < length ){
     const key = keys[ ii++ ];
     if( array_part ){
-      if( typeof key != "number" ){
+      if( tneq( typeof key, "number" ) ){
         array_part = false;
       }
       const idx : Index = key;
@@ -13683,7 +13782,7 @@ function make_circular_object_from_js( obj : any, met : Map< string, any> ) : Ce
     let c : Cell;
     const js_type = typeof val;
 
-    if( js_type == "number" ){
+    if( teq( js_type, "number" ) ){
       if( Number.isInteger( val ) ){
         c = allocate_cell();
         set_integer_cell( c, val );
@@ -13691,15 +13790,15 @@ function make_circular_object_from_js( obj : any, met : Map< string, any> ) : Ce
         // ToDo: c = make_float_cell( val )
       }
 
-    }else if( js_type == "boolean" ){
+    }else if( teq( js_type, "boolean" ) ){
       c = allocate_cell();
       set_integer_cell( c, val ? 1 : 0 );
 
-    }else if( js_type == "string" ){
+    }else if( teq( js_type, "string" ) ){
       c = allocate_cell();
       set_text_cell( c, val );
 
-    }else if( js_type == "object" ){
+    }else if( teq( js_type, "object" ) ){
       c = make_circular_object_from_js( val, met );
     }
     if( c == the_void_cell ){
@@ -13746,8 +13845,7 @@ function  object_length( area : Cell ) : Count {
 
 const tag_out_of_memory = tag( "out-of-memory" );
 
-primitive( "make-fixed-object", primitive_make_fixed_object );
-function                        primitive_make_fixed_object(){
+function primitive_make_fixed_object(){
 
 // Make an object from values plus header. v1 v2 ... vnn name:nn -- name:ptr
 // Returns a pointer value that points to the new object in dynamic memory.
@@ -13790,27 +13888,28 @@ function                        primitive_make_fixed_object(){
   // Return the named reference to the object
   set( PUSH(), type_reference, class_name, dest_area );
 }
+primitive( "make-fixed-object", primitive_make_fixed_object );
+
 
 
 /*
  *  make-object - create a object of the given length
  */
 
-primitive( "make-object", primitive_make_object );
-function                  primitive_make_object(){
+function primitive_make_object(){
   // The length and the capacity are the same
   primitive_dup();
   // That's just a fixed object with no room for more attributes!
   primitive_make_fixed_object();
 }
+primitive( "make-object", primitive_make_object );
 
 
 /*
  *  extend-object - turn a fixed object into an extensible one
  */
 
-primitive( "extend-object", primitive_extend_object );
-function                    primitive_extend_object(){
+function primitive_extend_object(){
 // Turn a fixed object into an extensible one
 
   const obj = pop_reference();
@@ -13838,6 +13937,7 @@ function                    primitive_extend_object(){
   resize_area( obj, 1 * ONE * size_of_cell );
 
 }
+primitive( "extend-object", primitive_extend_object );
 
 
 /*
@@ -13946,7 +14046,7 @@ function primitive_object_set(){
   clear( obj );
 
 }
-primitive( "object.set!", primitive_object_set );
+primitive( "object.set", primitive_object_set );
 
 
 /* ----------------------------------------------------------------------------
@@ -16866,6 +16966,11 @@ primitive( "inox", primitive_inox );
 
 function primitive_quote(){
   let verb_id = name_of( IP );
+  // Skip debug info
+  if( verb_id == tag_debug_info ){
+    IP += ONE;
+    verb_id = name_of( IP );
+  }
   the_last_quoted_verb_id = verb_id;
   PUSH();
   raw_copy_cell( IP, TOS );
@@ -17003,9 +17108,7 @@ primitive( "verb.run", primitive_verb_run );
  *  There is a header in the previous cell, with length and flags.
  */
 
-
 const tag_definition = tag( "definition" );
-
 
 function primitive_definition(){
   const auto_verb_name = cell_to_text( TOS );
@@ -17043,7 +17146,268 @@ function primitive_integer_run(){
   IP = block;
 }
 primitive( "integer.run", primitive_integer_run );
-primitive( "run", primitive_integer_run );
+
+
+/*
+ *  block.run - run a block object
+ */
+
+function primitive_block_run(){
+  const block = pop_reference();
+  // Push return address onto control stack
+  save_ip( tag_run );
+  // Jump into definition
+  IP = value_of( block );
+}
+primitive( "block.run", primitive_block_run );
+
+
+/*
+ *  run - depending on type, run a definition, a primitive or do nothing
+ */
+
+function primitive_run(){
+
+  const tos = TOS;
+  let id;
+
+  switch( type_of( TOS ) ){
+
+    // Run a primitive
+    case type_void:
+      const auto_primitive = get_primitive( name_of( TOS ) );
+      reset( POP() );
+      auto_primitive();
+      break;
+
+    // Running a boolean leads to it's value
+    case type_boolean:
+      break;
+
+    // Run an integer, assuming it is a definition
+    case type_integer:
+      id = value_of( TOS );
+      reset( POP() );
+      // Push return address onto control stack
+      save_ip( tag_run );
+      // Jump into definition
+      IP = id;
+      break;
+
+    // Running a float leads to it's value
+    case type_float:
+      break;
+
+    // Run a tag, assuming it is a verb name
+    case type_tag:
+      id = name_of( TOS );
+      reset( POP() );
+      run_verb( id );
+      break;
+
+    // Run a verb
+    case type_verb:
+      id = name_of( TOS );
+      reset( POP() );
+      run_verb( id );
+      break;
+
+    // Run a reference, assuming it is a block
+    case type_reference:
+      id = value_of( TOS );
+      clear( POP() );
+      // Push return address onto control stack
+      save_ip( tag_run );
+      // Jump into definition
+      IP = id;
+      break;
+
+    default:
+      break;
+  }
+}
+primitive( "run", primitive_run );
+
+
+/*
+ *  preset - attach values to a definition to make a new block
+ */
+
+const tag_inlined_jump = tag( "inlined-jump" );
+
+function primitive_inlined_jump(){
+  IP = value_of( IP );
+}
+primitive( "inlined-jump", primitive_inlined_jump );
+
+
+function primitive_preset(){
+
+  // Number of value to attach to the block
+  const nvalues = pop_integer();
+
+  // Allocate a block object with enough space for the values + jump
+  const block_area = allocate_area( tag_block, ( nvalues + 1 ) * size_of_cell );
+
+  // Push the values into the block object
+  let ii;
+  for( let ii = 0 ; ii < nvalues; ii++ ){
+    move_cell( POP(), block_area + ii );
+  }
+
+  // Get the target block and add a jump to it
+  const block = POP()
+  set( block_area + ii * ONE, type_void, tag_inlined_jump, value_of( block ) );
+
+  // Push the resulting block object
+  set( PUSH(), type_reference, tag_block, block_area );
+
+}
+primitive( "preset", primitive_preset );
+
+
+/*
+ *  block.preset - attach values to a block, making a new block
+ */
+
+function primitive_block_preset(){
+
+  // Target block
+  let block = value_of( TOS );
+  if( type_of( TOS ) == type_reference ){
+    clear( POP() );
+  }else{
+    // ToDo: should handle other types of runnable like verbs, primitives, etc.
+    check_de&&mand_cell_type( TOS, type_integer );
+    reset( POP() );
+  }
+
+  // Number of value to attach to the block
+  const nvalues = pop_integer();
+
+  // Allocate a block object with enough space for the values + jump
+  const block_area = allocate_area( tag_block, ( nvalues + 1 ) * size_of_cell );
+
+  // Push the values into the block object
+  let ii;
+  for( let ii = 0 ; ii < nvalues; ii++ ){
+    move_cell( POP(), block_area + ii );
+  }
+
+  // Add a jump to the target block
+  set( block_area + ii * ONE, type_void, tag_inlined_jump, block );
+
+  // Push the resulting block object
+  set( PUSH(), type_reference, tag_block, block_area );
+
+}
+primitive( "block.preset", primitive_block_preset );
+
+
+/*
+ *  attach - attach a value to a block, like primitive preset with 1 value only
+ */
+
+function primitive_attach(){
+
+  // Target block
+  let block = value_of( TOS );
+  if( type_of( TOS ) == type_reference ){
+    clear( POP() );
+  }else{
+    // ToDo: should handle other types of runnable like verbs, primitives, etc.
+    check_de&&mand_cell_type( TOS, type_integer );
+    reset( POP() );
+  }
+
+  // Allocate a block object with enough space for the value + jump
+  const block_area = allocate_area( tag_block, 2 * size_of_cell );
+
+  // Push the value into the block object
+  move_cell( TOS, block_area );
+
+  // Add a jump to the target block
+  set( block_area + ONE, type_void, tag_inlined_jump, block );
+
+  // Push the resulting block object
+  set( TOS, type_reference, tag_block, block_area );
+
+}
+primitive( "attach", primitive_attach );
+
+
+/*
+ *  make-it - initialize a new "it" local variable
+ */
+
+function primitive_make_it(){
+  const it = POP();
+  const new_csp = CSP + ONE;
+  move_cell( CSP, new_csp );
+  move_cell( it, CSP );
+  CSP = new_csp;
+}
+primitive( "make-it", primitive_make_it );
+
+
+/*
+ *  jump-it - run a definition with a preset "it" local variable
+ */
+
+const tag_inlined_jump_it = tag( "inlined-jump-it" );
+
+function primitive_inlined_jump_it(){
+  primitive_make_it();
+  IP = value_of( IP )
+}
+primitive( "inlined-jump-it", primitive_inlined_jump_it );
+
+
+/*
+ *  drop-control - drop the top of the control stack
+ */
+
+const tag_drop_control = tag( "drop-control" );
+
+function primitive_drop_control(){
+  clear( CSP );
+  CSP -= ONE;
+}
+
+
+/*
+ *  block.run-it - run a block with a preset "it" local variable
+ */
+
+const tag_block_run_it = tag( "block-run-it" );
+
+function primitive_block_run_it(){
+  primitive_make_it();
+  CSP += ONE;
+  set( CSP, type_void, tag_drop_control, value_of( IP ) );
+}
+
+
+/*
+ *  bind - make a block object with an "it" preset local variable
+ */
+
+function primitive_bind_to(){
+  const it = POP();
+  // Allocate a block object with enough space for two instructions
+  const block_area = allocate_area( tag_block, 2 );
+  // The first instruction will push the value of the "it" local variable
+  move_cell( it, block_area );
+  // The second one creates the local variable and jump to the definition
+  if( type_of( TOS ) == type_reference ){
+    set( block_area + ONE, type_void, tag_inlined_jump_it, value_of( TOS ) );
+  }else{
+    set( block_area + ONE, type_void, tag_block_run_it, value_of( TOS ) );
+  }
+  // Push the block object
+  set( TOS, type_reference, tag_block, block_area );
+}
+primitive( "bind-to", primitive_bind_to );
 
 
 /*
@@ -17063,7 +17427,6 @@ primitive( "run-definition", primitive_run_definition );
 /*
  *  block - push the start address of the block at IP
  */
-
 
 function block_length( ip : Cell ) : Count {
 // Get the length of the block at ip
@@ -17131,7 +17494,7 @@ const token_type_text          = 3;
 const token_type_comment       = 4;
 const token_comment_multiline  = 5;
 const token_type_eof           = 6;
-const token_type_indent        = 7;
+const token_type_indentation        = 7;
 const token_type_error         = 8;
 
 
@@ -17144,7 +17507,7 @@ function token_type_to_text( type : Index ) : Text {
     case token_type_comment:       return "token_comment";
     case token_comment_multiline:  return "token_comment_multiline";
     case token_type_eof:           return "token_eof";
-    case token_type_indent:        return "token_indent";
+    case token_type_indentation:        return "token_indent";
     case token_type_error:         return "token_error";
     default:                       return "token_???";
   }
@@ -17171,7 +17534,7 @@ function token_type_to_tag( type : Index ) : Tag {
     case token_type_comment:       return tag_token_comment;
     case token_comment_multiline:  return tag_token_comment_multiline;
     case token_type_eof:           return tag_token_eof;
-    case token_type_indent:        return tag_token_indent;
+    case token_type_indentation:        return tag_token_indent;
     case token_type_error:         return tag_token_error;
     default:                       return tag_token_error;
   }
@@ -17186,7 +17549,7 @@ function token_tag_to_type( t : Tag ) : Index {
   if( t == tag_token_comment )            return token_type_comment;
   if( t == tag_token_comment_multiline )  return token_comment_multiline;
   if( t == tag_token_eof )                return token_type_eof;
-  if( t == tag_token_indent )             return token_type_indent;
+  if( t == tag_token_indent )             return token_type_indentation;
   if( t == tag_token_error )              return token_type_error;
   return token_type_error;
 }
@@ -17214,16 +17577,10 @@ abstract class TextStreamIterator {
 let toker_text_length = 0;
 
 // Current position in the source
-let toker_text_cursor = 0;
+let toker_next_ii = 0;
 
 // Current line number
 let toker_line_no = 0;
-
-// Current column number
-let toker_column_no = 0;
-
-// Current position in the source for aliased word
-let toker_alias_cursor = 0;
 
 // When set, whitespaces are the only separators, as in Forth
 // This is activated after a "to" to get the verb name.
@@ -17255,9 +17612,6 @@ let token_type = 0;
 // The text value of that token
 /**/ let token_text = "";
 //c/ static Text token_text(  "" );
-
-// The position of that token in the source
-let token_position = 0;
 
 // The line number of that token in the source
 let token_line_no = 0;
@@ -17309,7 +17663,7 @@ let is_literate = false;
 //c/ static char no_ch = 0;
 
 // For style/dialect auto detection
-let first_comment_seen = false;
+let toker_first_comment_seen = false;
 
 
 function set_comment_multi_line( begin : TxtC, end : TxtC ){
@@ -17378,7 +17732,7 @@ function set_style( new_style : TxtC ){
   the_style = new_style;
 
   // Don't guess the style because user made it explicit
-  first_comment_seen = true;
+  toker_first_comment_seen = true;
 
 }
 
@@ -17396,21 +17750,21 @@ function tokenizer_set_literate_style( is_it : boolean ){
 
 function tokenizer_restart( source : TxtC ){
 
-  // The source code to process.
+  // The source code to process
   /**/ toker_stream = null;
   toker_text        = source;
   toker_text_length = tlen( source );
 
   // Track progress in the source code
-  toker_text_cursor = 0;
-  toker_line_no     = 1;
-  toker_column_no   = 0;
+  toker_next_ii  = 0;
+  toker_line_no  = 1;
+  toker_index_of_last_eol = -1;
 
   // Default style
   set_style( "inox" );
 
   // First char of source code defines style of comments and aliases
-  first_comment_seen = false;
+  toker_first_comment_seen = false;
 
   // Obviously there is no previously detected token to deliver
   back_token_type = 0;
@@ -17447,9 +17801,10 @@ primitive( "start-input", primitive_inox_start_input );
 function tokenizer_next_character() : Text {
 // Get/consume next character and advance cursor, or ""
   // ToDo: handle stream
-  if( toker_text_cursor >= toker_text_length )return "";
-  /**/ const ch = toker_text[        toker_text_cursor++ ];
-  //c/ Text  ch = toker_text.substr( toker_text_cursor++, 1 );
+  if( toker_next_ii >= toker_text_length )return "";
+  /**/ const ch = toker_text[ toker_next_ii ];
+  //c/ Text  ch = toker_text.substr( toker_next_ii, 1 );
+  toker_next_ii += 1;
   return ch;
 }
 
@@ -17513,10 +17868,13 @@ primitive( "pushback-token", primitive_pushback_token );
 
 function ch_is_space( ch : ConstText ) : boolean {
   // ToDo: faster
-  return teq( ch, "\n" )
-  ||     teq( ch, "\r" )
-  ||     teq( ch, "\t" )
-  ||     teq( ch, " " );
+  /**/return  tidx( " \n\r\t", ch ) >= 0;
+  /*c{
+    return teq( ch, "\n" )
+    ||     teq( ch, "\r" )
+    ||     teq( ch, "\t" )
+    ||     teq( ch, " " );
+  }*/
 }
 
 
@@ -17640,7 +17998,7 @@ function primitive_next_token(){
       set_tos_name( tag_eof_token );
     break;
 
-    case token_type_indent :
+    case token_type_indentation :
       set_tos_name( tag_indentation_token );
     break;
 
@@ -17670,16 +18028,14 @@ function extract_line( txt : TxtC, ii : Index, mark : Text ) : Text {
   let auto_back = tbut( txt, ii );
   let index = tidx( auto_back, "\n" );
   if( index != -1 ){
-    auto_back = tcut( auto_back, index + 1 );
-  }else{
-    auto_back = auto_back;
+    auto_back = tcut( auto_back, index );
   }
 
   // Get whatever is before, up to previous eol
   let auto_front = tcut( txt, ii );
   index = tidxr( auto_front, "\n" );
   if( index != -1 ){
-    auto_front = tbut( auto_front, index )
+    auto_front = tbut( auto_front, index + 1 );
   }
 
   let auto_line_extract = S() + auto_front + "[TOKEN]" + auto_back;
@@ -17723,12 +18079,12 @@ function ch_is_limit( ch : TxtC, next_ch : TxtC ) : boolean {
 //c/ static Text toker_next_1( "" );
 
 // Position of those next character in source code
-let toker_next_ii = 0;
+let toker_refill_ii = 0;
 
 
 function refill_next( ii : Index ){
   // Don't do it twice if same location, for speed
-  if( toker_next_ii == ii )return;
+  if( toker_refill_ii == ii )return;
   let jj;
   toker_next = "";
   for( jj = 0 ; jj < 4 ; jj++ ){
@@ -17744,7 +18100,7 @@ function refill_next( ii : Index ){
     }
   }
   toker_next_1 = tcut( toker_next, 1 );
-  toker_next_ii = ii;
+  toker_refill_ii = ii;
 }
 
 
@@ -17799,11 +18155,12 @@ function handle_literate_style( buf : TxtC ) : Text {
 
 
 // Globals for the tokenizer
-let toker_ii = 0;
 /**/ let  toker_ch = "";
 //c/ static Text toker_ch( "" );
 let toker_is_eol = false;
 let toker_is_eof = false;
+let toker_index_of_last_eol = 0;
+let toker_index_of_previous_eol = 0;
 let toker_previous_ii = 0;
 let token_is_ready = false;
 let toker_is_space = false;
@@ -18060,10 +18417,16 @@ static char* fast_getline( int fd ){
 
 
 /* -----------------------------------------------------------------------------
- *  Tokenizer. It is a state machine that consumes characters from the input
+ *  next_token(). It is a state machine that consumes characters from the input
  *  stream and produce tokens.
  *  There is a base state and 3 states for each token type: comments, texts and
  *  words.
+ *  Once initialized using the toker_restart() function, the tokenizer then
+ *  produces tokens one at a time using the next_token() function.
+ *  It updates some global variables about the new token:
+ *    toker_type, toker_text, toker_line_no and toker_column_no.
+ *  While the tokenizer moves forward, global toker_ch is updated and
+ *  toker_next_ii is the index of the next character.
  */
 
 /*
@@ -18071,8 +18434,9 @@ static char* fast_getline( int fd ){
  */
 
 function process_whitespaces(){
+
   // EOF, end of file
-  if( toker_ii == toker_text_length ){
+  if( toker_next_ii == toker_text_length ){
     // If there is a stream, try to get more text from it
     if(
       /**/ toker_stream
@@ -18082,12 +18446,12 @@ function process_whitespaces(){
       /*c{
         Text more_text( fast_getline( toker_stream ) );
       /*}*/
-      if( more_text != "" ){
+      if( tsome( more_text ) ){
         toker_text = more_text;
         toker_text_length = tlen( more_text );
         /**/ toker_ch = more_text[ 0 ];
         //c/ toker_ch = more_text.substr( 0, 1 );
-        toker_ii = 1;
+        toker_next_ii = 1;
         toker_previous_ii = 0;
       }else{
         toker_is_eof = true;
@@ -18095,7 +18459,11 @@ function process_whitespaces(){
     }else{
       toker_is_eof = true;
     }
-    if( toker_is_eof && toker_state != token_type_word && toker_state != token_type_comment ){
+    if( toker_is_eof
+    && toker_state != token_type_word
+    && toker_state != token_type_comment
+    ){
+      toker_start_ii = toker_text_length;
       token_type = token_type_eof;
       token_is_ready = true;
       return;
@@ -18103,26 +18471,36 @@ function process_whitespaces(){
     // Simulate a space to end the current word
     toker_ch = " ";
 
-  // Get next character in source
+  // Get the next character in source
   }else{
-    /**/ toker_ch = toker_text[ toker_ii++ ];
-    //c/ toker_ch = toker_text.substr( toker_ii++, 1 );
+    /**/ toker_ch = toker_text[ toker_next_ii ];
+    //c/ toker_ch = toker_text.substr( toker_ii, 1 );
+    toker_next_ii += 1;
   }
 
   // Is it some space or something equivalent?
   toker_is_space = ch_is_space( toker_ch );
-  toker_is_eol   = ch_is_eol(   toker_ch );
+  toker_is_eol   = toker_is_space && ch_is_eol( toker_ch );
 
   // Normalize all whitespaces into a single space character
-  if( toker_is_space && toker_state != token_type_comment && toker_state != token_type_text ){
+  if( toker_is_space
+  && toker_state != token_type_comment
+  && toker_state != token_type_text
+  ){
     toker_ch = " ";
   }
 
   // If end of line, detect it
   if( toker_is_eol ){
     // Line numbering, don't double when \r\n
-    if( toker_ch != "\r" ){
-      toker_line_no++;
+    if( tneq( toker_ch, "\r" ) ){
+      // Update index of last and previous new line characters
+      if( toker_index_of_last_eol >= 0 ){
+        toker_index_of_previous_eol = toker_index_of_last_eol;
+      }else{
+        toker_index_of_previous_eol = 0;
+      }
+      toker_index_of_last_eol = toker_next_ii - 1;
     }
     // Restart indentation detection
     toker_front_spaces = 0;
@@ -18138,23 +18516,22 @@ function process_whitespaces(){
     // If first non space on new line, emit some indentation token
     }else{
       toker_indentation_reached = true;
+      token_column_no = toker_front_spaces + 1;
+      toker_previous_indentation = toker_indentation;
+      toker_indentation = toker_front_spaces;
       // Emit either "++", "--" or "==" indentation token
       if( toker_state == token_base ){
-        token_type = token_type_indent;
-        if( toker_front_spaces > toker_indentation ){
+        token_type = token_type_indentation;
+        if( toker_indentation > toker_previous_indentation ){
           token_text = "++";
-        }else if( toker_front_spaces < toker_indentation ){
+        }else if( toker_indentation < toker_previous_indentation ){
           token_text = "--";
         }else{
           token_text = "==";
         }
-        token_column_no = toker_front_spaces;
-        toker_previous_indentation = toker_indentation;
-        toker_indentation = toker_front_spaces;
-        toker_column_no = toker_front_spaces; // ToDo: needs updates
-        // Make sure first non space is processed normally next time
-        toker_ii--;
         token_is_ready = true;
+        // Make sure first non space is processed normally next time
+        toker_next_ii -= 1;
       }
     }
   }
@@ -18175,10 +18552,10 @@ function process_base_state(){
 
   // Texts start with ", unless Forth
   // ToDo: make it configurable?
-  if( teq( toker_ch, "\"" ) && !style_is_forth ){
+  if( teq( toker_ch, "\"" ) && ! style_is_forth ){
     // ToDo: handle single quote 'xx' and backquote `xxxx`
     // ToDo: handle template text literals, ie fmt"..."
-    toker_start_ii = toker_ii;
+    toker_start_ii = toker_next_ii - 1;
     toker_state = token_type_text;
     return;
   }
@@ -18195,7 +18572,7 @@ function process_base_state(){
     toker_state = token_type_comment;
     // The new ch will be added when processing the comment state
     toker_buf = tcut( toker_buf, -1 );
-    toker_start_ii = toker_ii;
+    token_de&&mand_eq( toker_start_ii, toker_next_ii - 1 );
     toker_state = token_type_comment;
     process_comment_state();
     return;
@@ -18205,9 +18582,9 @@ function process_base_state(){
   if( teq( toker_buf, comment_monoline )
   ||  teq( toker_buf, comment_multiline_begin )
   ){
+    toker_start_ii = toker_next_ii - tlen( toker_buf );
     // The new ch will be added when processing the comment state
     toker_buf = tcut( toker_buf, -1 );
-    toker_start_ii = toker_ii;
     toker_state = token_type_comment;
     process_comment_state();
     return;
@@ -18230,7 +18607,7 @@ function process_base_state(){
   }
 
   // If not a comment nor a text then it has to be a word
-  toker_start_ii = toker_ii;
+  toker_start_ii = toker_next_ii - 1;
   toker_state = token_type_word;
   process_word_state();
 
@@ -18243,6 +18620,7 @@ function process_base_state(){
 
 function process_comment_state(){
 
+  // Add new charater to buffer
   toker_buf += toker_ch;
 
   // When inside the first comment at the very beginning of the file
@@ -18250,7 +18628,7 @@ function process_comment_state(){
   // Icon uses literate programming with code lines started using >
   // See https://en.wikipedia.org/wiki/Comment_(computer_programming)
 
-  if( ! first_comment_seen && !toker_is_space ){
+  if( ! toker_first_comment_seen && ! toker_is_space ){
 
     // ToDo: skip #! shebang
     // see https://en.wikipedia.org/wiki/Shebang_(Unix)
@@ -18263,7 +18641,7 @@ function process_comment_state(){
     }else if( teq( toker_ch, "#" ) ){
       set_style( "sh" );
 
-    // C style of comments, either // or /* xxx */
+    // C style of comments, either // or /*xxx*/
     }else if( teq( toker_ch, "/" ) ){
       set_style( "c" );
 
@@ -18284,16 +18662,10 @@ function process_comment_state(){
   // If this is a monoline comment ending, emit it
   if( toker_is_eol || toker_is_eof ){
     // ~~ style of comments
-    if( tneq( comment_monoline, "" )
-      && ( teq(
-        tcut( toker_buf, tlen( comment_monoline ) ),
-        comment_monoline
-      ) )
-    ){
+    if( tsome( comment_monoline ) && tpre( comment_monoline, toker_buf ) ){
       // Emit token, without start of comment sequence and without lf
       token_type = token_type_comment;
-      toker_buf = tmid( toker_buf, tlen( comment_monoline ), -1 );
-      token_text = toker_buf;
+      token_text = tmid( toker_buf, tlen( comment_monoline ), -1 );
       token_is_ready = true;
       return;
     }
@@ -18301,8 +18673,7 @@ function process_comment_state(){
     if( is_literate ){
       // Emit token, whole line without lf
       token_type = token_type_comment;
-      toker_buf = tcut( toker_buf, - 1 );
-      token_text = toker_buf;
+      token_text = tcut( toker_buf, -1 );
       token_is_ready = true;
       return;
     }
@@ -18310,33 +18681,32 @@ function process_comment_state(){
 
   // If this terminates the multiline comment, emit the comment
   if( teq( toker_ch, comment_multine_last_ch )
-  && teq( tcut( toker_buf, tlen(  comment_multiline_begin ) ),
-                                  comment_multiline_begin )
-  && teq( tbut( toker_buf, -tlen( comment_multiline_end ) ),
-                                  comment_multiline_end )
+  &&  tpre( comment_multiline_begin, toker_buf )
+  &&  tsuf( comment_multiline_end,   toker_buf )
   ){
     // Emit token, without start & end of comment sequence
     token_type = token_comment_multiline;
-    toker_buf = tmid( toker_buf,
+    token_text = tmid( toker_buf,
       tlen(   comment_multiline_begin ),
-      - tlen( comment_multiline_end )
+      - tlen( comment_multiline_end   )
     );
-    token_text = toker_buf;
     token_is_ready = true;
     return;
   }
 
   // Premature end of file, something else was expected
   if( toker_is_eof ){
-    token_type = first_comment_seen
+    // Generate an error token this time and eof next time
+    token_type = toker_first_comment_seen
     ? token_type_error
     : token_type_eof;
-    toker_buf = first_comment_seen
+    toker_text = toker_first_comment_seen
     ? S() + "eof in token state " + N( toker_state )
       + " (" + token_type_to_text( toker_state ) + ")"
     : no_text;
-    token_text = toker_buf;
     token_is_ready = true;
+    // Will generate eof token next time
+    toker_first_comment_seen = true;
     return;
   }
 
@@ -18352,18 +18722,19 @@ function process_text_state(){
   // " marks the end of the text token
   if( teq( toker_ch, "\"" ) ){
     token_type  = token_type_text;
+    // Handle escape sequences
+    toker_buf = text_unquote( toker_buf );
     token_text = toker_buf;
     token_is_ready = true;
   }
 
+  // Add new character to being built token
+  toker_buf += toker_ch;
+
   // New lines are ok inside a "xxxx" text token
   if( teq( toker_ch, "\n" ) ){
     toker_line_no++;
-    toker_column_no = 0;
   }
-
-  // ToDo: handle escape sequences
-  toker_buf += toker_ch;
 
 } // process_text_state()
 
@@ -18375,7 +18746,7 @@ function process_text_state(){
 function token_eat() : boolean {
 // Add new character to being built token
   toker_buf = toker_buf + toker_ch;
-  toker_ii++;
+  toker_next_ii += 1;
   return false;
 }
 
@@ -18385,7 +18756,7 @@ function process_word_state() : boolean {
   // ToDo: this assert fails, why? de&&mand( buf.length > 0 );
 
   // If a xxx: naming prefix was there, it will come next
-  if( tneq( toker_post_literal_name, "" ) ){
+  if( tsome( toker_post_literal_name ) ){
     back_token_type  = token_type_word;
     back_token_text = toker_post_literal_name;
     // ToDo: position, line_no, column_no of back token
@@ -18424,22 +18795,21 @@ function process_word_state() : boolean {
         token_is_ready = true;
         return true;
       }else{
-        token_de&&bug( S()+ "alias for " + toker_buf + " is " + auto_aliased );
-        // When this happens, restart as if from new source, base state.
-        // Change source code to insert the extra stuff and scan again
-        // ToDo: this breaks the index/line/column scheme
+        token_de&&bug( S()+ "Alias for " + toker_buf + " is " + auto_aliased );
+        // When this happens, replace and go back to base state
         // ToDo: this is very inefficient
-        // ToDo: this code is duplicated somewhere below
-        toker_text = auto_aliased + tbut( toker_text, toker_ii );
+        toker_text
+        = tcut( toker_text, toker_start_ii )
+        + auto_aliased
+        + tbut( toker_text, toker_next_ii );
         toker_text_length  = tlen( toker_text );
-        toker_alias_cursor = tlen( auto_aliased );
-        toker_ii = 0;
+        toker_next_ii = toker_start_ii;
         toker_buf = "";
         toker_state = token_base;
-        return false;
+        return true;
       }
-    // Unless no alias or alias expands into more than a simple word
-    }else if( tlen( auto_aliased ) == 0 ){
+    // If no alias, emit the word
+    }else{
       token_text = toker_buf;
       token_is_ready = true;
       return true;
@@ -18466,7 +18836,7 @@ function process_word_state() : boolean {
   // ToDo: what comes next needs some serious refactoring
 
   // Get some next characters, some lookahead helps sometimes
-  refill_next( toker_ii );
+  refill_next( toker_next_ii );
 
   // Comma is ignored when followed by space, it is there for readability only
   if( teq( toker_ch, "," ) && teq( toker_next_1, " " ) ){
@@ -18479,10 +18849,10 @@ function process_word_state() : boolean {
   && ch_is_space( toker_next_1 )
   // ToDo: check that pseudo space is actually cr or lf
   ){
-    toker_ii++;
+    toker_next_ii++;
     // Handle crlf, skip cr when followed by lf
     if( teq( toker_ch, "\r" ) &&  teq( toker_next_1, "\n" ) ){
-      toker_ii++;
+      toker_next_ii += 1;
     }
     return false;
   }
@@ -18504,7 +18874,7 @@ function process_word_state() : boolean {
   // If no delimiter is reached, keep going
   if( ! toker_is_limit ){
     toker_buf += toker_ch;
-    // ToDo: ? toker_ii++;
+    // ToDo: ? toker_next_ii++;
     return false;
   }
 
@@ -18516,7 +18886,7 @@ function process_word_state() : boolean {
       toker_buf = "/";
       return false;
     }else{
-      toker_start_ii = toker_ii - 1;
+      toker_start_ii = toker_next_ii - 1;
       toker_buf = toker_ch;
       token_text = toker_buf;
       token_is_ready = true;
@@ -18528,7 +18898,7 @@ function process_word_state() : boolean {
     // ToDo: refactor, . should be configurable
     if( teq( toker_ch, "." ) ){
       // Don't token_eat(), it will stand for itself
-      if( tbut( toker_buf, -1 ) == "." ){
+      if( teq( tbut( toker_buf, -1 ), "." ) ){
         // Special case when consecutive dots, they go together
         token_eat();
       }
@@ -18575,7 +18945,7 @@ function process_word_state() : boolean {
     }
 
     // A well separated word was collected, before or with the limit
-    toker_ii--;
+    toker_next_ii -= 1;
 
     // Change word if some alias was defined for it
     if( is_literate ){
@@ -18592,21 +18962,21 @@ function process_word_state() : boolean {
         token_de&&bug( S()+
           "alias for " + toker_buf + " is " + auto_word_alias
         );
-        // When this happens, restart as if from new source, base state.
-        // Change source code to insert the extra stuff and scan again
-        // ToDo: this breaks the index/line/column scheme
+        // When this happens, replace and go back to base state
         // ToDo: this is very inefficient
-        toker_text = auto_word_alias + tbut( toker_text, toker_ii );
+        toker_text
+        = tcut( toker_text, toker_start_ii )
+        + auto_word_alias
+        + tbut( toker_text, toker_next_ii );
         toker_text_length  = tlen( toker_text );
-        toker_alias_cursor = tlen( auto_word_alias );
-        toker_ii = 0;
+        toker_next_ii = toker_start_ii;
         toker_buf = "";
         toker_state = token_base;
         return;
       }
     }
 
-    if( tlen( auto_word_alias ) > 0 ){
+    if( tsome( auto_word_alias ) ){
       toker_buf = auto_word_alias;
     }
     token_text = toker_buf;
@@ -18618,13 +18988,15 @@ function process_word_state() : boolean {
 
 function detect_infinite_loop(){
   if( !de )return;
-  if( toker_ii == toker_previous_ii && toker_state == toker_previous_state ){
+  if( toker_next_ii == toker_previous_ii
+  && toker_state == toker_previous_state
+  ){
     bug( "Infinite loop detected in next_token" );
     debugger;
     // Skip to end of file
-    toker_ii = toker_text_length;
+    toker_next_ii = toker_text_length;
   }
-  toker_previous_ii    = toker_ii;
+  toker_previous_ii    = toker_next_ii;
   toker_previous_state = toker_state;
 }
 
@@ -18644,28 +19016,25 @@ function next_token(){
   // If there is some token already, simply delivers it
   if( back_token_type ){
     token_type = back_token_type;
-    back_token_type = 0;
     token_text = back_token_text;
+    // ToDo: back_token_line_no & back_token_column_no
+    back_token_type = 0;
     back_token_text = "";
     return;
   }
 
-  // Get to where things were before
-  toker_ii = toker_text_cursor;
+  // Where the new token may start, unless forward due to some white spaces
+  toker_start_ii = toker_next_ii;
 
-  // Where the new token starts
-  toker_start_ii = toker_ii;
-
-  // Current token, defaults to a token_word type of token
+  // New token, temporarely an empty token_word type of token
   token_type      = token_type_word;
   token_text      = "";
-  token_position  = toker_start_ii;
-  token_line_no   = toker_line_no;
-  token_column_no = toker_column_no;
+  token_column_no = 0;
 
-  toker_state = first_comment_seen ? token_base : token_type_comment;
+  // State machine starts in base state unless first comment was not seen
+  toker_state = toker_first_comment_seen ? token_base : token_type_comment;
 
-  // Buffer to collect token text
+  // Buffer to collect the token text
   toker_buf = "";
 
   // One character at a time
@@ -18677,15 +19046,18 @@ function next_token(){
   // Space is the normal deliminator between words, there are special cases
   toker_is_limit = false;
 
+  // Number of spaces before the token, used to detect indentation changes
   toker_front_spaces = 0;
 
+  // Previous character position, used to detect infinite loops
   toker_previous_ii    = -1;
   toker_previous_state = token_type_error;
 
+  // Forth style is much simpler, almost only white spaces and words
   style_is_forth = teq( the_style, "forth" );
 
+  // Loop until a token is ready
   token_is_ready = false;
-
   while( ! token_is_ready ){
     detect_infinite_loop();
     process_whitespaces();
@@ -18705,25 +19077,49 @@ function next_token(){
 
   // Automatically get back to /base state when a token is ready
   de&&mand( token_is_ready );
-  // de&&mand( buf == token_value );
-  toker_state = token_base;
+  // toker_state = token_base;
 
   // If a xxx: naming prefix was there, it comes next
-  if( toker_post_literal_name != "" ){
+  if( tsome( toker_post_literal_name ) ){
     back_token_type = token_type_word;
     back_token_text = toker_post_literal_name;
     // ToDo: handle position, line_no, column_no of back token
     toker_post_literal_name = "";
   }
 
-  // Save state for next call to next_token()
-  toker_text_cursor = toker_ii;
+  if( token_type == token_type_indentation ){
+    toker_line_no++;
+  }
+
+  token_line_no = toker_line_no;
+
+  // Compute column number of token unless already done, 1 based
+  if( token_column_no == 0  ){
+    // Special case when before first new line character
+    if( toker_index_of_last_eol < 0 ){
+      token_column_no = toker_start_ii + 1;
+    // Normal case when after some new line character
+    }else{
+      // When after last seen new line character
+      if( toker_start_ii > toker_index_of_last_eol ){
+        token_column_no = toker_start_ii - toker_index_of_last_eol;
+      // When after previous new line character (whose position defaults to 0)
+      }else{
+        token_column_no = toker_start_ii - toker_index_of_previous_eol;
+      }
+    }
+    // 1 based, not zero based
+    token_de&&mand( token_column_no >= 1 );
+  }
 
   if( token_de ){
     bug( S()+ "\n"
-      + "Token. next is "
-      + token_type_to_text( token_type ) + " " + token_text + ", "
-      + "line " + N( toker_line_no )
+      + "Token. Next is "
+      + token_type_to_text( token_type )
+      + " \"" + token_text + "\""
+      + ", index "  + N( toker_start_ii )
+      + ", line "   + N( token_line_no )
+      + ", column " + N( token_column_no )
       + " \"" + extract_line( toker_text, toker_start_ii, "[TOKEN]" ) + "\""
     );
   }
@@ -18731,19 +19127,23 @@ function next_token(){
 } // next_token()
 
 
-// Some basic tests of the tokenizer
+/* ------------------------------------------------------------------------
+ *  Basic tests of the tokenizer
+ */
 
-function test_token( typ : Index, val : TxtC ){
+//c void test_token( Index, TxtC );
+
+function test_tokcol( typ : Index, val : TxtC, col : Index ){
 
   // Save tokenizer context
-  const save_cursor  = toker_text_cursor;
-  const save_seen    = first_comment_seen;
+  const save_cursor  = toker_next_ii;
+  const save_seen    = toker_first_comment_seen;
   const save_reached = toker_indentation_reached;
 
   next_token();
 
   // Skip indentation related tokens
-  if( token_type == token_type_indent ){ next_token(); }
+  if( token_type == token_type_indentation ){ next_token(); }
 
   let error = false;
   if( token_type != typ ){
@@ -18754,69 +19154,83 @@ function test_token( typ : Index, val : TxtC ){
     );
     error = true;
   }
-  if( tsome( val ) && tneq( token_text, val ) ){
+  if( tneq( token_text, val ) ){
     bug( S()
       + "Bad value from next_token(), " + token_text
       + " vs expected " + val + "."
     );
     error = true;
   }
+  if( col != 0 && token_column_no != col ){
+    bug( S()
+      + "Bad column from next_token(), " + N( token_column_no )
+      + " vs expected " + N( col ) + "."
+    );
+    error = true;
+  }
 
   if( error ){
     // Restore tokenizer context to retry under debugger
-    toker_text_cursor         = save_cursor;
-    first_comment_seen        = save_seen;
+    toker_next_ii             = save_cursor;
+    toker_first_comment_seen  = save_seen;
     toker_indentation_reached = save_reached;
     debugger;
     // This is convenient for interactive debugging
     test_token( typ, val );
   }
 
-} // test_token()
+} // test_tokcol()
+
+
+function test_token( typ : Index, val : TxtC ){
+  return test_tokcol( typ, val, 0 );
+}
 
 
 function test_tokenizer() : Index {
 
   tokenizer_restart( "" );
-  test_token( token_type_eof, "" );
+  test_tokcol( token_type_eof, "", 1 );
 
   tokenizer_restart( "#!/bin/inox\n#ok" );
-  test_token( token_type_comment, "!/bin/inox" );
-  test_token( token_type_comment, "ok" );
-  test_token( token_type_eof, "" );
+  test_tokcol( token_type_comment, "!/bin/inox", 1 );
+  test_tokcol( token_type_comment, "ok",         1 );
+  test_tokcol( token_type_eof,     "",           4 );
 
   tokenizer_restart(  "/**/" );
-  test_token( token_comment_multiline, "" );
-  test_token( token_type_eof, "" );
+  test_tokcol( token_comment_multiline, "", 1 );
+  test_tokcol( token_type_eof,          "", 5 );
 
   tokenizer_restart(  "~| test |~~~ test" );
-  test_token( token_comment_multiline, " test " );
-  test_token( token_type_comment, " test" );
-  test_token( token_type_eof, "" );
+  test_tokcol( token_comment_multiline, " test ",  1 );
+  test_tokcol( token_type_comment,      " test",  11 );
+  test_token(  token_type_eof,          ""           );
 
-  tokenizer_restart( "~~ test\n~| test |~" );
-  test_token( token_type_comment, " test" );
-  test_token( token_comment_multiline, " test " );
-  test_token( token_type_eof, "" );
+  tokenizer_restart( "~~ test\n~| test |~ \"he\" \"\"" );
+  test_tokcol( token_type_comment,      " test",  1 );
+  test_tokcol( token_comment_multiline, " test ", 1 );
+  test_token(  token_type_text,         "he"        );
+  test_token(  token_type_text,         ""          );
+  test_token(  token_type_eof,          ""          );
 
   tokenizer_restart( "( test1 )\\\n\\test2" );
-  test_token( token_comment_multiline, " test1 " );
-  test_token( token_type_comment, "" );
-  test_token( token_type_comment, "test2" );
-  test_token( token_type_eof, "" );
+  test_tokcol( token_comment_multiline, " test1 ", 1 );
+  test_token(  token_type_comment,      ""           );
+  test_tokcol( token_type_comment,      "test2",   1 );
+  test_token(  token_type_eof,          ""           );
 
   tokenizer_restart( "() 0 1234 \",\" + : abc, ; , ." );
-  test_token( token_comment_multiline, "" );
-  test_token( token_type_word, "0"     );
-  test_token( token_type_word, "1234"  );
-  test_token( token_type_word, "\",\"" );
-  test_token( token_type_word, "+"     );
-  test_token( token_type_word, ":"     );
-  test_token( token_type_word, "abc,"  );
-  test_token( token_type_word, ";"     );
-  test_token( token_type_word, ","     );
-  test_token( token_type_word, "."     );
-  test_token( token_type_eof, ""       );
+  test_tokcol( token_comment_multiline, "",      1 );
+  test_tokcol( token_type_word,         "0",     4 );
+  test_tokcol( token_type_word,         "1234",  6 );
+  test_tokcol( token_type_word,         "\",\"", 0 );
+  test_token(  token_type_word,         "+"        );
+  test_token(  token_type_word,         ":"        );
+  test_token(  token_type_word,         "abc,"     );
+  test_token(  token_type_word,         ";"        );
+  test_token(  token_type_word,         ","        );
+  test_token(  token_type_word,         "."        );
+  test_token(  token_type_eof,          ""         );
 
   tokenizer_restart( "~~\n \",\" + : -: ( ) () o( o() (| |) (- -) (( )) [ ] " );
   test_token( token_type_comment, "" );
@@ -18984,7 +19398,7 @@ const tag_set_local           = tag( "set-local"           );
 const tag_data                = tag( "data"                );
 const tag_set_data            = tag( "set-data"            );
 const tag_object_get          = tag( "object.get"          );
-const tag_object_set          = tag( "object.set!"         );
+const tag_object_set          = tag( "object.set"          );
 
 
 /*
@@ -19346,7 +19760,7 @@ function parse_enter( type : Index, name : TxtC ){
   de&&mand( parse_type != parse_definition || parse_depth == 2 );
   parse_name        = name;
   parse_verb        = 0;
-  if( token_line_no ){
+  if( token_line_no != 0 ){
     parse_line_no   = token_line_no;
     parse_column_no = token_column_no;
   }
@@ -19508,10 +19922,10 @@ primitive( "compiling?", primitive_is_compiling );
 let current_debug_info = 0;
 
 
-function debug_info_to_text() : Text {
-  const file_tag = current_debug_info >> 16;
-  const line     = ( current_debug_info & 0xFFFF ) >> 7;
-  const column   = current_debug_info & 0x7F;
+function debug_info_to_text( debug_info : u32 ) : Text {
+  const file_tag = debug_info >> 16;
+  const line     = ( debug_info & 0xFFFF ) >> 7;
+  const column   = debug_info & 0x7F;
   return S()
   + tag_to_text( file_tag )
   + ":"  + N( line )
@@ -19526,8 +19940,9 @@ function primitive_debug_info(){
   const line_no = ( current_debug_info & 0xFFFF ) >> 7;
   const column_no = current_debug_info & 0x7F;
   if( run_de || eval_de ){
+    // Display source code that is around the position
     trace(
-      "\ndebug-info: " + debug_info_to_text()
+      "\ndebug-info: " + debug_info_to_text( current_debug_info )
       + "\n  " + extract_line_no( current_parsed_content, line_no - 1 )
       + "\n> " + extract_line_no( current_parsed_content, line_no )
       + "\n  " + text_pad( "^", column_no + 1 )
@@ -19535,13 +19950,10 @@ function primitive_debug_info(){
       + "\n  " + extract_line_no( current_parsed_content, line_no + 2 )
     );
     // Breakpoint now unless somewhere else soon
-    if( step_de && ! run_de && !stack_de ){ breakpoint(); }
+    if( step_de && ! run_de && ! stack_de ){ breakpoint(); }
   }
 }
 primitive( "debug-info", primitive_debug_info );
-
-
-
 
 
 /*
@@ -19944,76 +20356,50 @@ function operandX_( v : ConstText ) : Text {
 
 /*
  *  Special verbs are verbs whose names are special.
- *  . ; ( ) { and } are special verbs.
+ *  . , ; ( ) { and } are special verbs.
  *  verbs starting with . / # > or _ are usually special.
  *  verbs ending with : / # > _ ( or { are usually special.
  *  There are exceptions. Single character verbs are usually not special.
- *  What is special about special verbs is that they special meanings
+ *  What is special about special verbs is that they have special meanings
  *  understood by the compiler.
  *  Note: , is a very special character, it always behaves as a space.
  */
 
 function is_special_verb( val : ConstText ) : boolean {
 
-  if( val == "<" )debugger;
+  const len = tlen( val );
 
   // ToDo: parsing verbs should be immediate verb, not special tokens
-  if( val == "." || val == ";" )return true;
-  if( val == "(" || val == ")" )return true;
-  if( val == "{" || val == "}" )return true;
+  if( ( len == 1 ) && ( tidx( ".,;(){}", val ) >= 0 ) )return true;
 
   // Special verbs are at least 2 characters long
-  if( tlen( val ) < 2 )return false;
+  if( len < 2 )return false;
 
   /**/ const first_ch = val[ 0 ];
   //c/ Text  first_ch( tcut( val, 1 ) );
+
+  // .xxx is for member access
+  // :xxx is for naming
+  // /xxx is for tags
+  // #xxx is for tags too, also for #xxx# verb literals
+  // >xxx is for write access to local variables
+  // _xxx is for write access to data variables
+  // $xxx is for read access to local variables
+  if( tidx( ".:/#>_$", first_ch ) >= 0 )return true;
+
   /**/ const last_ch  = val[ tlen( val ) - 1 ];
   //c/ Text  last_ch( tbut( val, -1 ) );
 
-  // if( last_ch == "?" )return false;        // Predicates are not special
-  // if( last_ch == first_ch )return false;   // xx and x...x is not special
-
-  // .xxx is for member access
-  if( first_ch == "." )return true;
-
-  // :xxx is for naming
-  if( first_ch == ":" )return true;
-
-  // /xxx is for tags
-  if( first_ch == "/" )return true;
-
-  // #xxx is for tags too, also for #xxx# verb literals
-  if( first_ch == "#" )return true;
-
-  // >xxx is for set access to local variables
-  if( first_ch == ">" )return true;
-
-  // _xxx is for data variables
-  if( first_ch == "_" )return true;
-
-  // xxx/ is for tags too
-  if( last_ch  == "/" )return true;
-
-  // xxx> is for get access to local variables
-  if( last_ch  == ">" )return true;
-
-  // $xxx is also for read access to local variables
-  if( first_ch  == "$" )return true;
-
+  // xxx/ is for tags
+  // xxx# is for tags too, also for #xxx# verb literals
+  // xxx> is for read access to local variables
+  // xxx_ is for read access to data variables
   // xxx: is for keywords
-  if( last_ch  == ":" )return true;
-
   // xxx( is for calls
-  if( last_ch  == "(" )return true;
-
   // xxx{ is for block calls
-  if( last_ch  == "{" )return true;
-
   // xxx" is for smart text
-  if( last_ch  == "\"" )return true;
-
   // xxx[ is for smart aggreagates, like lists, maps, etc
-  if( last_ch  == "[" )return true;
+  if( tidx( "/#>_:({\"[", last_ch ) >= 0 )return true;
 
   return false;
 
@@ -20104,7 +20490,7 @@ function primitive_eval(){
     current_parsed_line_no   = token_line_no;
     current_parsed_column_no = token_column_no;
 
-    if( de && token_text == "token-debugger" )debugger;
+    if( de && teq( token_text, "token-debugger" ) )debugger;
 
     // Skip less frequent case when possible, to avoid some useless tests
     if( !tok_type( token_type_word ) ){
@@ -20118,7 +20504,7 @@ function primitive_eval(){
       }
 
       // ++ indent has no effect, for now
-      if( tok_type( token_type_indent )
+      if( tok_type( token_type_indentation )
       &&  tok( "++" )
       ){
         continue;
@@ -20157,7 +20543,7 @@ function primitive_eval(){
     if( tok_word( begin_define ) ){
       // As a convenience it may terminate an unfinished previous definition
       if( parsing( parse_definition )
-      &&  token_column_no == 0
+      &&  token_column_no == 1
       &&  stack_length( parse_codes ) > 0
       &&  !eval_is_expecting_the_verb_name()
       ){
@@ -20171,8 +20557,8 @@ function primitive_eval(){
     }
 
     // eol, an absence of indentation may terminate a non empty definition
-    if( tok_match( token_type_indent, "--" )
-    &&  token_column_no    == 0
+    if( tok_match( token_type_indentation, "--" )
+    &&  token_column_no == 1
     &&  parsing( parse_definition )
     &&  stack_length( parse_codes ) > 0
     ){
@@ -20202,8 +20588,8 @@ function primitive_eval(){
     } // name of new verb
 
     // lf, decreased Indentation to column 0 detect the end of a definition
-    if( token_column_no == 0
-    &&  tok_match( token_type_indent, "--" )
+    if( token_column_no == 1
+    &&  tok_match( token_type_indentation, "--" )
     ){
       if( eval_is_compiling()
       &&  ! parsing( parse_definition )
@@ -20254,7 +20640,7 @@ function primitive_eval(){
 
     // If not word token nor indentation then it is an internal error
     if( ! tok_type( token_type_word )
-    &&  ! tok_type( token_type_indent )
+    &&  ! tok_type( token_type_indentation )
     ){
       bug( S()
         + "Eval. Internal error. Invalid token "
@@ -20278,7 +20664,7 @@ function primitive_eval(){
     }
 
     if( ! tok_type( token_type_word ) )continue;
-    // ToDo: this assert fails, why? de&&mand( val != "" );
+    // ToDo: this assert fails, why? de&&mand( tsome( val ) );
     if( tok( no_text ) )continue;
 
     // OK. It's a word token
@@ -20419,7 +20805,7 @@ function primitive_eval(){
       continue;
     }
 
-    de&&mand( tok_type( token_type_word ) || tok_type( token_type_indent ) );
+    de&&mand( tok_type( token_type_word ) || tok_type( token_type_indentation ) );
 
     // . or ; end of definition of the new Inox verb reached
     if( eval_is_compiling()

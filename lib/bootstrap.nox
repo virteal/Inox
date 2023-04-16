@@ -72,10 +72,10 @@ to global        the-void make-global
 to local         the-void make-local
 
 to  ->           set-local.   operator
-to >->           set-global.  operator
+to >->           set-local.   operator
 to $->           set-local.   operator
 to _->           set-data.    operator
-to .->           set-object.  operator
+to .->           object.set.  operator
 
 to init-globals
   constant: /inox-version      is: "v0.4.0";

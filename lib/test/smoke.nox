@@ -11,7 +11,7 @@ to test ~| name |~
 ~~ Helper to test verbs. It runs the test/xxx testing verb
   "Testing " prefix out
   /test-sentinel, over
-  "test/" swap text.join, .run()
+  "test/" swap text.join, text.run()
   ~~ checks that stack is unchanged, ie sentinel is still at the top
   /test-sentinel <> { out( "Stack mismatch!" ) FATAL } if
   "End of test " prefix out
@@ -25,7 +25,7 @@ to debug-test ~| name |~
   out( "Testing " & $test-name )
   verb.from( "test/" & $test-name )
   dup, .definition(), definition-to-text, out
-  debug, .run(), normal-debug
+  debug, verb.run(), normal-debug
   ~~ ToDo: developer must also check that data stack is unchanged
   out( "End of debug-test for " & test-name> )
   FATAL
@@ -151,7 +151,7 @@ to test/times-do
 times-do/test
 
 
-to swap/  with /a /b  /{ a> >A, b> >B, B> A> }.
+to swap/  with /a /b  /{ a> >A, b> >B, $B $A }.
 
 to test/swap/
   2 3 swap/()
@@ -297,6 +297,7 @@ to test-hello-range{ ~| expected block |~
   "Hello ranges" expected> block> "test-output{" .run()
 
 to test/ranges
+// Verb to
   "range"          test-hello-range{   @( -6 ..  -1  )    }
   "He"             test-hello-range{    (   0 ::  2  ) @  }
   "Hello"          test-hello-range{   @(   0 ::  5  )    }
@@ -319,6 +320,11 @@ to test/ranges
   "ranges"         test-hello-range{   @( -6 ::$     )    }
   "ranges"         test-hello-range{   @( -6 ... -1  )    }
 ranges/test
+
+
+test/partial
+  "Hello" test-output{ { out } "Hello" 1 preset run }
+partial/test
 
 
 out( "End of Inox smoke test" )
