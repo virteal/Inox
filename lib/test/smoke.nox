@@ -297,7 +297,6 @@ to test-hello-range{ ~| expected block |~
   "Hello ranges" expected> block> "test-output{" .run()
 
 to test/ranges
-// Verb to
   "range"          test-hello-range{   @( -6 ..  -1  )    }
   "He"             test-hello-range{    (   0 ::  2  ) @  }
   "Hello"          test-hello-range{   @(   0 ::  5  )    }
@@ -322,7 +321,7 @@ to test/ranges
 ranges/test
 
 
-test/partial
+to test/partial
   "Hello" test-output{ { out } "Hello" 1 preset run }
 partial/test
 

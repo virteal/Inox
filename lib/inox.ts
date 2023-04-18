@@ -35,7 +35,7 @@
  */
 
 /// 0: no debug, 1: some debug, 2: more debug, etc
-const INOX_DEBUG_LEVEL = 4;
+const INOX_DEBUG_LEVEL = 1;
 
 /// The initial size of the flat memory where the Inox interpreter will run
 // ToDo: make the size configurable at run time ?
@@ -340,6 +340,10 @@ static milliseconds now( void ){
 // Index in rather small arrays usually, usually positive
 /**/ type    Index = i32;
 //c/ #define Index   i32
+
+// Integer is a 32 bits signed integer
+/**/ type    Integer = i32;
+//c/ #define Integer   i32
 
 // A counter, not negative usually
 /**/ type    Count = i32;
@@ -6261,20 +6265,8 @@ const test_text_done = test_text();
  *  Object type
  */
 
-
 function object_free( area : Area ){
 // Clear an object that is no longer referenced
-
-  let ptr;
-
-  // Add a level of indirection if object is extensible
-  if( type_of( area ) == type_reference ){
-    ptr = reference_of( area );
-    reset( area );
-    area_free( area );
-  }else{
-    ptr = area;
-  }
 
   // ToDo: avoid recursion?
   // This can take a long time, not real time safe
@@ -6305,13 +6297,16 @@ function object_free( area : Area ){
   // or heterogeneous. Much like a StringView makes sense for text,
   // an ArrayView would make sense for arrays. This would also make
   // sense for lists or any ordered collection.
+  // Another solution is to push on the control stack the values
+  // to be cleared and let the runner clear them.
 
-  const length = object_length( ptr );
-  let ii;
-  for( ii = 0 ; ii < length ; ii++ ){
-    clear( ptr + ii * ONE );
+  // Start from the end, lifo style
+  let ii = object_length( area );
+  while( ii > 0 ){
+    ii -= 1;
+    clear( area + ii * ONE );
   }
-  area_free( ptr );
+  area_free( area );
 
 }
 
@@ -7468,6 +7463,21 @@ function push_reference( c : Cell ){
 }
 
 
+function defer( name : Tag, def : Cell ){
+// Register a defered verb invocation in the control stack
+  CSP += ONE;
+  set( CSP, type_verb, name, def )
+}
+
+
+function call( name : Tag, def : Cell ){
+  // Call is defer + jump
+  CSP += ONE;
+  set( CSP, type_verb, name, IP );
+  IP = def;
+}
+
+
 /* ----------------------------------------------------------------------------
  *  Helpers to dump the memory
  */
@@ -8291,7 +8301,7 @@ function primitive_return(){
   );
   debugger;
   IP = eat_ip( CSP );
-  CSP += ONE;
+  CSP -= ONE;
   // ToDo: detect special cases, including:
   // - spaggethi stacks, see https://wiki.c2.com/?SpaghettiStack
   // - stacks with a dynamic sizes, made of smaller stacks linked together.
@@ -9488,7 +9498,7 @@ function text_trim( txt : TxtC ) : Text {
   while( ii >= 0 ){
     ch = tat( auto_buf, ii );
     if( only_spaces ){
-      if( tned( ch, " " ) ){
+      if( tneq( ch, " " ) ){
         only_spaces = false;
       }else{
         // Skip trailing spaces
@@ -10364,11 +10374,6 @@ primitive( "fast?", primitive_is_fast );
  *  noop - No operation - does nothing
  */
 
-function save_ip( label : Tag ){
-  CSP += ONE;
-  set( CSP, type_ip, label, IP );
-}
-
 function primitive_noop(){
 }
 primitive( "noop", primitive_noop );
@@ -10422,15 +10427,10 @@ function  primitive_assert(){
 
   check_de&&mand_block( TOS );
 
-  // Save return address
-  save_ip( tag_assert );
+  call( tag_assert, pop_raw_value() );
 
   // Insert assertion checker so that block will return to it
-  CSP += ONE;
-  set( CSP, type_ip, tag_assert_checker, assert_checker_definition );
-
-  // Jump into block definition, on return it will run the assertion checker
-  IP = pop_raw_value();
+  defer( tag_assert_checker, assert_checker_definition );
 
 }
 primitive( "assert", primitive_assert );
@@ -10630,13 +10630,8 @@ const tag_if = tag( "if" );
 function primitive_if(){
 // Run block if boolean is true
   const block = pop_block();
-  if( pop_boolean() == 0 ){
-    return;
-  }
-  // Push return address
-  save_ip( tag_if );
-  // Jump into block
-  IP = block;
+  if( pop_boolean() == 0 )return;
+  call( tag_if, block );
 }
 primitive( "if", primitive_if );
 
@@ -10651,10 +10646,7 @@ function primitive_if_not(){
 // Run block if boolean is false
   const block = pop_block();
   if( pop_boolean() != 0 )return;
-  // Push return address
-  save_ip( tag_if_not );
-  // Jump into block
-  IP = block;
+  call( tag_if_not, block );
 }
 primitive( "if-not", primitive_if_not );
 
@@ -10669,12 +10661,7 @@ function primitive_if_else(){
 // Run one of two blocks
   const else_block = pop_block();
   const then_block = pop_block();
-  save_ip( tag_if_else );
-  if( pop_boolean() == 0 ){
-    IP = else_block;
-  }else{
-    IP = then_block;
-  }
+  call( tag_if_else, pop_boolean() == 0 ? else_block : then_block );
 }
 primitive( "if-else", primitive_if_else );
 
@@ -10687,8 +10674,7 @@ const tag_on_return = tag( "on-return" );
 
 function primitive_on_return(){
   const block = pop_integer();
-  CSP += ONE;
-  set( CSP, type_ip, tag_on_return, block );
+  defer( tag_on_return, block );
 }
 primitive( "on-return", primitive_on_return );
 
@@ -10751,13 +10737,10 @@ function primitive_while_1(){
   // IP is expected to points to while-2
   de&&mand_eq( name_of( IP ), tag_while_2 );
   // Save info for break-loop, it would skip to after while-3
-  CSP += ONE;
-  set( CSP, type_ip, tag_break_sentinel, IP + 2 * ONE );
+  defer( tag_break_sentinel, IP + 2 * ONE );
   // Remember body and condition in control stack
-  CSP += ONE;
-  set( CSP, type_ip, tag_while_body, body_block );
-  CSP += ONE;
-  set( CSP, type_ip, tag_while_condition, condition_block );
+  defer( tag_while_body, body_block );
+  defer( tag_while_condition, condition_block );
   // The control stack now holds:
   //   IP for break, named loop-sentinel
   //   IP for the body block
@@ -10772,10 +10755,7 @@ function primitive_while_2(){
   de&&mand_eq( name_of( IP ), tag_while_3 );
   const condition_block = value_of( CSP );
   // Invoke condition, like run would do
-  CSP += ONE;
-  set( CSP, type_ip, tag_goto_while_3, IP );
-  // Jump into block
-  IP = condition_block;
+  call( tag_goto_while_3, condition_block );
   // The control stack now holds:
   //   IP for break, named break-sentinel
   //   IP for the body block, named /while-body in debug mode
@@ -10793,9 +10773,8 @@ function primitive_while_3(){
   if( flag != 0 ){
     const body_block = value_of( CSP - ONE );
     // The return of the body block must jump to while-2
-    CSP += ONE;
     // ip currently points after this primitive, hence while-2 is before
-    set( CSP, type_ip, tag_goto_while_2, IP - 2 * ONE );
+    defer( tag_goto_while_2, IP - 2 * ONE );
     // CSP must now point to while-2 primitive verb
     de&&mand_eq( name_of( value_of( CSP ) ), tag_while_2 );
     // Jump into the body block
@@ -10834,13 +10813,9 @@ primitive( "until-3", primitive_until_3 );
 function primitive_loop(){
   const body_block = pop_block();
   // Save info for break-loop, it would skip to after loop
-  CSP += ONE;
-  set( CSP, type_ip, tag_break_sentinel, IP );
+  call( tag_break_sentinel, body_block );
   // Invoke body block, it will return to itself, loopimg until some break
-  CSP += ONE;
-  set( CSP, type_ip, tag_break_sentinel, body_block );
-  // Jump into boby block
-  IP = body_block;
+  defer( tag_break_sentinel, body_block );
 }
 primitive( "loop", primitive_loop );
 
@@ -10887,8 +10862,7 @@ primitive( "break", primitive_break );
 
 function primitive_sentinel(){
   const sentinel_name = pop_tag();
-  CSP += ONE;
-  set( CSP, type_ip, sentinel_name, IP );
+  defer( sentinel_name, IP );
 }
 primitive( "sentinel", primitive_sentinel );
 
@@ -10938,10 +10912,8 @@ function primitive_until_checker(){
     const body_block = value_of( CSP );
     CSP -= ONE;
     const condition_block = value_of( CSP );
-    CSP += ONE;
-    set( CSP, type_ip, tag_loop_until, until_checker_definition );
-    CSP += ONE;
-    set( CSP, type_ip, tag_loop_condition, condition_block );
+    defer( tag_loop_until, until_checker_definition );
+    defer( tag_loop_condition, condition_block );
     IP = body_block;
   }else{
     // Drop loop sentinel, condition and body from control stack
@@ -10969,10 +10941,8 @@ function primitive_while_checker(){
     const body_block = value_of( CSP );
     CSP -= ONE;
     const condition_block = value_of( CSP );
-    CSP += ONE;
-    set( CSP, type_ip, tag_loop_until, while_checker_definition );
-    CSP += ONE;
-    set( CSP, type_ip, tag_loop_condition, condition_block );
+    defer( tag_loop_until, while_checker_definition );
+    defer( tag_loop_condition, condition_block );
     IP = body_block;
   }else{
     // Drop loop sentinel, condition and body from control stack
@@ -10991,16 +10961,11 @@ function primitive_loop_until(){
   debug();
   const condition_block = pop_block();
   const body_block      = pop_block();
-  CSP += ONE;
-  set( CSP, type_ip, tag_break_sentinel, IP );
-  CSP += ONE;
-  set( CSP, type_ip, tag_loop_condition, condition_block );
-  CSP += ONE;
-  set( CSP, type_ip, tag_loop_body, body_block );
-  CSP += ONE;
-  set( CSP, type_ip, tag_until_checker, until_checker_definition );
-  CSP += ONE;
-  set( CSP, type_ip, tag_loop_condition, condition_block );
+  call(  tag_break_sentinel, body_block );
+  defer( tag_loop_condition, condition_block );
+  defer( tag_loop_body, body_block );
+  defer( tag_until_checker, until_checker_definition );
+  defer( tag_loop_condition, condition_block );
   IP = body_block;
 }
 primitive( "loop-until", primitive_loop_until );
@@ -11013,17 +10978,11 @@ primitive( "loop-until", primitive_loop_until );
 function primitive_loop_while(){
   const condition_block = pop_block();
   const body_block      = pop_block();
-  CSP += ONE;
-  set( CSP, type_ip, tag_break_sentinel, IP );
-  CSP += ONE;
-  set( CSP, type_ip, tag_loop_condition, condition_block );
-  CSP += ONE;
-  set( CSP, type_ip, tag_loop_body, body_block );
-  CSP += ONE;
-  set( CSP, type_ip, tag_until_checker, while_checker_definition );
-  CSP += ONE;
-  set( CSP, type_ip, tag_loop_condition, condition_block );
-  IP = body_block;
+  call(  tag_break_sentinel, body_block );
+  defer( tag_loop_condition, condition_block );
+  defer( tag_loop_body, body_block );
+  defer( tag_until_checker, while_checker_definition );
+  defer( tag_loop_condition, condition_block );
 }
 primitive( "loop-while", primitive_loop_while );
 
@@ -11068,9 +11027,7 @@ function dispatch_binary_operator(
     }
   }
 
-  CSP += ONE;
-  set( CSP, type_ip, verb_id, IP );
-  IP = definition_of( verb_id );
+  call( verb_id, definition_of( verb_id ) );
 
 }
 
@@ -11133,9 +11090,7 @@ function define_class_binary_operator_primitive(
         verb_id = tag( "operator-missing" );
       }
     }
-    CSP += ONE;
-    set( CSP, type_ip, verb_id, IP );
-    IP = definition_of( verb_id );
+    call( verb_id, definition_of( verb_id ) );
   }
 
 }
@@ -11186,7 +11141,11 @@ operator_primitive( "+", primitive_add );
  *  integer.+ - add two integers
  */
 
-primitive( "integer.+", primitive_add );
+function primitive_integer_add(){
+  push_integer( pop_integer() + pop_integer() );
+}
+
+primitive( "integer.+", primitive_integer_add );
 
 
 /*
@@ -11366,7 +11325,7 @@ operator_primitive( "different?", primitive_is_not_identical );
 
 /*ts{*/
 
-function checked_int_parameter() : Index {
+function checked_int_parameter() : Integer {
   const p1 = TOS;
   if( check_de ){
     const type_of_p1 = type_of( p1 );
@@ -11379,7 +11338,7 @@ function checked_int_parameter() : Index {
 }
 
 
-function checked_int_first_parameter() : Index {
+function checked_int_first_parameter() : Integer {
   const p1 = TOS;
   if( check_de ){
     const type_of_p1 = type_of( p1 );
@@ -11391,7 +11350,7 @@ function checked_int_first_parameter() : Index {
   return value_of( p1 );
 }
 
-function checked_int_second_parameter() : Index {
+function checked_int_second_parameter() : Integer {
   if( check_de ){
     const p2 = TOS;
     const type_of_p2 = type_of( p2 );
@@ -11803,7 +11762,7 @@ operator_primitive( "and", primitive_and );
 function checked_int_is_greater_than(){
   const p2 = checked_int_second_parameter();
   const p1 = checked_int_first_parameter();
-  if( value_of( p1 ) > value_of( p2 ) ){
+  if( p1 > p2 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11814,7 +11773,7 @@ function checked_int_is_greater_than(){
 function checked_int_is_greater_or_equal(){
   const p2 = checked_int_second_parameter();
   const p1 = checked_int_first_parameter();
-  if( value_of( p1 ) >= value_of( p2 ) ){
+  if( p1 >= p2 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11825,7 +11784,7 @@ function checked_int_is_greater_or_equal(){
 function checked_int_is_less_than(){
   const p2 = checked_int_second_parameter();
   const p1 = checked_int_first_parameter();
-  if( value_of( p1 ) < value_of( p2 ) ){
+  if( p1 < p2 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11846,7 +11805,7 @@ function checked_int_is_less_or_equal(){
 
 function checked_int_is_equal_to_1(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) == 1 ){
+  if( p1 == 1 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11856,7 +11815,7 @@ function checked_int_is_equal_to_1(){
 
 function checked_int_is_equal_to_minus_1(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) == -1 ){
+  if( p1 == -1 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11866,7 +11825,7 @@ function checked_int_is_equal_to_minus_1(){
 
 function checked_int_is_equal_to_0(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) == 0 ){
+  if( p1 == 0 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11876,7 +11835,7 @@ function checked_int_is_equal_to_0(){
 
 function checked_int_is_not_equal_to_0(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) != 0 ){
+  if( p1 != 0 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11886,7 +11845,7 @@ function checked_int_is_not_equal_to_0(){
 
 function checked_int_is_less_than_0(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) < 0 ){
+  if( p1 < 0 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11896,7 +11855,7 @@ function checked_int_is_less_than_0(){
 
 function checked_int_is_greater_than_0(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) > 0 ){
+  if( p1 > 0 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11906,7 +11865,7 @@ function checked_int_is_greater_than_0(){
 
 function checked_int_is_less_or_equal_to_0(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) <= 0 ){
+  if( p1 <= 0 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -11916,7 +11875,7 @@ function checked_int_is_less_or_equal_to_0(){
 
 function checked_int_is_greater_or_equal_to_0(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) >= 0 ){
+  if( p1 >= 0 ){
     set( TOS, type_boolean, tag_boolean, 1 );
   }else{
     set( TOS, type_boolean, tag_boolean, 0 );
@@ -12024,7 +11983,7 @@ function checked_int_negative(){
 
 function checked_int_sign(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) < 0 ){
+  if( p1 < 0 ){
     set( TOS, type_integer, tag_integer, -1 );
   }else{
     set( TOS, type_integer, tag_integer, 1 );
@@ -12034,7 +11993,7 @@ function checked_int_sign(){
 
 function checked_int_abs(){
   const p1 = checked_int_parameter();
-  if( value_of( p1 ) < 0 ){
+  if( p1 < 0 ){
     set( TOS, type_integer, tag_integer, -value_of( p1 ) );
   }else{
     set( TOS, type_integer, tag_integer, value_of( p1 ) );
@@ -12718,7 +12677,7 @@ primitive( "text.line", primitive_text_line );
 
 
 /*
- *  text.line-no - extract line from text, given a line number
+ *  text.line-no - extract a line from a text, given a line number
  */
 
 function extract_line_no( lines : Text, line_no : Index ) : Text {
@@ -13283,9 +13242,8 @@ function is_block( c : Cell ) : boolean {
 
 
 /*
- *  forget-parameters - internal, return from functio with parameters
+ *  forget-parameters - internal, return from function with parameters
  */
-
 
 const tag_with = tag( "with" );
 
@@ -13333,12 +13291,12 @@ function primitive_run_with_parameters(){
 // Create variables in the control stack for verbs with formal parameters.
 // Up to with sentinel. Usage : with /a /b { xxx } run-with-parameters
 
-  // Pop block to execute
   const block = pop_block();
+  call( tag_run_with_parameters, block );
 
   let new_tos = TOS;
 
-  // Count formal parameters up to with sentinel included
+  // Count formal parameters up to /with sentinel included
   let count = 0;
   let parameter_name;
   while( true ){
@@ -13356,16 +13314,13 @@ function primitive_run_with_parameters(){
     new_tos -= ONE;
   }
 
-  save_ip( tag_run_with_parameters );
-
   // Set value of parameters using values from the data stack
-  const csp = CSP;
   let copy_count = 0;
   let n;
 
   // Go from sentinel argument back to tos, push each actual parameter
   const sentinel_tos = new_tos;
-  let actual_argument_cell  = csp;
+  let actual_argument_cell  = CSP;
   let formal_parameter_cell = new_tos;
   let source_argument_cell  = new_tos - ( count - 1 ) * ONE;
 
@@ -13417,17 +13372,10 @@ function primitive_run_with_parameters(){
   // Skip actual arguments and formal parameters in data stack
   TOS = TOS - ( ( count * 2 ) - 1 ) * ONE;
 
-  // Add return call to the parameters remover
-  CSP += count * ONE;
-  set(
-    CSP,
-    type_ip,
-    tag_forget_parameters,
-    forget_parameters_definition
-  );
+  CSP = actual_argument_cell - ONE;
 
-  // Execute the block, on return it will jump to the parameters remover
-  IP = block;
+  // Add return call to the parameters remover
+  defer( tag_forget_parameters, forget_parameters_definition );
 
 }
 primitive( "run-with-parameters", primitive_run_with_parameters );
@@ -15542,7 +15490,7 @@ primitive( "forget-locals", primitive_forget_locals );
 
 
 /*
- *  with-locals - prepare the control stack to handle local local variables
+ *  with-locals - prepare the control stack to handle local variables
  */
 
 const tag_forget_locals = tag( "forget-locals" );
@@ -15554,10 +15502,8 @@ let forget_locals_definition = 0;
 
 function primitive_with_locals(){
 // Prepare for a run that may create local variables
-  CSP += ONE;
-  set( CSP, type_ip, tag_with, IP );
-  CSP += ONE;
-  set( CSP, type_ip, tag_with, tag_forget_locals );
+  defer( tag_with, IP );
+  defer( tag_forget_locals, forget_locals_definition );
 }
 primitive( "with-locals", primitive_with_locals );
 
@@ -15610,21 +15556,14 @@ let forget_it_definition = 0;
 function primitive_with_it(){
 // Prepare for a call to a block that expects an 'it' local variable
 
-  CSP += ONE;
-  set( CSP, type_ip, tag_with, IP );
+  defer( tag_with_it, IP );
 
   CSP += ONE;
   move_cell( POP(), CSP );
   set_name( CSP, tag_it );
 
   // Block will return to the definition of forget-it
-  CSP += ONE;
-  set(
-    CSP,
-    type_ip,
-    tag_run_with_it,
-    forget_it_definition
-  );
+  defer( tag_forget_it, forget_it_definition );
 
 }
 primitive( "with-it", primitive_with_it );
@@ -15704,9 +15643,7 @@ function primitive_run_method_by_name(){
       }
     }
   }
-  CSP += ONE;
-  set( CSP, type_ip, name_id, IP );
-  IP = definition_of( verb_id );
+  call( name_id, definition_of( verb_id ) );
 }
 primitive( "run-method-by-name", primitive_run_method_by_name );
 
@@ -15730,22 +15667,13 @@ primitive( "run-method-by-tag", primitive_run_method_by_tag );
 function primitive_run_with_it(){
   const block = pop_block();
   // Push normal return address onto control stack
-  CSP += ONE;
-  set( CSP, type_ip, tag_run_with_it, IP );
+  call( tag_run_with_it, block );
   // Push local variable 'it'
   CSP += ONE;
   move_cell( POP(), CSP );
   set_name( CSP, tag_it );
   // Push special return address to local variables cleaner
-  CSP += ONE;
-  set(
-    CSP,
-    type_ip,
-    tag_forget_it,
-    forget_it_definition
-  );
-  // Jump into block definition
-  IP = block;
+  defer( tag_forget_it, forget_it_definition );
 }
 primitive( "run-with-it", primitive_run_with_it );
 
@@ -16477,19 +16405,21 @@ function RUN(){
 
   if( step_de )debugger;
 
-        // Special "next" code, 0x0000, is a jump to the return address.
+        // Special "next" code, 0x0000, is a jump to the return address
         if( i == 0x0000 ){
-          if( check_de && type_of( CSP ) == type_ip ){
-            if( run_de ){
-              bug( S()
-                + "run, return to " + C( IP )
-                + " of " + tag_to_text( name_of( CSP ) )
-              );
+          if( check_de ){
+            if( type_of( CSP ) == type_ip ){
+              if( run_de ){
+                bug( S()
+                  + "run, return to " + C( IP )
+                  + " of " + tag_to_text( name_of( CSP ) )
+                );
+              }
+            }else{
+              FATAL( "Invalid return, not a verb" );
+              IP = 0;
+              return;
             }
-          }else{
-            FATAL( "Invalid return, not a verb" );
-            IP = 0;
-            return;
           }
           // ToDo: check underflow?
           IP = eat_ip( CSP );
@@ -16500,8 +16430,7 @@ function RUN(){
         // Call to another verb, the name of the cell names it
         if( t == type_verb ){
           // Push return address into control stack, named to help debugging
-          CSP += ONE;
-          set( CSP, type_ip, unpack_name( i ), IP + ONE );
+          defer( unpack_name( i ), IP + ONE );
           // ToDo: set type to Act?
           // IP = definition_of( unpack_name( i ) );
           IP = value_of( IP );
@@ -16567,6 +16496,7 @@ function RUN(){
             && i != tag( "to-control" )
             && i != tag( "from-control" )
             && i != tag( "on-return" )
+            && i != tag( "destructor" )
             ){
               if( CSP < old_csp ){
                 bug( S()
@@ -16645,8 +16575,7 @@ const tag_eval = tag( "eval" );
   de&&mand( !! IP );
 
   // Should return to here, hence IP 0
-  CSP += ONE;
-  set( CSP, type_ip, tag_eval, 0 );
+  defer( tag_eval, 0 );
 
   // ToDo: better checks for stacks overflow and underflow
   stack_de&&mand_stacks_are_in_bounds();
@@ -17052,10 +16981,7 @@ primitive( "tag", primitive_tag );
  */
 
 function run_verb( verb_id : Index ){
-  // Push return address onto control stack
-  save_ip( verb_id );
-  // Jump to verb definition, there is a "default" definition
-  IP = definition_of( verb_id );
+  call( verb_id, definition_of( verb_id ) );
 }
 
 
@@ -17091,8 +17017,7 @@ function primitive_verb_run(){
   const definition = value_of( TOS );
   // If definition is known, jump to it
   if( definition ){
-    save_ip( name_of( TOS ) );
-    IP = definition;
+    call( name_of( TOS ), definition );
     return;
   }
   // Else, use current definition
@@ -17135,15 +17060,7 @@ primitive( "definition", primitive_definition );
 const tag_run = tag( "run" );
 
 function primitive_integer_run(){
-  const block = pop_block();
-  /**/ if( de && block < 2000 ){
-  /**/   FATAL( "Not a block at " + block );
-  /**/   return;
-  /**/ }
-  // Push return address onto control stack
-  save_ip( tag_run );
-  // Jump into definition
-  IP = block;
+  call( tag_run, pop_block() );
 }
 primitive( "integer.run", primitive_integer_run );
 
@@ -17154,12 +17071,31 @@ primitive( "integer.run", primitive_integer_run );
 
 function primitive_block_run(){
   const block = pop_reference();
-  // Push return address onto control stack
-  save_ip( tag_run );
-  // Jump into definition
-  IP = value_of( block );
+  call( tag_run, value_of( block ) );
 }
 primitive( "block.run", primitive_block_run );
+
+
+/*
+ *  destructor - internal, clear a reference and return from current verb
+ *  Reminder: the top of the control stack is always a return address
+ */
+
+const tag_destructor = tag( "destructor" );
+
+// See init_globals() where the definition is initialized
+let destructor_definition = 0;
+// = definition_of( tag_destructor );
+
+function primitive_destructor(){
+  // Pop return address
+  IP = eat_ip( CSP );
+  CSP -= ONE;
+  // Pop value to clear
+  clear( CSP );
+  CSP -= ONE;
+}
+primitive( "destructor", primitive_destructor );
 
 
 /*
@@ -17168,14 +17104,14 @@ primitive( "block.run", primitive_block_run );
 
 function primitive_run(){
 
-  const tos = TOS;
+  let info = info_of( TOS );
   let id;
 
-  switch( type_of( TOS ) ){
+  switch( unpack_type( info ) ){
 
     // Run a primitive
     case type_void:
-      const auto_primitive = get_primitive( name_of( TOS ) );
+      const auto_primitive = get_primitive( unpack_name( info ) );
       reset( POP() );
       auto_primitive();
       break;
@@ -17186,12 +17122,7 @@ function primitive_run(){
 
     // Run an integer, assuming it is a definition
     case type_integer:
-      id = value_of( TOS );
-      reset( POP() );
-      // Push return address onto control stack
-      save_ip( tag_run );
-      // Jump into definition
-      IP = id;
+      call( tag_run, pop_raw_value() );
       break;
 
     // Running a float leads to it's value
@@ -17200,14 +17131,22 @@ function primitive_run(){
 
     // Run a tag, assuming it is a verb name
     case type_tag:
-      id = name_of( TOS );
+      id = unpack_name( info );
       reset( POP() );
       run_verb( id );
       break;
 
     // Run a verb
     case type_verb:
-      id = name_of( TOS );
+      // If definition is known, run it directly
+      id = value_of( TOS );
+      if( id != 0 ){
+        // Push return address onto control stack
+        call( name_of( TOS ), id );
+        break;
+      }
+      // If no defintion, run the one associated to the verb
+      id = unpack_name( info );
       reset( POP() );
       run_verb( id );
       break;
@@ -17215,11 +17154,13 @@ function primitive_run(){
     // Run a reference, assuming it is a block
     case type_reference:
       id = value_of( TOS );
-      clear( POP() );
-      // Push return address onto control stack
-      save_ip( tag_run );
-      // Jump into definition
-      IP = id;
+      // Push reference to clear later on
+      CSP + ONE;
+      move_cell( TOS, CSP );
+      POP();
+      call( tag_run, id );
+      // Push call to destructor, it will clear the reference and return
+      defer( tag_destructor, destructor_definition );
       break;
 
     default:
@@ -17250,9 +17191,10 @@ function primitive_preset(){
   const block_area = allocate_area( tag_block, ( nvalues + 1 ) * size_of_cell );
 
   // Push the values into the block object
-  let ii;
-  for( let ii = 0 ; ii < nvalues; ii++ ){
+  let ii = 0;
+  while( ii < nvalues ){
     move_cell( POP(), block_area + ii );
+    ii += 1;
   }
 
   // Get the target block and add a jump to it
@@ -17383,8 +17325,7 @@ const tag_block_run_it = tag( "block-run-it" );
 
 function primitive_block_run_it(){
   primitive_make_it();
-  CSP += ONE;
-  set( CSP, type_void, tag_drop_control, value_of( IP ) );
+  defer( tag_drop_control, value_of( IP ) );
 }
 
 
@@ -17415,11 +17356,10 @@ primitive( "bind-to", primitive_bind_to );
  */
 
 function primitive_run_definition(){
-  // "inox Hello run" does what Hello does alone
+  // "inox Hello run-definition" does what Hello does alone
   const verb_id = pop_integer();
   // ToDo: check that it is a valid verb id
-  save_ip( verb_id );
-  IP = definition_of( verb_id );
+  run_verb( verb_id );
 }
 primitive( "run-definition", primitive_run_definition );
 
@@ -19915,11 +19855,19 @@ function primitive_is_compiling(){
 }
 primitive( "compiling?", primitive_is_compiling );
 
+
 /*
  *  debug-info - set debug info about the instruction beeing executed
  */
 
+let current_eval_file    = 0;
+let current_eval_content = "";
+
 let current_debug_info = 0;
+
+let debug_info_file = 0;
+let debug_info_line = 0;
+let debug_info_column = 0;
 
 
 function debug_info_to_text( debug_info : u32 ) : Text {
@@ -19937,20 +19885,26 @@ function primitive_debug_info(){
   de&&mand_cell_type( IP - ONE, type_void )
   de&&mand( name_of( IP - ONE ) == tag_debug_info );
   current_debug_info = value_of( IP - ONE );
+  const file_tag = current_debug_info >> 16;
   const line_no = ( current_debug_info & 0xFFFF ) >> 7;
   const column_no = current_debug_info & 0x7F;
   if( run_de || eval_de ){
-    // Display source code that is around the position
-    trace(
-      "\ndebug-info: " + debug_info_to_text( current_debug_info )
-      + "\n  " + extract_line_no( current_parsed_content, line_no - 1 )
-      + "\n> " + extract_line_no( current_parsed_content, line_no )
-      + "\n  " + text_pad( "^", column_no + 1 )
-      + "\n  " + extract_line_no( current_parsed_content, line_no + 1 )
-      + "\n  " + extract_line_no( current_parsed_content, line_no + 2 )
-    );
-    // Breakpoint now unless somewhere else soon
-    if( step_de && ! run_de && ! stack_de ){ breakpoint(); }
+    // Display file:line:col when not about the current file
+    if( file_tag != current_eval_file ){
+      trace( "\ndebug-info: " + debug_info_to_text( current_debug_info ) );
+    // When about current file, display source code that is around the position
+    }else{
+      trace(
+        "\ndebug-info: " + debug_info_to_text( current_debug_info )
+        + "\n  " + extract_line_no( current_eval_content, line_no - 1 )
+        + "\n> " + extract_line_no( current_eval_content, line_no )
+        + "\n  " + text_pad( "^", column_no + 1 )
+        + "\n  " + extract_line_no( current_eval_content, line_no + 1 )
+        + "\n  " + extract_line_no( current_eval_content, line_no + 2 )
+      );
+      // Breakpoint now unless somewhere else soon
+      if( step_de && ! run_de && ! stack_de ){ breakpoint(); }
+    }
   }
 }
 primitive( "debug-info", primitive_debug_info );
@@ -19983,17 +19937,62 @@ primitive( "compiler-expecting?", primitive_state_is_expecting );
 
 
 /*
+ *  debug-info-set-file - set debug info file name about the current source code
+ */
+
+function primitive_debug_info_set_file(){
+  const filename = pop_as_text();
+  debug_info_file = tag( filename );
+}
+primitive( "debug-info-set-file", primitive_debug_info_set_file );
+
+
+/*
+ *  debug-info-get-file - get debug info file name about the current source code
+ */
+
+function primitive_debug_info_get_file(){
+  push_tag( debug_info_file );
+}
+
+
+/*
+ *  debug-info-set-line - set line number about the current source code
+ */
+
+function primitive_debug_info_set_line(){
+  debug_info_line = pop_integer();
+}
+primitive( "debug-info-set-line", primitive_debug_info_set_line );
+
+
+/*
+ *  debug-info-get-line - get line number about the current source code
+ */
+
+function primitive_debug_info_get_line(){
+  push_integer( debug_info_line );
+}
+primitive( "debug-info-get-line", primitive_debug_info_get_line );
+
+
+/*
+ *  debug-info-set-column - set column number about the current source code
+ */
+
+function primitive_debug_info_set_column(){
+  debug_info_column = pop_integer();
+}
+primitive( "debug-info-set-column", primitive_debug_info_set_column );
+
+
+/*
  *  compile-literal - Add a literal to the verb beeing defined
  */
 
-let current_parsed_file      = "";
-let current_parsed_content   = "";
-let current_parsed_line_no   = -1;
-let current_parsed_column_no = -1;
-
-let traced_parsed_file      = "";
-let traced_parsed_line_no   = -1;
-let traced_parsed_column_no = -1;
+let traced_file   = 0;
+let traced_line   = -1;
+let traced_column = -1;
 
 const tag_debug_info = tag( "debug-info" );
 const tag_some_file  = tag( "some-file" );
@@ -20002,33 +20001,42 @@ function add_debug_info(){
 
   // Do nothing if not in debug mode
   if( ! with_debug_info
-  && !eval_de
-  && !run_de
+  && ! eval_de
+  && ! run_de
   )return;
 
+  // Do nothing is name of current file was deliberatly erased
+  if( debug_info_file == 0 )return;
+
+  // Idem if line number was erased
+  if( debug_info_line == 0 )return;
+
+  // Idem if column number was erased
+  if( debug_info_column == 0 )return;
+
   // If no change, do nothing
-  if( current_parsed_file      == traced_parsed_file
-  &&  current_parsed_line_no   == traced_parsed_line_no
-  &&  current_parsed_column_no == traced_parsed_column_no
+  if( debug_info_file   == traced_file
+  &&  debug_info_line   == traced_line
+  &&  debug_info_column == traced_column
   ){
     return;
   }
 
   // Save current position to detect change next time
-  traced_parsed_file      = current_parsed_file;
-  traced_parsed_line_no   = current_parsed_line_no;
-  traced_parsed_column_no = current_parsed_column_no;
+  traced_file   = debug_info_file;
+  traced_line   = debug_info_line;
+  traced_column = debug_info_column;
 
   // Pack into a single integer, 9 bits for line, 7 for column, 16 for file
-  let file_tag = tag( current_parsed_file );
+  let file_tag = debug_info_file;
   if( file_tag > 1023 ){
     file_tag = tag_some_file;
   }
-  let line_no = current_parsed_line_no;
+  let line_no = debug_info_line;
   if( line_no > 511 ){
     line_no = 511;
   }
-  let column_no = current_parsed_column_no;
+  let column_no = debug_info_column;
   if( column_no > 127 ){
     column_no = 127;
   }
@@ -20039,7 +20047,7 @@ function add_debug_info(){
   stack_push( parse_codes, the_tmp_cell );
 
   if( parse_de ){
-    trace( "Parse. compile debug-info: " + debug_info_to_text() );
+    trace( "Parse. compile debug-info: " + debug_info_to_text( info ) );
   }
 
 }
@@ -20179,8 +20187,7 @@ function eval_do_machine_code( tag : Name ){
     // next instruction. This would avoid the overhead of checking
     // against 0 whenever a "return" is executed. This optimization
     // requires using an exception to exit the inner interpreter.
-    CSP += ONE;
-    set( CSP, type_ip, tag, 0 );
+    defer( tag, 0 );
     IP = definition_of( tag );
     de&&mand_neq( IP, 0 );
 
@@ -20487,8 +20494,8 @@ function primitive_eval(){
     next_token();
 
     // Update globals for debug-info generation
-    current_parsed_line_no   = token_line_no;
-    current_parsed_column_no = token_column_no;
+    debug_info_line   = token_line_no;
+    debug_info_column = token_column_no;
 
     if( de && teq( token_text, "token-debugger" ) )debugger;
 
@@ -21802,8 +21809,9 @@ const Fun = I.fun;
 
 function eval_file( name : TxtC ){
   /**/ const source_code = require( "fs" ).readFileSync( "lib/" + name, "utf8" );
-  current_parsed_file    = name;
-  current_parsed_content = source_code;
+  current_eval_file    = tag( name );
+  debug_info_file      = tag( name );
+  current_eval_content = source_code;
   /**/ I.processor( "{}", "{}", source_code );
   /*c{
     Text source_code;
@@ -21878,6 +21886,7 @@ static void init_globals(){
   forget_it_definition         = definition_of( tag_forget_it );
   assert_checker_definition    = definition_of( tag_assert_checker );
   forget_locals_definition     = definition_of( tag_forget_locals );
+  destructor_definition        = definition_of( tag_destructor );
 
   bootstrap();
 

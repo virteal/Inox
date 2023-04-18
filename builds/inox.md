@@ -154,8 +154,12 @@
 | text.not= | compare two texts |
 | text.find | find a piece in a text, return first position or -1 |
 | text.find-last | find a piece in a text, return last position or -1 |
+| text.start? | operator, test if a text starts another text |
+| text.start-with? | test if a text starts with a piece |
+| text.end? | operator, test if a text ends another text |
+| text.end-with? | test if a text ends with a piece |
 | text.line | extract a line from a text at some position |
-| text.line-no | extract line from text, given a line number |
+| text.line-no | extract a line from a text, given a line number |
 | as-text | textual representation |
 | dump | textual representation, debug style |
 | ""? | unary operator |
@@ -172,7 +176,7 @@
 | tag.to_verb | convert a tag to a verb or void |
 | make-global | create a global variable and verbs to get/set it |
 | make-local | create a local variable in the control stack |
-| forget-parameters | internal, return from functio with parameters |
+| forget-parameters | internal, return from function with parameters |
 | run-with-parameters | run a block with the "function" protocol |
 | get-local | copy a control variable to the data stack |
 | set-local | assign a value to a local variable |
@@ -238,7 +242,7 @@
 | range.over | bind a range to some composite value |
 | forget-control | clear the control stack downto to specified local |
 | return-without-locals | like return but with some cleanup |
-| with-locals | prepare the control stack to handle local local variables |
+| with-locals | prepare the control stack to handle local variables |
 | return-without-it | internal, run-with-it uses it |
 | with-it | prepare the control stack to handle the 'it' local variable |
 | it | access to the it local variable |
@@ -280,6 +284,17 @@
 | text.run | run a verb by text name |
 | verb.run | run a verb |
 | definition | get the definition of a verb |
+| block.run | run a block object |
+| destructor | internal, clear a reference and return from current verb |
+| run | depending on type, run a definition, a primitive or do nothing |
+| preset | attach values to a definition to make a new block |
+| block.preset | attach values to a block, making a new block |
+| attach | attach a value to a block, like primitive preset with 1 value only |
+| make-it | initialize a new "it" local variable |
+| jump-it | run a definition with a preset "it" local variable |
+| drop-control | drop the top of the control stack |
+| block.run-it | run a block with a preset "it" local variable |
+| bind | make a block object with an "it" preset local variable |
 | run-definition | run a verb definition |
 | block | push the start address of the block at IP |
 | block | push the start address of the block at IP. |
@@ -302,6 +317,11 @@
 | compiling? | Is the interpreter compiling? |
 | debug-info | set debug info about the instruction beeing executed |
 | compiler-expecting? | Is the compiler expecting the verb to define? |
+| debug-info-set-file | set debug info file name about the current source code |
+| debug-info-get-file | get debug info file name about the current source code |
+| debug-info-set-line | set line number about the current source code |
+| debug-info-get-line | get line number about the current source code |
+| debug-info-set-column | set column number about the current source code |
 | compile-literal | Add a literal to the verb beeing defined |
 | compile-verb | add a verb to the beeing defined block or new verb |
 | compile-quote | avoid executing the next token, just compile it |

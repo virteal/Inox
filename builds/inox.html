@@ -152,8 +152,12 @@
 <tr><td>text.not=</td><td>compare two texts</td></tr>
 <tr><td>text.find</td><td>find a piece in a text, return first position or -1</td></tr>
 <tr><td>text.find-last</td><td>find a piece in a text, return last position or -1</td></tr>
+<tr><td>text.start?</td><td>operator, test if a text starts another text</td></tr>
+<tr><td>text.start-with?</td><td>test if a text starts with a piece</td></tr>
+<tr><td>text.end?</td><td>operator, test if a text ends another text</td></tr>
+<tr><td>text.end-with?</td><td>test if a text ends with a piece</td></tr>
 <tr><td>text.line</td><td>extract a line from a text at some position</td></tr>
-<tr><td>text.line-no</td><td>extract line from text, given a line number</td></tr>
+<tr><td>text.line-no</td><td>extract a line from a text, given a line number</td></tr>
 <tr><td>as-text</td><td>textual representation</td></tr>
 <tr><td>dump</td><td>textual representation, debug style</td></tr>
 <tr><td>""?</td><td>unary operator</td></tr>
@@ -170,7 +174,7 @@
 <tr><td>tag.to_verb</td><td>convert a tag to a verb or void</td></tr>
 <tr><td>make-global</td><td>create a global variable and verbs to get/set it</td></tr>
 <tr><td>make-local</td><td>create a local variable in the control stack</td></tr>
-<tr><td>forget-parameters</td><td>internal, return from functio with parameters</td></tr>
+<tr><td>forget-parameters</td><td>internal, return from function with parameters</td></tr>
 <tr><td>run-with-parameters</td><td>run a block with the "function" protocol</td></tr>
 <tr><td>get-local</td><td>copy a control variable to the data stack</td></tr>
 <tr><td>set-local</td><td>assign a value to a local variable</td></tr>
@@ -236,7 +240,7 @@
 <tr><td>range.over</td><td>bind a range to some composite value</td></tr>
 <tr><td>forget-control</td><td>clear the control stack downto to specified local</td></tr>
 <tr><td>return-without-locals</td><td>like return but with some cleanup</td></tr>
-<tr><td>with-locals</td><td>prepare the control stack to handle local local variables</td></tr>
+<tr><td>with-locals</td><td>prepare the control stack to handle local variables</td></tr>
 <tr><td>return-without-it</td><td>internal, run-with-it uses it</td></tr>
 <tr><td>with-it</td><td>prepare the control stack to handle the 'it' local variable</td></tr>
 <tr><td>it</td><td>access to the it local variable</td></tr>
@@ -278,6 +282,17 @@
 <tr><td>text.run</td><td>run a verb by text name</td></tr>
 <tr><td>verb.run</td><td>run a verb</td></tr>
 <tr><td>definition</td><td>get the definition of a verb</td></tr>
+<tr><td>block.run</td><td>run a block object</td></tr>
+<tr><td>destructor</td><td>internal, clear a reference and return from current verb</td></tr>
+<tr><td>run</td><td>depending on type, run a definition, a primitive or do nothing</td></tr>
+<tr><td>preset</td><td>attach values to a definition to make a new block</td></tr>
+<tr><td>block.preset</td><td>attach values to a block, making a new block</td></tr>
+<tr><td>attach</td><td>attach a value to a block, like primitive preset with 1 value only</td></tr>
+<tr><td>make-it</td><td>initialize a new "it" local variable</td></tr>
+<tr><td>jump-it</td><td>run a definition with a preset "it" local variable</td></tr>
+<tr><td>drop-control</td><td>drop the top of the control stack</td></tr>
+<tr><td>block.run-it</td><td>run a block with a preset "it" local variable</td></tr>
+<tr><td>bind</td><td>make a block object with an "it" preset local variable</td></tr>
 <tr><td>run-definition</td><td>run a verb definition</td></tr>
 <tr><td>block</td><td>push the start address of the block at IP</td></tr>
 <tr><td>block</td><td>push the start address of the block at IP.</td></tr>
@@ -300,6 +315,11 @@
 <tr><td>compiling?</td><td>Is the interpreter compiling?</td></tr>
 <tr><td>debug-info</td><td>set debug info about the instruction beeing executed</td></tr>
 <tr><td>compiler-expecting?</td><td>Is the compiler expecting the verb to define?</td></tr>
+<tr><td>debug-info-set-file</td><td>set debug info file name about the current source code</td></tr>
+<tr><td>debug-info-get-file</td><td>get debug info file name about the current source code</td></tr>
+<tr><td>debug-info-set-line</td><td>set line number about the current source code</td></tr>
+<tr><td>debug-info-get-line</td><td>get line number about the current source code</td></tr>
+<tr><td>debug-info-set-column</td><td>set column number about the current source code</td></tr>
 <tr><td>compile-literal</td><td>Add a literal to the verb beeing defined</td></tr>
 <tr><td>compile-verb</td><td>add a verb to the beeing defined block or new verb</td></tr>
 <tr><td>compile-quote</td><td>avoid executing the next token, just compile it</td></tr>
@@ -318,4 +338,4 @@
 <tr><td>memory-visit</td><td>get a view of the memory</td></tr>
 <tr><td>source</td><td>evaluate the content of a file</td></tr>
 </table>
-<p>Found 316 primitives.</p></body></html>
+<p>Found 336 primitives.</p></body></html>
