@@ -20,7 +20,6 @@ to test ~| name |~
 
 to debug-test ~| name |~
  ~~ Helper for tests that needs to be debugged
-  scope
   >test-name
   out( "Testing " & $test-name )
   verb.from( "test/" & $test-name )
@@ -33,7 +32,6 @@ to debug-test ~| name |~
 
 To stack-effect-checker  ~| block expected-offset |~
 ~~ check the side effect of a block about the stack depth
-  scope
   ~~ remove 3 because of TOS value, effect offset & block parameter
   ( TOS - 3 )
   ~~ apply the offset to compute what the final TOS should be
@@ -68,6 +66,7 @@ To output-meet-expectation?
 ~~ is the output of TOS matching the expected output?
   capture/enable/log, finally{ capture/disable/log }
   inox-out
+  capture/log >test-actual-output!
   If $test-expectation expect/log Then
     true
   Else
@@ -77,10 +76,10 @@ To output-meet-expectation?
 
 to test-output{  ~| xx text block -- xx |~
 ~~ expect text to match the output of the block
-  scope, >test-block, >test-expectation
+  >test-block, >test-expectation, "" >test-actual-output
   ~~ duplicate xx to be able to replay the block in case of mismatch
   dup
-  $test-block .run()
+  $test-block .run
   If not output-meet-expectation? Then
     ~~ redo, with the debugger this time
     $test-block debug .run()
@@ -106,18 +105,17 @@ to point.make  x:0 y:0 point:3 make-object
 to test/point
   point.make
   dump
-  1 _point .x!  ~~ ToDo: _point x:1 .! or even x:1 .!
-  2 _point .y!
-  out( "( x:" & _point .x & ", y:" & _point .y & " )" )
+  1 _point .>x!  ~~ ToDo: x:1 _point .>!
+  2 _point .>y!
+  out( "( x:" & _point .x> & ", y:" & _point .y> & " )" )
   drop  ~~ forget point object
 point/test
 
 
-to point.out  method: { out( "( x:" & it .x & ", y:" & it .y & " )" ) };.
+to point.out  method: { out( "( x:" & it .x> & ", y:" & it .y> & " )" ) };.
 
 to test/method-call
   point.make
-  _point .:out
   _point .out()
   drop  ~~ forget point object
 method-call/test
@@ -126,17 +124,17 @@ method-call/test
 to test/it-operations
   0 it{
     out( "Initial it should be 0, is " & it )
-    increment-it!
+    increment-it
     out( "Incremented it should be 1, is " & ii )
-    decrement-it!
+    decrement-it
     out( "Decremented it should be 0, is " & ii )
     10 it!
     out( "New value of it should be 10, is " & it )
-    out( "++it! should be 11, is " & ++it! )
-    out( "it++! should be 11, is " & it++! )
-    out( "it--! should be 12, is " & it--! )
-    out( "--it! should be 10, is " & --it! )
-    out( "it should be 10, is "    & it    )
+    out( "++it should be 11, is " & ++it )
+    out( "it++ should be 11, is " & it++ )
+    out( "it-- should be 12, is " & it-- )
+    out( "--it should be 10, is " & --it )
+    out( "it should be 10, is "   & it   )
   }
 it-operations/test
 
@@ -151,7 +149,7 @@ to test/times-do
 times-do/test
 
 
-to swap/  with /a /b  /{ a> >A, b> >B, $B $A }.
+to swap/  with /a /b /{ a> >A, b> >B, $B $A }
 
 to test/swap/
   2 3 swap/()
@@ -194,7 +192,7 @@ to test/loop-break
     loop: {
       out( "loop-while body" )
       out( "Hello loop " & it )
-      decrement-it!
+      decrement-it
       if: it <0 then: { break };
     };
   }
@@ -228,7 +226,7 @@ HELLO/test
 to test/loop1
   0 it{
     3 it!
-    while: { decrement-it!, it >0 } do: {
+    while: { decrement-it, it >0 } do: {
       if:    it % 2 =0
       then:  { out( it & " is even" ) }
       else:  { out( it & " is odd"  ) } ;
@@ -248,27 +246,25 @@ loop1/test
 
 
 To test/Loop2
-  Scope
-    3 it!
-    While --it! >0 Do
-      If it % 2 =0 Then
-        out( it & " is even" )
-      Else
-        out( it & " is odd" )
-      EndIf
-    EndWhile
-    Times 3 Loop
-      out( "bravo" )
-    EndLoop
-    Loop
-      out( "great" )
-      Break
-    EndLoop
-    Loop
-      out( "wonder" )
-      Break
-    EndLoop
-  EndScope
+  3 >it
+  While --it >0 Do
+    If it % 2 =0 Then
+      out( it & " is even" )
+    Else
+      out( it & " is odd" )
+    EndIf
+  EndWhile
+  Times 3 Loop
+    out( "bravo" )
+  EndLoop
+  Loop
+    out( "great" )
+    Break
+  EndLoop
+  Loop
+    out( "wonder" )
+    Break
+  EndLoop
 
 Loop2/test
 
@@ -292,11 +288,12 @@ and then I need to restore the non literate mode using
   Set-literate( False )
 
 
-to test-hello-range{ ~| expected block |~
-  scope >block >expected
-  "Hello ranges" expected> block> "test-output{" .run()
+to test-hello-range{  >block >expected
+  "Hello ranges" expected> block>
+  "test-output{" .run()
 
 to test/ranges
+  "Hello ranges"   test-hello-range{   @(  0 ::$     )    }
   "range"          test-hello-range{   @( -6 ..  -1  )    }
   "He"             test-hello-range{    (   0 ::  2  ) @  }
   "Hello"          test-hello-range{   @(   0 ::  5  )    }
@@ -308,21 +305,29 @@ to test/ranges
   "He"             test-hello-range{   @(   ^..   2  )    }
   "Hel"            test-hello-range{   @(   ^...  2  )    }
   "He"             test-hello-range{   @(   ^::   2  )    }
-  "Hello range"    test-hello-range{   @(   ^..$     )    }
-  "Hello ranges"   test-hello-range{   @(   ^::$     )    }
-  "Hello range"    test-hello-range{   @(  0 ..$     )    }
-  "Hello ranges"   test-hello-range{   @(  0 ::$     )    }
   "s"              test-hello-range{   @( -1 ::$     )    }
   "es"             test-hello-range{   @( -2 ::$     )    }
   "Hello range"    test-hello-range{   @(  0 ..$     )    }
   "Hello ranges"   test-hello-range{   @(  0 ::$     )    }
   "ranges"         test-hello-range{   @( -6 ::$     )    }
   "ranges"         test-hello-range{   @( -6 ... -1  )    }
+  "Hello range"    test-hello-range{   @(   ^..$     )    }
+  "Hello ranges"   test-hello-range{   @(   ^::$     )    }
+  "Hello range"    test-hello-range{   @(  0 ..$     )    }
 ranges/test
+
+to thing.attach    as-block attach
+to tag.attach      attach
+to verb.attach     attach
+to integer.attach  attach
 
 
 to test/partial
-  "Hello" test-output{ { out } "Hello" 1 preset run }
+  /out as-block >out
+  { dup } out> block.join >out!
+  "Hello"  test-output{ $out "Hello" 1  partial  run }
+  "World"  test-output{ "World" 1 $out .partial .run }
+  "Target" test-output{ "Target" $out attach block.run }
 partial/test
 
 

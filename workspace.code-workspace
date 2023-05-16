@@ -58,7 +58,7 @@
 		"npm.packageManager": "npm",
 		"files.autoSave": "afterDelay",
 		"editor.folding": false,
-		"editor.stickyScroll.enabled": true,
+		"editor.stickyScroll.enabled": false,
 		"terminal.integrated.smoothScrolling": true,
 		"editor.scrollbar.verticalScrollbarSize": 20,
 		"editor.cursorSurroundingLines": 3,

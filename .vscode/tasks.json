@@ -5,7 +5,6 @@
                         "label": "cl.exe: debug inox.exe",
                         "command": "cl.exe",
                         "args": [
-                                "/DINOX_FAST_RUN",
                                 "/DEBUG",
                                 "/W4",
                                 "/nologo",

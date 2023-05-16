@@ -204,13 +204,13 @@ There is yet another style named _keyword_ style. It is the one where the verb i
 
 ``` sh
 
-to say:to:  scope >dest >msg, out( "Say: " $msg & " to " & $dest );
+to say:to:  >dest >msg, out( "Say: " $msg & " to " & $dest );
 
 say: "Hello" to: "the world!";
 
 ```
 
-The `scope` verb is used to create a _scope_ for local variables. Such variables are created and initialized using the top of the data stack. The syntax is `>xxx` where xxx is the name of the local variable. The local variables are then accessible using either `$xxx` syntax or the `xxx>`. Both syntaxes are equivalent and means pushing the value of the local variable onto the data stack.
+Local variables are created and initialized using the top of the data stack. The syntax is `>xxx` where xxx is the name of the local variable. The local variables are then accessible using either `$xxx` syntax or the `xxx>`. Both syntaxes are equivalent and means pushing the value of the local variable onto the data stack.
 
 ``` sh
   msg> out ~~ postfix style
@@ -271,7 +271,7 @@ to tell-to/  with /m /d /{ out( "Tell " & $m & " to " && $d }
 
 This is an abbreviated syntax that is defined in the _standard library_. `xx{ ... }` is like `xx( ... )` but the former invokes the `xx{` verb with the block as sole argument whereas the later invokes the verb `xx` when `)` is reached.
 
-`/{` is like `{`, it marks the begining of a _block_, a sequence of verbs and literals. There is however an important difference, only `/{' creates a new _scope_. This is convenient to use _local variables_ that will be automaticaly discarded when the block execution ends, ie when the variables become "out of scope".
+`/{` is like `{`, it marks the begining of a _block_, a sequence of verbs and literals. There is however an important difference, only `/{' creates a new _scope_ and fiils it with the named parameters. It is convenient to use _local variables_ that will be automaticaly discarded when the block execution ends, ie when the variables become "out of scope".
 
 In the case of `/{` the _scope_ is filled with local variables that are the formal parameters of the function. The _scope_ and all the local variables in it is discarded when the function returns.
 
@@ -447,21 +447,7 @@ To set the value of a local variable using the top of the stack, use `>xyz!`. `!
 
 This type of scoping for variables is named _"dynamic"_ by opposition to the more frequent static style named _"lexical"_ where a local variable stays purely local to the function that created it. Note: changing the value of a local variable outside the verb that created it is usually considered _"harmful"_ and should be avoided.
 
-When a verb needs to use local variables, it must also delete them when it is done. This can be done using the `forget` verb. It is a good practice to use `forget` in a `finally{` block. Another way to do this is to use the `scope` verb. It is a verb that creates a scope and deletes all local variables when the scope is left.
-
-``` sh
-to say-to
-  scope >dest >msg
-  out( "Say " & $msg & " to " & $dest )
-}
-
-to say-to
-  >dest >msg, finally{ dest/forget }
-  out( "Say " & $msg & " to " & $dest )
-}
-```
-
-Note: there is no _assignment_ operator in Iɴᴏx. The `!` (exclamation point) is used to set the value of an already existing variable. The `=` (equal sign) is used to compare values. This is a common convention in many programming languages but not in all. For example in the C language, the `=` (equal sign) is used to assign a value to a variable and the `==` (double equal sign) is used to compare values.
+There is no _assignment_ operator in Iɴᴏx. The `!` (exclamation point) is used to set the value of an already existing variable. The `=` (equal sign) is used to compare values. This is a common convention in many programming languages but not in all. For example in the C language, the `=` (equal sign) is used to assign a value to a variable and the `==` (double equal sign) is used to compare values.
 
 
 Object variables
@@ -491,7 +477,15 @@ With the object class and the object variable, it becomes easy to define **metho
 to point.dump  method: { out( "( x:" & it .x & ", y: " & it .y & ")" ) }.
 ```
 
-Such method verbs are typically defined using the `method:` verb. It creates a _scope_ and a local variable named **it** and then it runs the specified block. Some other language use _self_ or _this_ instead of _it_.
+Such method verbs are typically defined using the `method:` verb. It creates a local variable named **it** and then it runs the specified block. Some other language use _self_ or _this_ instead of _it_.
+
+The `attach` verb binds a value to a _runnable value_, either a verb or a block typically. The verb `partial` binds multiple values. This is how _closures_ are created in Iɴᴏx. If a closure needs to access a value that is _out of scope_, then that value must be encapsulated into a _box_ object to provide an indirect access to it.
+
+``` sh
+to schedule-action ~~| action time |~~
+  >time box >action
+  schedule( $time, attach( { run( >what unbox ) }, $action ) )
+...
 
 
 Data variables
@@ -1170,7 +1164,6 @@ BTW: there are many bugs in the sample code, can you spot them?
 
 This is a list of the primitives that are currently implemented in the Iɴᴏx compiler. This list is automatically generated from the source code.
 
-
 | Primitive | Code |
 | --- | --- |
 | a-list? | true if TOS is a list |
@@ -1228,6 +1221,7 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | data-dump | dump the data stack, ie print it |
 | control-depth | number of elements on the control stack |
 | clear-control | clear the control stack, make it empty |
+| FATAL | display error message and stacks, then clear stacks & exit eval loop |
 | control-dump | dump the control stack, ie print it |
 | text.quote | turn a text into a valid text literal |
 | text.to-integer | convert a text literal to an integer |
@@ -1349,21 +1343,25 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | forget-parameters | internal, return from function with parameters |
 | run-with-parameters | run a block with the "function" protocol |
 | get-local | copy a control variable to the data stack |
+| inlined-get-local | copy a control variable to the data stack, internal |
 | set-local | assign a value to a local variable |
 | data | lookup for a named value in the data stack and copy it to the top |
 | set-data | change the value of an existing data variable |
 | size-of-cell | constant that depends on the platform, 8 for now |
 | lookup | find a variable in a memory area. |
+| data-index | find the position of a data variable in the data stack |
 | upper-local | non local access to a local variable |
 | upper-data | non local access to a data variable |
 | set-upper-local | set a local variable in the nth upper frame |
 | set-upper-data | set a data variable in the nth upper frame |
 | forget-data | remove stack elements until a previous variable, included |
 | make-fixed-object | create a fixed size object |
-| make-object | create a object of the given length |
+| make-object | create an object of the given length |
+| make-extensible-object | create an empty object with some capacity |
 | extend-object | turn a fixed object into an extensible one |
 | object.get | access a data member of an object |
 | object.set! | change a data member of an object |
+| stack.pop | pop a value from a stack object |
 | stack.push | push a value onto a stack object |
 | stack.drop | drop the top of a stack object |
 | stack.drop-nice | drop the tof of a stack object, unless empty |
@@ -1392,6 +1390,9 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | array.get | nth element |
 | array.length | number of elements in an array |
 | array.capacity | return the capacity of an array |
+| array.remove | remove the nth element |
+| array.index | return the index of a value in an array or -1 |
+| array.tag-index | return the index of a variable in an array or -1 |
 | map.put | put a value in a map |
 | map.get | get a value from a map |
 | map.length | number of elements in a map |
@@ -1449,22 +1450,27 @@ This is a list of the primitives that are currently implemented in the Iɴᴏx c
 | operator | make the last defined verb an operator |
 | inline | make the last defined verb inline |
 | last-token | return the last tokenized item |
+| last-token-info | return the last tokenized item info, including it's |
 | tag | make a tag, from a text typically |
-| tag.run | run a verb by tag |
+| tag.run | run a verb by tag, noop if verb is not defined |
 | text.run | run a verb by text name |
 | verb.run | run a verb |
-| definition | get the definition of a verb |
+| definition | get the definition of a verb, default is noop |
 | block.run | run a block object |
 | destructor | internal, clear a reference and return from current verb |
+| scope | create a new scope |
 | run | depending on type, run a definition, a primitive or do nothing |
-| preset | attach values to a definition to make a new block |
-| block.preset | attach values to a block, making a new block |
-| attach | attach a value to a block, like primitive preset with 1 value only |
+| block.return | jump to a block and then return from current verb |
+| partial | attach values to a runnable value to make a new block |
+| block.partial | attach values to a block, making a new block |
+| attach | attach a single value to a block, a target object typically |
+| as-block | convert a runnable value to a new block |
+| block.join | join two blocks into a new block |
 | make-it | initialize a new "it" local variable |
 | jump-it | run a definition with a preset "it" local variable |
 | drop-control | drop the top of the control stack |
 | block.run-it | run a block with a preset "it" local variable |
-| bind | make a block object with an "it" preset local variable |
+| bind-to | make a block object with an "it" preset local variable |
 | run-definition | run a verb definition |
 | block | push the start address of the block at IP |
 | block | push the start address of the block at IP. |

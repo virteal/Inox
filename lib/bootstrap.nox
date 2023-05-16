@@ -110,14 +110,6 @@ to :off?      name-of /off     =
 to :yes?      name-of /yes     =
 to :no?       name-of /no      =
 
-to scope
-~~ Helper to setup a scope for local variables
-~~ ToDo: make it primitive?
-  from-control
-    /it         to-control
-    #forget-it# to-control
-  to-control
-
 ~~ Class hierarchy
 
 to thing.super-class      the-void
@@ -193,31 +185,32 @@ to >{      ~| target a-block -- |~  run-with-it. inline
 
 ~~ verbs with formal parameters are functions called with arguments
 to with      /with
+to w/        /with
 to function  run-with-parameters. inline
 to /{        run-with-parameters. inline
 
 
-to decrement  1 -
-to increment  1 +
-to --         decrement
-to ++         increment
+to decrement  1 -. inline
+to increment  1 +. inline
+to --         decrement. inline
+to ++         increment. inline
 
 
-to decrement-it!  it -- it!
-to increment-it!  it ++ it!
-to --it!          it -- dup it!
-to ++it!          it ++ dup it!
-to it--!          it dup -- it!
-to it++!          it dup ++ it!
-to it{            run-with-it
-to do-with-it     run-with-it
+to decrement-it    it -- it!
+to increment-it    it ++ it!
+to --it            it -- dup it!
+to ++it            it ++ dup it!
+to it--            it dup -- it!
+to it++            it dup ++ it!
+to it{             run-with-it
+to do-with-it      run-with-it
 
 
 to times:do:
   it{
     it >runable, it!
     if: it >0 then: {
-      while: { it--! >0 } do: {
+      while: { it-- >0 } do: {
         runable> .run()
       };
     };
@@ -249,7 +242,7 @@ to from:to:do:
   it{
     it >runable, >ii-to, ii!
     if: ii <= ii-to> then: {
-      do: { runable> .run() } while: { ii-to> > ++it! };
+      do: { runable> .run() } while: { ii-to> > ++it };
     };
   }
 
@@ -257,7 +250,7 @@ to from:down-to:do:
   it{
     it >runable, >ii-down-to, ii!
     if: ii >= ii-down-to> then: {
-      do: { runable> .run() } while: { ii-to> > --it! };
+      do: { runable> .run() } while: { ii-to> > --it };
     };
   }
 
@@ -316,7 +309,6 @@ to text.&             text.join
 to prefix             over text.join       ~| A B -- A BA |~
 to suffix             over swap text.join  ~| A B -- A AB |~
 to text.first         text.cut
-to text.last          text.but
 to text.last          text.but
 ~~ text.but-last      text.cut
 ~~ text.starts-with?
@@ -389,15 +381,12 @@ to InoxStyle
   alias(  "Times"        "times:  "         )
   alias(  "Begin"        "{"                )
   alias(  "End"          "}"                )
-  alias(  "Scope"        "0 {"              )
-  alias(  "EndScope"     " } do-with-it "   )
   alias(  "It"           "{"                )
   alias(  "EndIt"        " } do-with-it "   )
 InoxStyle
 
 To False  false.
 To True   true.
-
 
 global: /speed-index-loops is: 1;
 

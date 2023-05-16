@@ -56,6 +56,7 @@
 <tr><td>data-dump</td><td>dump the data stack, ie print it</td></tr>
 <tr><td>control-depth</td><td>number of elements on the control stack</td></tr>
 <tr><td>clear-control</td><td>clear the control stack, make it empty</td></tr>
+<tr><td>FATAL</td><td>display error message and stacks, then clear stacks & exit eval loop</td></tr>
 <tr><td>control-dump</td><td>dump the control stack, ie print it</td></tr>
 <tr><td>text.quote</td><td>turn a text into a valid text literal</td></tr>
 <tr><td>text.to-integer</td><td>convert a text literal to an integer</td></tr>
@@ -177,21 +178,25 @@
 <tr><td>forget-parameters</td><td>internal, return from function with parameters</td></tr>
 <tr><td>run-with-parameters</td><td>run a block with the "function" protocol</td></tr>
 <tr><td>get-local</td><td>copy a control variable to the data stack</td></tr>
+<tr><td>inlined-get-local</td><td>copy a control variable to the data stack, internal</td></tr>
 <tr><td>set-local</td><td>assign a value to a local variable</td></tr>
 <tr><td>data</td><td>lookup for a named value in the data stack and copy it to the top</td></tr>
 <tr><td>set-data</td><td>change the value of an existing data variable</td></tr>
 <tr><td>size-of-cell</td><td>constant that depends on the platform, 8 for now</td></tr>
 <tr><td>lookup</td><td>find a variable in a memory area.</td></tr>
+<tr><td>data-index</td><td>find the position of a data variable in the data stack</td></tr>
 <tr><td>upper-local</td><td>non local access to a local variable</td></tr>
 <tr><td>upper-data</td><td>non local access to a data variable</td></tr>
 <tr><td>set-upper-local</td><td>set a local variable in the nth upper frame</td></tr>
 <tr><td>set-upper-data</td><td>set a data variable in the nth upper frame</td></tr>
 <tr><td>forget-data</td><td>remove stack elements until a previous variable, included</td></tr>
 <tr><td>make-fixed-object</td><td>create a fixed size object</td></tr>
-<tr><td>make-object</td><td>create a object of the given length</td></tr>
+<tr><td>make-object</td><td>create an object of the given length</td></tr>
+<tr><td>make-extensible-object</td><td>create an empty object with some capacity</td></tr>
 <tr><td>extend-object</td><td>turn a fixed object into an extensible one</td></tr>
 <tr><td>object.get</td><td>access a data member of an object</td></tr>
 <tr><td>object.set!</td><td>change a data member of an object</td></tr>
+<tr><td>stack.pop</td><td>pop a value from a stack object</td></tr>
 <tr><td>stack.push</td><td>push a value onto a stack object</td></tr>
 <tr><td>stack.drop</td><td>drop the top of a stack object</td></tr>
 <tr><td>stack.drop-nice</td><td>drop the tof of a stack object, unless empty</td></tr>
@@ -220,6 +225,9 @@
 <tr><td>array.get</td><td>nth element</td></tr>
 <tr><td>array.length</td><td>number of elements in an array</td></tr>
 <tr><td>array.capacity</td><td>return the capacity of an array</td></tr>
+<tr><td>array.remove</td><td>remove the nth element</td></tr>
+<tr><td>array.index</td><td>return the index of a value in an array or -1</td></tr>
+<tr><td>array.tag-index</td><td>return the index of a variable in an array or -1</td></tr>
 <tr><td>map.put</td><td>put a value in a map</td></tr>
 <tr><td>map.get</td><td>get a value from a map</td></tr>
 <tr><td>map.length</td><td>number of elements in a map</td></tr>
@@ -277,22 +285,27 @@
 <tr><td>operator</td><td>make the last defined verb an operator</td></tr>
 <tr><td>inline</td><td>make the last defined verb inline</td></tr>
 <tr><td>last-token</td><td>return the last tokenized item</td></tr>
+<tr><td>last-token-info</td><td>return the last tokenized item info, including it's</td></tr>
 <tr><td>tag</td><td>make a tag, from a text typically</td></tr>
-<tr><td>tag.run</td><td>run a verb by tag</td></tr>
+<tr><td>tag.run</td><td>run a verb by tag, noop if verb is not defined</td></tr>
 <tr><td>text.run</td><td>run a verb by text name</td></tr>
 <tr><td>verb.run</td><td>run a verb</td></tr>
-<tr><td>definition</td><td>get the definition of a verb</td></tr>
+<tr><td>definition</td><td>get the definition of a verb, default is noop</td></tr>
 <tr><td>block.run</td><td>run a block object</td></tr>
 <tr><td>destructor</td><td>internal, clear a reference and return from current verb</td></tr>
+<tr><td>scope</td><td>create a new scope</td></tr>
 <tr><td>run</td><td>depending on type, run a definition, a primitive or do nothing</td></tr>
-<tr><td>preset</td><td>attach values to a definition to make a new block</td></tr>
-<tr><td>block.preset</td><td>attach values to a block, making a new block</td></tr>
-<tr><td>attach</td><td>attach a value to a block, like primitive preset with 1 value only</td></tr>
+<tr><td>block.return</td><td>jump to a block and then return from current verb</td></tr>
+<tr><td>partial</td><td>attach values to a runnable value to make a new block</td></tr>
+<tr><td>block.partial</td><td>attach values to a block, making a new block</td></tr>
+<tr><td>attach</td><td>attach a single value to a block, a target object typically</td></tr>
+<tr><td>as-block</td><td>convert a runnable value to a new block</td></tr>
+<tr><td>block.join</td><td>join two blocks into a new block</td></tr>
 <tr><td>make-it</td><td>initialize a new "it" local variable</td></tr>
 <tr><td>jump-it</td><td>run a definition with a preset "it" local variable</td></tr>
 <tr><td>drop-control</td><td>drop the top of the control stack</td></tr>
 <tr><td>block.run-it</td><td>run a block with a preset "it" local variable</td></tr>
-<tr><td>bind</td><td>make a block object with an "it" preset local variable</td></tr>
+<tr><td>bind-to</td><td>make a block object with an "it" preset local variable</td></tr>
 <tr><td>run-definition</td><td>run a verb definition</td></tr>
 <tr><td>block</td><td>push the start address of the block at IP</td></tr>
 <tr><td>block</td><td>push the start address of the block at IP.</td></tr>
@@ -338,4 +351,4 @@
 <tr><td>memory-visit</td><td>get a view of the memory</td></tr>
 <tr><td>source</td><td>evaluate the content of a file</td></tr>
 </table>
-<p>Found 336 primitives.</p></body></html>
+<p>Found 349 primitives.</p></body></html>

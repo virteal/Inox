@@ -1,0 +1,61 @@
+~| l9.nox
+ |   Inox LinkOS v9 kernel
+ |
+ | JHR, 2023/05/07, from l8.js
+ |
+ |~
+
+~|
+
+The l8 kernel was a single-threaded, event-driven kernel. The github repository is at https://github.com/virteal/l8
+
+ |~
+
+global: /l9-next-id is: 0 ;
+global: /l9-root    is: the-void ;
+
+to drop-with    swap, assert{ dup /with = }, drop
+to with-length  /with data-index
+
+to array[]        array:0, make-extensible-object.
+to stack[]        stack:0, make-extensible-object.
+to queue[]        queue:0, make-extensible-object.
+to map[]          map:0,   make-extensible-object.
+to set[]          set:0,   make-extensible-object.
+to array.push     stack.push.
+to array.pop      stack.pop.
+
+to make-l9-task
+  >parent
+  l9-next-id ++ l9-next-id!
+  with
+    l9-next-id :id
+    ""         :label
+    false      :a-fork?
+    false      :a-spawn?
+    false      :done?
+    false      :canceled?
+    false      :should-stop?
+    $parent    :parent
+    array[]    :subtasks
+    array[]    :forks
+    array[]    :fork-results
+    0          :fork-parent-index
+  with-length :l9-task make-object
+  drop-with
+  if: $parent something? then: { _l9-task dup .parent .subtasks .push() } ;
+
+to l9-initialize
+  the-void make-l9-task l9-root!
+  "root" l9-root .>label!
+
+to l9-task.should-stop   true .should-stop?!
+
+to l9-task.should-stop?  .should-stop?>
+to l9-task.done?         .done?>
+to l9-task.canceled?     .canceled?>
+to l9-task.a-fork?       .a-fork?>
+to l9-task.a-spawn?      .a-spawn?>.
+
+l9-initialize
+l9-root debugger out

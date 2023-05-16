@@ -58,6 +58,7 @@
 | data-dump | dump the data stack, ie print it |
 | control-depth | number of elements on the control stack |
 | clear-control | clear the control stack, make it empty |
+| FATAL | display error message and stacks, then clear stacks & exit eval loop |
 | control-dump | dump the control stack, ie print it |
 | text.quote | turn a text into a valid text literal |
 | text.to-integer | convert a text literal to an integer |
@@ -179,21 +180,25 @@
 | forget-parameters | internal, return from function with parameters |
 | run-with-parameters | run a block with the "function" protocol |
 | get-local | copy a control variable to the data stack |
+| inlined-get-local | copy a control variable to the data stack, internal |
 | set-local | assign a value to a local variable |
 | data | lookup for a named value in the data stack and copy it to the top |
 | set-data | change the value of an existing data variable |
 | size-of-cell | constant that depends on the platform, 8 for now |
 | lookup | find a variable in a memory area. |
+| data-index | find the position of a data variable in the data stack |
 | upper-local | non local access to a local variable |
 | upper-data | non local access to a data variable |
 | set-upper-local | set a local variable in the nth upper frame |
 | set-upper-data | set a data variable in the nth upper frame |
 | forget-data | remove stack elements until a previous variable, included |
 | make-fixed-object | create a fixed size object |
-| make-object | create a object of the given length |
+| make-object | create an object of the given length |
+| make-extensible-object | create an empty object with some capacity |
 | extend-object | turn a fixed object into an extensible one |
 | object.get | access a data member of an object |
 | object.set! | change a data member of an object |
+| stack.pop | pop a value from a stack object |
 | stack.push | push a value onto a stack object |
 | stack.drop | drop the top of a stack object |
 | stack.drop-nice | drop the tof of a stack object, unless empty |
@@ -222,6 +227,9 @@
 | array.get | nth element |
 | array.length | number of elements in an array |
 | array.capacity | return the capacity of an array |
+| array.remove | remove the nth element |
+| array.index | return the index of a value in an array or -1 |
+| array.tag-index | return the index of a variable in an array or -1 |
 | map.put | put a value in a map |
 | map.get | get a value from a map |
 | map.length | number of elements in a map |
@@ -279,22 +287,27 @@
 | operator | make the last defined verb an operator |
 | inline | make the last defined verb inline |
 | last-token | return the last tokenized item |
+| last-token-info | return the last tokenized item info, including it's |
 | tag | make a tag, from a text typically |
-| tag.run | run a verb by tag |
+| tag.run | run a verb by tag, noop if verb is not defined |
 | text.run | run a verb by text name |
 | verb.run | run a verb |
-| definition | get the definition of a verb |
+| definition | get the definition of a verb, default is noop |
 | block.run | run a block object |
 | destructor | internal, clear a reference and return from current verb |
+| scope | create a new scope |
 | run | depending on type, run a definition, a primitive or do nothing |
-| preset | attach values to a definition to make a new block |
-| block.preset | attach values to a block, making a new block |
-| attach | attach a value to a block, like primitive preset with 1 value only |
+| block.return | jump to a block and then return from current verb |
+| partial | attach values to a runnable value to make a new block |
+| block.partial | attach values to a block, making a new block |
+| attach | attach a single value to a block, a target object typically |
+| as-block | convert a runnable value to a new block |
+| block.join | join two blocks into a new block |
 | make-it | initialize a new "it" local variable |
 | jump-it | run a definition with a preset "it" local variable |
 | drop-control | drop the top of the control stack |
 | block.run-it | run a block with a preset "it" local variable |
-| bind | make a block object with an "it" preset local variable |
+| bind-to | make a block object with an "it" preset local variable |
 | run-definition | run a verb definition |
 | block | push the start address of the block at IP |
 | block | push the start address of the block at IP. |
