@@ -14,6 +14,8 @@
 <tr><td>a-primitive?</td><td>true if TOS tag is also the name of a primitive</td></tr>
 <tr><td>return</td><td>jump to return address</td></tr>
 <tr><td>actor</td><td>push a reference to the current actor</td></tr>
+<tr><td>l9</td><td>push a reference to the l9 task of the current actor</td></tr>
+<tr><td>set-current-l9-task</td><td>set the l9 task of the current actor</td></tr>
 <tr><td>switch-actor</td><td>non preemptive thread switch</td></tr>
 <tr><td>make-actor</td><td>create a new actor with an initial IP</td></tr>
 <tr><td>breakpoint</td><td>to break into the debugger</td></tr>
@@ -59,14 +61,13 @@
 <tr><td>FATAL</td><td>display error message and stacks, then clear stacks & exit eval loop</td></tr>
 <tr><td>control-dump</td><td>dump the control stack, ie print it</td></tr>
 <tr><td>text.quote</td><td>turn a text into a valid text literal</td></tr>
-<tr><td>text.to-integer</td><td>convert a text literal to an integer</td></tr>
-<tr><td>text.to-integer</td><td>convert a text literal into an integer</td></tr>
+<tr><td>text.as-integer</td><td>convert a text literal to an integer</td></tr>
 <tr><td>text.hex-to-integer</td><td>convert a text literal to an integer</td></tr>
 <tr><td>text.octal-to-integer</td><td>convert a text literal to an integer</td></tr>
 <tr><td>text.binary-to-integer</td><td>converts a text literal to an integer</td></tr>
-<tr><td>integer-to-hex</td><td>converts an integer to an hexadecimal text</td></tr>
-<tr><td>integer-to-octal</td><td>convert an integer to an octal text</td></tr>
-<tr><td>integer-to-binary</td><td>converts an integer to a binary text</td></tr>
+<tr><td>intege.as-hexadecimal</td><td>converts an integer to an hexadecimal text</td></tr>
+<tr><td>integer.as-octal</td><td>convert an integer to an octal text</td></tr>
+<tr><td>integer.as-binary</td><td>converts an integer into a binary text</td></tr>
 <tr><td>text.unquote</td><td>turns a JSON text into a text</td></tr>
 <tr><td>text.pad</td><td>pads a text with spaces</td></tr>
 <tr><td>text.trim</td><td>trims a text</td></tr>
@@ -117,7 +118,7 @@
 <tr><td>to-float</td><td>convert something into a float</td></tr>
 <tr><td>to-float</td><td>convert something into a float</td></tr>
 <tr><td>float.to-integer</td><td>convert a float to an integer</td></tr>
-<tr><td>float.to-text</td><td>convert a float to a text</td></tr>
+<tr><td>float.as-text</td><td>convert a float to a text</td></tr>
 <tr><td>float.add</td><td>add two floats</td></tr>
 <tr><td>float.subtract</td><td>subtract two floats</td></tr>
 <tr><td>float.multiply</td><td>multiply two floats</td></tr>
@@ -167,9 +168,11 @@
 <tr><td>definition-to-text</td><td>decompile a definition</td></tr>
 <tr><td>verb.to-text-definition</td><td>decompile a verb definition</td></tr>
 <tr><td>verb.from</td><td>convert into a verb if verb is defined, or void if not</td></tr>
+<tr><td>primitive.from</td><td>convert into a primitive if primitive is defined, or void</td></tr>
 <tr><td>peek</td><td>get the value of a cell, using a cell's address</td></tr>
 <tr><td>poke</td><td>set the value of a cell, using a cell's address</td></tr>
 <tr><td>make-constant</td><td>using a value and a name, create a constant</td></tr>
+<tr><td>define-verb</td><td>using a definition and a name, create a verb</td></tr>
 <tr><td>tag.defined?</td><td>true if text described tag is defined</td></tr>
 <tr><td>verb.defined?</td><td>true if text described verb is defined</td></tr>
 <tr><td>tag.to_verb</td><td>convert a tag to a verb or void</td></tr>
@@ -177,6 +180,7 @@
 <tr><td>make-local</td><td>create a local variable in the control stack</td></tr>
 <tr><td>forget-parameters</td><td>internal, return from function with parameters</td></tr>
 <tr><td>run-with-parameters</td><td>run a block with the "function" protocol</td></tr>
+<tr><td>parameters</td><td>create local variables for the parameters of a verb</td></tr>
 <tr><td>get-local</td><td>copy a control variable to the data stack</td></tr>
 <tr><td>inlined-get-local</td><td>copy a control variable to the data stack, internal</td></tr>
 <tr><td>set-local</td><td>assign a value to a local variable</td></tr>
@@ -254,7 +258,8 @@
 <tr><td>it</td><td>access to the it local variable</td></tr>
 <tr><td>it!</td><td>change the value of the it local variable</td></tr>
 <tr><td>run-method-by-name</td><td>using a text to identify the method</td></tr>
-<tr><td>run-method-by-tag</td><td>using a tag to identify the method</td></tr>
+<tr><td>run-method</td><td>using a tag to identify the method</td></tr>
+<tr><td>class-method-tag</td><td>get the tag of a method for a class</td></tr>
 <tr><td>run-with-it</td><td>like run but with an "it" local variable</td></tr>
 <tr><td>words_per_cell</td><td>plaftorm dependent, current 1</td></tr>
 <tr><td>CSP</td><td>Constrol Stack Pointer, address of the top of the control stack</td></tr>
@@ -286,7 +291,7 @@
 <tr><td>inline</td><td>make the last defined verb inline</td></tr>
 <tr><td>last-token</td><td>return the last tokenized item</td></tr>
 <tr><td>last-token-info</td><td>return the last tokenized item info, including it's</td></tr>
-<tr><td>tag</td><td>make a tag, from a text typically</td></tr>
+<tr><td>as-tag</td><td>make a tag, from a text typically</td></tr>
 <tr><td>tag.run</td><td>run a verb by tag, noop if verb is not defined</td></tr>
 <tr><td>text.run</td><td>run a verb by text name</td></tr>
 <tr><td>verb.run</td><td>run a verb</td></tr>
@@ -299,7 +304,7 @@
 <tr><td>partial</td><td>attach values to a runnable value to make a new block</td></tr>
 <tr><td>block.partial</td><td>attach values to a block, making a new block</td></tr>
 <tr><td>attach</td><td>attach a single value to a block, a target object typically</td></tr>
-<tr><td>as-block</td><td>convert a runnable value to a new block</td></tr>
+<tr><td>as-block</td><td>convert a runnable value into a block</td></tr>
 <tr><td>block.join</td><td>join two blocks into a new block</td></tr>
 <tr><td>make-it</td><td>initialize a new "it" local variable</td></tr>
 <tr><td>jump-it</td><td>run a definition with a preset "it" local variable</td></tr>
@@ -320,7 +325,7 @@
 <tr><td>next-token</td><td>read the next token from the default input stream</td></tr>
 <tr><td>set-literate</td><td>set the tokenizer to literate style</td></tr>
 <tr><td>integer-text?</td><td>true if text is valid integer</td></tr>
-<tr><td>parse-integer</td><td>convert a text to an integer</td></tr>
+<tr><td>parse-integer</td><td>convert a text to an integer, or /NaN if not possible</td></tr>
 <tr><td>compiler-enter</td><td>Entering a new parse context</td></tr>
 <tr><td>compiler-leave</td><td>Leaving a parse context</td></tr>
 <tr><td>compile-definition-begin</td><td>Entering a new verb definition</td></tr>
@@ -348,7 +353,8 @@
 <tr><td>now</td><td>return number of milliseconds since start</td></tr>
 <tr><td>instructions</td><td>number of instructions executed so far</td></tr>
 <tr><td>the-void</td><td>push the void, typed void, named void, valued 0</td></tr>
+<tr><td>_</td><td>synonym for the-void, push the void, typed void, named void, valued 0</td></tr>
 <tr><td>memory-visit</td><td>get a view of the memory</td></tr>
 <tr><td>source</td><td>evaluate the content of a file</td></tr>
 </table>
-<p>Found 349 primitives.</p></body></html>
+<p>Found 355 primitives.</p></body></html>

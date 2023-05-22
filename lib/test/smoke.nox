@@ -100,7 +100,7 @@ to test/test-output
 test-output/test
 
 
-to point.make  x:0 y:0 point:3 make-object
+to point.make  make-object( 0 :x, 0 :y, 3 :point )
 
 to test/point
   point.make

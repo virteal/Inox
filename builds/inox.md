@@ -16,6 +16,8 @@
 | a-primitive? | true if TOS tag is also the name of a primitive |
 | return | jump to return address |
 | actor | push a reference to the current actor |
+| l9 | push a reference to the l9 task of the current actor |
+| set-current-l9-task | set the l9 task of the current actor |
 | switch-actor | non preemptive thread switch |
 | make-actor | create a new actor with an initial IP |
 | breakpoint | to break into the debugger |
@@ -61,14 +63,13 @@
 | FATAL | display error message and stacks, then clear stacks & exit eval loop |
 | control-dump | dump the control stack, ie print it |
 | text.quote | turn a text into a valid text literal |
-| text.to-integer | convert a text literal to an integer |
-| text.to-integer | convert a text literal into an integer |
+| text.as-integer | convert a text literal to an integer |
 | text.hex-to-integer | convert a text literal to an integer |
 | text.octal-to-integer | convert a text literal to an integer |
 | text.binary-to-integer | converts a text literal to an integer |
-| integer-to-hex | converts an integer to an hexadecimal text |
-| integer-to-octal | convert an integer to an octal text |
-| integer-to-binary | converts an integer to a binary text |
+| intege.as-hexadecimal | converts an integer to an hexadecimal text |
+| integer.as-octal | convert an integer to an octal text |
+| integer.as-binary | converts an integer into a binary text |
 | text.unquote | turns a JSON text into a text |
 | text.pad | pads a text with spaces |
 | text.trim | trims a text |
@@ -119,7 +120,7 @@
 | to-float | convert something into a float |
 | to-float | convert something into a float |
 | float.to-integer | convert a float to an integer |
-| float.to-text | convert a float to a text |
+| float.as-text | convert a float to a text |
 | float.add | add two floats |
 | float.subtract | subtract two floats |
 | float.multiply | multiply two floats |
@@ -169,9 +170,11 @@
 | definition-to-text | decompile a definition |
 | verb.to-text-definition | decompile a verb definition |
 | verb.from | convert into a verb if verb is defined, or void if not |
+| primitive.from | convert into a primitive if primitive is defined, or void |
 | peek | get the value of a cell, using a cell's address |
 | poke | set the value of a cell, using a cell's address |
 | make-constant | using a value and a name, create a constant |
+| define-verb | using a definition and a name, create a verb |
 | tag.defined? | true if text described tag is defined |
 | verb.defined? | true if text described verb is defined |
 | tag.to_verb | convert a tag to a verb or void |
@@ -179,6 +182,7 @@
 | make-local | create a local variable in the control stack |
 | forget-parameters | internal, return from function with parameters |
 | run-with-parameters | run a block with the "function" protocol |
+| parameters | create local variables for the parameters of a verb |
 | get-local | copy a control variable to the data stack |
 | inlined-get-local | copy a control variable to the data stack, internal |
 | set-local | assign a value to a local variable |
@@ -256,7 +260,8 @@
 | it | access to the it local variable |
 | it! | change the value of the it local variable |
 | run-method-by-name | using a text to identify the method |
-| run-method-by-tag | using a tag to identify the method |
+| run-method | using a tag to identify the method |
+| class-method-tag | get the tag of a method for a class |
 | run-with-it | like run but with an "it" local variable |
 | words_per_cell | plaftorm dependent, current 1 |
 | CSP | Constrol Stack Pointer, address of the top of the control stack |
@@ -288,7 +293,7 @@
 | inline | make the last defined verb inline |
 | last-token | return the last tokenized item |
 | last-token-info | return the last tokenized item info, including it's |
-| tag | make a tag, from a text typically |
+| as-tag | make a tag, from a text typically |
 | tag.run | run a verb by tag, noop if verb is not defined |
 | text.run | run a verb by text name |
 | verb.run | run a verb |
@@ -301,7 +306,7 @@
 | partial | attach values to a runnable value to make a new block |
 | block.partial | attach values to a block, making a new block |
 | attach | attach a single value to a block, a target object typically |
-| as-block | convert a runnable value to a new block |
+| as-block | convert a runnable value into a block |
 | block.join | join two blocks into a new block |
 | make-it | initialize a new "it" local variable |
 | jump-it | run a definition with a preset "it" local variable |
@@ -322,7 +327,7 @@
 | next-token | read the next token from the default input stream |
 | set-literate | set the tokenizer to literate style |
 | integer-text? | true if text is valid integer |
-| parse-integer | convert a text to an integer |
+| parse-integer | convert a text to an integer, or /NaN if not possible |
 | compiler-enter | Entering a new parse context |
 | compiler-leave | Leaving a parse context |
 | compile-definition-begin | Entering a new verb definition |
@@ -350,5 +355,6 @@
 | now | return number of milliseconds since start |
 | instructions | number of instructions executed so far |
 | the-void | push the void, typed void, named void, valued 0 |
+| _ | synonym for the-void, push the void, typed void, named void, valued 0 |
 | memory-visit | get a view of the memory |
 | source | evaluate the content of a file |

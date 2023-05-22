@@ -82,14 +82,14 @@ to .->           object.set.  operator
 to init-globals
   constant: /inox-version      is: "v0.4.0";
   constant: /inox-version-time is: 1674589501; ~~ ToDo: overflow when ms
-  constant: /true              is: cast( true:1,    1 );
-  constant: /false             is: cast( false:0,   1 );
-  constant: /on                is: cast( on:1,      1 );
-  constant: /off               is: cast( off:0,     1 );
-  constant: /yes               is: cast( yes:1,     1 );
-  constant: /no                is: cast( no:0,      1 );
-  constant: /failure           is: cast( failure:0, 1 );
-  constant: /success           is: cast( success:1, 1 );
+  constant: /true              is: cast( 1 :true,    1 );
+  constant: /false             is: cast( 0 :false,   1 );
+  constant: /on                is: cast( 1 :on,      1 );
+  constant: /off               is: cast( 0 :off,     1 );
+  constant: /yes               is: cast( 1 :yes,     1 );
+  constant: /no                is: cast( 0 :no,      1 );
+  constant: /failure           is: cast( 0 :failure, 1 );
+  constant: /success           is: cast( 1 :success, 1 );
   global:   /safe              is: "safe";
 init-globals
 
@@ -112,46 +112,46 @@ to :no?       name-of /no      =
 
 ~~ Class hierarchy
 
-to thing.super-class      the-void
+to thing.superclass     the-void
 to thing.class          /thing
 
-to value.super-class         /thing
+to value.superclass         /thing
 to value.class              /value
 
-to void.super-class            /value
+to void.superclass            /value
 to void.class                 /void
 
-to boolean.super-class         /value
+to boolean.superclass         /value
 to boolean.class              /boolean
 
-to tag.super-class             /value
+to tag.superclass             /value
 to tag.class                  /tag
 
-to number.super-class          /value
+to number.superclass          /value
 to number.class               /number
 
-to integer.super-class           /number
+to integer.superclass           /number
 to integer.class                /integer
 
-to float.super-class             /value
+to float.superclass             /value
 to float.class                  /float
 
-to text.super-class              /value
+to text.superclass              /value
 to text.class                   /text
 
-to object.super-class        /thing
+to object.superclass        /thing
 to object.class             /object
 
-to native.super-class            /object
+to native.superclass            /object
 to native.class                 /native
 
-to proxy.super-class             /object
+to proxy.superclass             /object
 to proxy.class                  /proxy
 
-to block.super-class             /object
+to block.superclass             /object
 to block.class                  /block
 
-to verb.super-class              /object
+to verb.superclass              /object
 to verb.class                   /verb
 
 
@@ -333,12 +333,8 @@ to text.last          text.but
 ~~ text.join-characters
 
 
-to text.to-tag    tag
-to text.defined?  tag.defined?()
-
-~~ tag class
-to tag.from  .to-tag
-
+to text.as-tag    as-tag
+to text.defined?  tag.defined?
 
 to verb.definition  definition
 

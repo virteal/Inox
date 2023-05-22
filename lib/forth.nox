@@ -65,8 +65,8 @@ forth-dialect
 : SPACE      32 EMIT                  ;
 : SPACES     { SPACE } SWAP times:do: ; \ ToDo: { and } defining words
 : CHAR       ascii-code               ;
-: >R         to-control               ;
-: R>         from-control             ;
+: >R         >control                 ;
+: R>         control>                 ;
 : @R         fetch-control            ;
 : IMMEDIATE  immediate!               ; IMMEDIATE
 : !          poke                     ;
