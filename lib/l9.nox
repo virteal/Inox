@@ -83,6 +83,7 @@ to make-l9-task
   with parent/ fork?/ spawn?/ parameters
   l9-next-id ++ l9-next-id!
   with
+    actor      :actor
     l9-next-id :id
     ""         :label
     false      :a-fork?
@@ -96,13 +97,18 @@ to make-l9-task
     array[]    :fork-results
     0          :fork-parent-index
   with-length{ :l9-task make-object }
+  >it
   if: $parent something? then: {
-    _l9-task dup .parent> .subtasks> .push
+    @parent.subtasks.push( it )
+    if: $fork? then: {
+      @parent.forks.push( it )
+    };
   } else: {
-    _l9-task l9-root!
-    _l9-task set-current-l9-task
-    "root" _l9-task .label!
+    it l9-root!
+    it set-current-l9-task
+    "root" @label!
   };
+  it
 
 to l9-task.superclass  /thing
 to l9-task.class       /l9-task
@@ -115,7 +121,7 @@ to l9-initialize
     label/         attribute
     should-stop?/  read-only-attribute
     done?/         read-only-attribute
-    cancel/        it-method{ true it .>canceled?!   }
+    cancel/        it-method{ true @canceled?! }
     canceled?/     method{ .$canceled? }
     should-stop/   method{ true swap .>should-stop?! }
     a-fork?/       read-only-attribute

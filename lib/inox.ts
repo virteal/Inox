@@ -3489,7 +3489,7 @@ static Text tbut( const Text& s, int n ){
 
 /*
  *  tcut( text, n )
- *    Return n first characters of text, last characters if n is negative.
+ *    Return n first characters of text, or but last one if n is negative.
  *    I.e. a "cut" of the first n characters off the whole text.
 */
 
@@ -15261,6 +15261,38 @@ primitive( "extend-object", primitive_extend_object );
  *  object.get - access a data member of an object
  */
 
+
+function object_get( ptr : Cell, n : Tag ) : Cell {
+// Get the value of a data member of an object
+
+  // Add an indirection level if objet is extensible
+  if( type_of( ptr ) == type_reference ){
+    ptr = reference_of( ptr );
+  }
+
+  let limit = 0;
+  if( check_de ){
+    limit = ptr + object_length( ptr ) * ONE;
+  }
+
+  // Skip the class name & length header first cell
+  ptr += ONE;
+
+  while( name_of( ptr ) != n ){
+    // ToDo: go backward? That would process the array as a stack
+    ptr += ONE;
+    if( check_de && limit != 0 ){
+      if( ptr > limit ){
+        return 0;
+      }
+    }
+  }
+
+  // Found
+  return ptr
+}
+
+
 function primitive_object_get(){
 // Copy the value of an instance variable from an object
 
@@ -15282,29 +15314,13 @@ function primitive_object_get(){
     // ToDo: fatal error
   }
 
-  // Add an indirection level if objet is extensible
-  if( type_of( ptr ) == type_reference ){
-    ptr = reference_of( ptr );
-  }
-
-  let limit = 0;
-  if( check_de ){
-    limit = ptr + object_length( ptr ) * ONE;
-  }
-
-  // Skip the class name & length header first cell
-  ptr += ONE;
-
-  const n = value_of( tos );
-  while( name_of( ptr ) != n ){
-    // ToDo: go backward? That would process the array as a stack
-    ptr += ONE;
-    if( check_de && limit != 0 ){
-      if( ptr > limit ){
-        FATAL( "Object variable not found, named " + tag_as_text( n ) );
-        return;
-      }
-    }
+  ptr = object_get( ptr, value_of( tos ) );
+  if( ptr == 0 ){
+    FATAL(
+      "Object variable not found, named "
+      + tag_as_text( value_of( tos ) )
+    );
+    return 0;
   }
 
   clear( tos );
@@ -16829,11 +16845,10 @@ primitive( "it!", primitive_set_it );
 let run_definition = 0;
 // = definition_of( tag_run );
 
-function run_method( name : Tag ){
+function run_target_method( target : Cell, name : Tag ){
 // Run a method on an target value or object
 
   // Determine the class of the target value or object
-  const target = TOS;
   const target_type = type_of( target );
   const target_class
   = target_type == type_reference
@@ -16852,6 +16867,11 @@ function run_method( name : Tag ){
   defer( tag_run, run_definition );
   call_verb( target_class );
 
+}
+
+
+function run_method( name : Tag ){
+  run_target_method( TOS, name );
 }
 
 
@@ -16907,16 +16927,20 @@ primitive( "class-method-tag", primitive_class_method_tag );
  *  run-with-it - like run but with an "it" local variable
  */
 
+function make_local_it( cell : Cell ){
+  CSP += ONE;
+  move_cell( cell, CSP );
+  set_name( CSP, tag_it );
+  // Schedule forget-it execution
+  defer( tag_forget_it, forget_it_definition );
+}
+
+
 function primitive_run_with_it(){
   const block = pop_block();
   // Push normal return address onto control stack
   call( tag_run_with_it, block );
-  // Push local variable 'it'
-  CSP += ONE;
-  move_cell( pop(), CSP );
-  set_name( CSP, tag_it );
-  // Schedule execution of local variables cleaner
-  defer( tag_forget_it, forget_it_definition );
+  make_local_it( pop() );
 }
 primitive( "run-with-it", primitive_run_with_it );
 
@@ -21730,6 +21754,7 @@ function token_is_special_verb() : boolean {
   if( token_length < 2 )return false;
 
   // .xxx is for member access, either .xxx> or .>xxx, ie read or write
+  // @xxx is for :it memmber access, either @xxx or @xxx!, ie read or write
   // :xxx is for naming
   // /xxx is for tags, #xxx too
   // #xx# is for verb literals
@@ -21737,7 +21762,7 @@ function token_is_special_verb() : boolean {
   // $xxx is for read access to local variables, xxx> too
   // >xxx is for write access to local variables
   // _xxx is for read access to data variables
-  if( tidx( ".:/#>_$", token_first_ch ) >= 0 )return true;
+  if( tidx( ".@:/#>_$", token_first_ch ) >= 0 )return true;
 
   // xxx/ is for tags
   // xxx> is for read access to local variables
@@ -21794,6 +21819,25 @@ function eval_special_form() : boolean {
   const first_ch  = token_first_ch;
   const second_ch = tmid( token_text, 1, 2 );
   const last_ch   = token_last_ch;
+
+    // @xx!, it is a lookup in the :it object with write
+  if( teq( first_ch,  "@" )
+  &&  teq( last_ch, "!" )
+  && token_length > 2
+  ){
+    eval_do_machine_code( tag_it );
+    eval_do_tag_literal( operand_X_( token_text ) );
+    eval_do_machine_code( tag_object_set );
+    return true;
+  }
+
+  // @xxx, it is a lookup in the :it object with fetch
+  if( teq( first_ch,  "@" ) ){
+    eval_do_machine_code( tag_it );
+    eval_do_tag_literal( operand_X( token_text ) );
+    eval_do_machine_code( tag_object_get );
+    return true;
+  }
 
   // .>xx!, to set an object property
   // ToDo: .>xxx to push a value into an object
@@ -21943,6 +21987,103 @@ function eval_special_form() : boolean {
 
   // It's not so special after all
   return false;
+}
+
+
+const tag_run_at_method = tag( "run-@method" );
+
+/*
+ *  run-@method - run an it method on a path described target
+ */
+
+function primitive_run_at_method(){
+
+  // The stack holds the target, named :it
+  // Then the tags to follow to reach the final target
+  const tos = TOS;
+
+  // First lookup for the :it value
+  let it_ptr = TOS;
+  while( true ){
+    if( name_of( it_ptr ) == tag_it )break;
+    // Check stack limit
+    if( stack_de && ( it_ptr == ACTOR_data_stack ) ){
+      FATAL( "run-@method-block: no :it found" );
+      return;
+    }
+    it_ptr -= ONE;
+  }
+  const ntags = tos - it_ptr;
+
+  // There should be at least one tag, it is the name of the method
+  if( check_de && ntags < 1 ){
+    FATAL( "run-@method-block: no method name found" );
+    return;
+  }
+
+  // Then lookup for the parameters
+  const stack_ptr = it_ptr - ONE;
+  // Check stack limit
+  if( stack_de && ( stack_ptr <= ACTOR_data_stack ) ){
+    FATAL( "run-@method-block: no block found" );
+    return;
+  }
+
+  // Now let's follow the path
+  let ii = 1;
+  let final_it_ptr = it_ptr;
+  let new_ptr;
+  let tag;
+  while( ii < ntags ){
+    tag = eat_tag( it_ptr + ii );
+    new_ptr = object_get( final_it_ptr, tag );
+    if( new_ptr == 0 ){
+      FATAL( "Object variable not found, named " + tag_as_text( tag ) );
+      return 0;
+    }
+    clear( final_it_ptr );
+    final_it_ptr = new_ptr;
+    ii += 1;
+  }
+
+  // Get the name of the method to run
+  const method_tag = eat_tag( it_ptr + ii );
+
+  // Schedule the method to run
+  run_target_method( final_it_ptr, method_tag );
+
+  // It will have an :it variable
+  make_local_it( final_it_ptr );
+
+  // The parameters will be at the top of the stack
+  TOS = stack_ptr;
+
+}
+primitive( "run-@method", primitive_run_at_method );
+
+
+function eval_path( path : ConstText ){
+  // there are . separated tags, last one is a method call
+  let auto_remain = path;
+  let head = path;
+  let tail = 0;
+  while( tlen( auto_remain ) != 0 ){
+    tail = tidx( auto_remain, "." );
+    if( tail == -1 ){
+      eval_do_tag_literal( auto_remain );
+      break;
+    }
+    head = tcut( auto_remain, tail );
+    auto_remain = tbut( tbut( auto_remain, tail ), 1 );
+    eval_do_tag_literal( head );
+  }
+}
+
+
+function eval_at_call( path : ConstText ){
+  eval_do_machine_code( tag_it );
+  eval_path( path );
+  eval_do_machine_code( tag_run_at_method );
 }
 
 
@@ -22399,6 +22540,15 @@ function primitive_eval(){
           ){
             eval_do_tag_literal( operand_X( call_verb_name ) );
             eval_do_machine_code( tag_run_method_by_name );
+          // If @xx.yy.zz{ call
+          } else if( tlen( call_verb_name ) > 1
+          &&  teq(
+            /**/ call_verb_name[0],
+            //c/ call_verb_name.at( 0 ),
+             "@"
+            ) // ToDo: first_ch?
+          ){
+            eval_at_call( operand_X( call_verb_name ) );
           // If xxx{ call
           }else{
             if( verb_exists( call_verb_name ) ){
@@ -22463,6 +22613,16 @@ function primitive_eval(){
             // ToDo: should it be a tag or a text literal?
             eval_do_tag_literal( operand_X( call_verb_name ) );
             eval_do_machine_code( tag_run_method_by_name );
+
+          // If ) of @xx.yy.zz( call
+          } else if( tlen( call_verb_name ) > 1
+          &&  teq(
+            /**/ call_verb_name[0],
+            //c/ call_verb_name.at( 0 ),
+             "@"
+            ) // ToDo: first_ch?
+          ){
+            eval_at_call( operand_X( call_verb_name ) );
 
           // ) of xxx( )
           }else{

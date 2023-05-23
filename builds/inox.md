@@ -347,6 +347,7 @@
 | compile-block-end | Close the definition of a new block |
 | eval | run source code coming from the default input stream |
 | eval | evaluate some source code |
+| run-@method | run an it method on a path described target |
 | trace | output text to console.log(), preserve TOS |
 | inox-out | output text to the default output stream |
 | trace-stacks | dump user friendly stacks trace |
