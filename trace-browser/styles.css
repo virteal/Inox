@@ -1,0 +1,48 @@
+.container {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+}
+
+.log-entries {
+  flex: 1;
+  overflow-y: scroll;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.log-entries li.selected {
+  background-color: #eee;
+  font-weight: bold;
+}
+
+.file-content {
+  flex: 2;
+  overflow-y: scroll;
+  font-family: monospace;
+  white-space: pre-wrap;
+  padding: 1em;
+  border-left: 1px solid #ccc;
+}
+
+.log-entry {
+  cursor: pointer;
+  padding: 0.5em;
+}
+
+.log-entry:hover {
+  background-color: #eee;
+}
+
+.highlight {
+  background-color: #ffc;
+}
+
+.line-number {
+  display: inline-block;
+  width: 2em;
+  text-align: right;
+  margin-right: 0.5em;
+  color: #999;
+}
