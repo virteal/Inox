@@ -9209,6 +9209,17 @@ primitive( "return", primitive_return );
 // Patch verb definition to reference verb 0
 /*P*/ set_return_cell( definition_of( tag_return ) );
 
+/*
+ *  return-if - conditionnal return
+ */
+
+function primitive_return_if(){
+  if( pop_boolean() ){
+    pop_ip();
+  }
+}
+primitive( "return-if", primitive_return_if );
+
 
 function trace_context( msg : TxtC ){
   let auto_m = "";
@@ -12836,6 +12847,12 @@ primitive( "void?", primitive_is_void );
 
 operator_primitive( "void?", primitive_is_void );
 
+
+/*
+ *  nothing? - synonym for void?
+ */
+
+primitive( "nothing?", primitive_is_void );
 
 
 /*
@@ -17711,6 +17728,7 @@ function run(){
 
             if( CSP != old_csp
             && verb_id != tag( "return" )
+            && verb_id != tag( "return-if" )
             && verb_id != tag( "run" )
             && verb_id != tag( "if" )
             && verb_id != tag( "if-else" )
