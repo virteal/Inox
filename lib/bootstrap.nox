@@ -46,10 +46,12 @@ to then{          if.            inline
 to else{          if-not.        inline
 to finally{       on-return.     inline
 
-to {}             noop
+to {}             { }.           inline
 to {drop}         /drop definition literal. immediate!
-to range?         dup <= and{ >= }
-to range<?        dup <  and{ >= }
+to in-range?      dup <= and{ >= }
+to in-range<?     dup <  and{ >= }
+to in-range>?     dup <= and{ >  }
+to in-range><?    dup <  and{ >  }
 
 
 to clear-stacks   clear-data clear-control
@@ -178,16 +180,16 @@ to dump-object  ~| any -- any |~
   ToDo: "dump each member";
 
 
-to method  ~| target a-block -- |~  run-with-it. inline
+to method{ ~| target a-block -- |~  run-with-it. inline
 to .{      ~| target a-block -- |~  run-with-it. inline
 to >{      ~| target a-block -- |~  run-with-it. inline
 
 
 ~~ verbs with formal parameters are functions called with arguments
-to with      /with
-to w/        /with
-to function  run-with-parameters. inline
-to /{        run-with-parameters. inline
+to with       /with
+to w/         /with
+to function{  run-with-parameters. inline
+to /{         run-with-parameters. inline
 
 
 to decrement  1 -. inline

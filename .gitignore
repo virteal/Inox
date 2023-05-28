@@ -1,6 +1,9 @@
 *.js.map
 *.js
+!index.js
 *.log
+*.trace
+!test.trace
 *.out
 *.pid
 *.gz
