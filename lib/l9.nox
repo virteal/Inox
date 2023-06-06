@@ -11,125 +11,402 @@ The l8 kernel was a single-threaded, event-driven kernel. The github repository 
 
  |~
 
-to with-debug-info     debug-info/enable/log.
-to without-debug-info  debug-info/disable/log.
-
-normal-debug with-debug-info
-
-to thing  >thing-todo FATAL( "thing class cannot " & $thing-todo )
-
-to class{
-  with class-name/ class-block/ parameters
-  /thing >class-superclass
-  $class-block .run
-
-to superclass  >class-superclass!
-
+to ((          "{|" as-verb run.  immediate!
+to ))  literal "|}" as-verb run.  immediate!
 to does{  define-verb
+to dump-last-verb  last-verb .as-text-definition out
 
-to class-method{
-  with class-method-name/ class-method-block/ parameters
-  ( $class-name & "." & $class-method-name ) >verb-name
-  define-verb( $verb-name as-tag, $class-method-block )
+to with-debug-info     debug-info/enable/log
+to without-debug-info  debug-info/disable/log
 
-to method{
-  with method-name/ method-block/ parameters
-  ( $class-name & "." & $method-name ) >verb-name
-  define-verb( $verb-name as-tag, $method-block )
+. normal-debug with-debug-info
 
-to it-method{
-  with method-name/ method-block/ parameters
-  ( $class-name & "." & $method-name ) >verb-name
-  attach( $method-block, { run-with-it } ) >method-bounded-block
-  define-verb( $verb-name as-tag, $method-bounded-block )
+to drop-with     swap, assert{ top with? }, drop
+to with-length   with data-index
+to with-length{  >control, with-length, control>, run, drop-with
 
-to class-attribute
-  >attribute-name
-  ( $class-name & "." & $attribute-name ) >verb-name
-  make-global( $verb-name as-tag, the-void )
+to array[]  make.extensible-object( (( 0 :array )) )
+to list[]   make.extensible-object( (( 0 :list  )) )
+to stack[]  make.extensible-object( (( 0 :stack )) )
+to queue[]  make.extensible-object( (( 0 :queue )) )
+to map[]    make.extensible-object( (( 0 :map   )) )
+to set[]    make.extensible-object( (( 0 :set   )) )
 
-to attribute
-  >attribute-name
-  ( $class-name & "." & $attribute-name ) >verb-name
-  attach( $attribute-name, { object.get } ) >verb-getter
-  ( $verb-name & "!" ) >verb-setter-name
-  attach( $attribute-name, { object.set } ) >verb-setter
-  define-verb( $verb-name        as-tag, $verb-getter )
-  define-verb( $verb-setter-name as-tag, $verb-setter )
+to object.each{  >code, >it
+  this-it
+  from: 0 to: @length - 1 do: {
+    $code .run( @object.@( ii ) )
+  }
 
-to read-only-attribute   attribute
+to object.each-index( >code, >it
+  this-it
+  from: 0 to: @length - 1 do: {
+    ii $code .run
+  }
+
+to object.each-key{  >code, >it
+  this-it
+  from: 0 to: @length - 1 do: {
+    name-of( ii $this .@ ) $code .run
+  }
+
+to array.push  stack.push
+to list.push   stack.push
+to array.pop   stack.pop
+to list.pop    stack.pop
+
+. global: classes/ is: map[];
+
+
+to classes.get  classes .?@
+
+to method-text-name >method >class
+  ( $class & "." & $method )
+
+to method-name  method-text-name as-tag
+
+to define-method  with class/ method/ code/ parameters
+  define-verb( method-name( $class, $method ), $code )
+  ( $class, $method ) classes .!
+
+to understand?  >method >target
+  class-of( $target ) >class-name
+  tag.run( $class-name, $method, $class-name ) >method-definition
+  drop drop
+  $method-definition something?
+
+to make{  >make-code >it
+  with
+    $make-code run
+  with-length{ make.object( it rename ) }
+
+to make.metaclass  >class-name
+  metaclass/make{
+    $class-name :name
+    map[]       :definitions
+    map[]       :class-definitions
+    map[]       :attributes
+    /metaclass  :class
+    /thing      :superclass-name
+  } >metaclass
+  ( $class-name, $metaclass ) classes .!
+  $metaclass
+
+to update-classes  >pattern
+  definitions >definitions
+  $definitions .each{ >full-name
+    text.find( $full-name, "." ) >dot-index
+    break-if( $dot-index nothing? )
+    $full-name .cut( $dot-index ) as-tag >class-name
+    break-unless( $class-name in? classes  )
+    break-unless( $pattern = "*"  or{ ( $class-name = $pattern ) } )
+    $full-name .but( $dot-index + 1 ) as-tag >method-name
+    ( $class-name, $method-name ) classes .!
+  }
+  if: ( $pattern = "*" ) then: {
+    clear-method-cache( all/, all/ )
+  } else: {
+    clear-method-cache( $pattern as-tag, all/ )
+  };
+
+to update-all-classes  update-classes( "*" )
+to update-class        update-classes
+
+to class{  with class-name/ code/ parameters
+  $class-name >it
+  make.metaclass( it ) >metaclass
+  define-method(  it, /class, attach( it, {} ) )
+  classes.get( thing/ ) >class-superclass
+  define-method( it, /superclass, attach( $class-superclass, {} ) )
+  update-class(  it )
+  $code .run
+  define-method( it, /superclass, attach( $class-superclass, {} ) )
+  define-verb(   it, attach( $class-superclass .name as-verb, {} ) )
+  update-class(  it )
+
+to extend-class{ with class-name/ code/ parameters
+  $class-name >it
+  return-unless( it in? classes )
+  update-class( it )
+  $code .run
+  update-class( it )
+
+to superclass  classes.get >class-superclass!
+
+to maker{  >code
+  define-method( make/, it, attach( it, $code ) )
+
+to class-method{  with name/ code/ parameters
+  define-method( it, $name, $code )
+
+to method{  with name/ code/ parameters
+  define-method( it, $name, $code )
+
+to it-method{  with name/ code/ parameters
+  attach( $code, { run-with-it } ) >bounded-code
+  define-method( it, $name, $bounded-code )
+
+to class-attribute  >attribute-name
+  make.global( method-name( it, $attribute-name ), _ )
+
+to attribute  >name
+  attach( $name, { object.@ } ) >getter
+  define-method( it, $name, $getter )
+  attach( $name, { object.! } ) >setter
+  define-method( it, $name & /!, $setter )
+
+to read-only-attribute   attribute.
 to write-only-attribute  attribute.
 
+debug
 
-global: /l9-next-id is: 0 ;
-global: /l9-root    is: the-void ;
-
-to drop-with    swap, assert{ dup /with = }, drop
-to with-length  /with data-index
-to with-length{ >control, with-length, control>, run, drop-with
-
-to array[]        0 :array, make-extensible-object
-to list[]         0 :list,  make-extensible-object
-to stack[]        0 :stack, make-extensible-object
-to queue[]        0 :queue, make-extensible-object
-to map[]          0 :map,   make-extensible-object
-to set[]          0 :set,   make-extensible-object
-to array.push     stack.push
-to list.push      stack.push
-to array.pop      stack.pop
-to list.pop       stack.pop
-
-to make-l9-task
-  with parent/ fork?/ spawn?/ parameters
-  l9-next-id ++ l9-next-id!
-  with
-    actor      :actor
-    l9-next-id :id
-    ""         :label
-    false      :a-fork?
-    false      :a-spawn?
-    false      :done?
-    false      :canceled?
-    false      :should-stop?
-    $parent    :parent
-    array[]    :subtasks
-    array[]    :forks
-    array[]    :fork-results
-    0          :fork-parent-index
-  with-length{ :l9-task make-object }
-  >it
-  if: $parent something? then: {
-    @parent.subtasks.push( it )
-    if: $fork? then: {
-      @parent.forks.push( it )
-    };
-  } else: {
-    it l9-root!
-    it set-current-l9-task
-    "root" @label!
-  };
-  it
-
-to l9-task.superclass  /thing
-to l9-task.class       /l9-task
-to l9-task             thing
-
-to l9-initialize
-  l9-task/ class{
-    thing/         superclass
-    current/       class-method{ l9 }
-    label/         attribute
-    should-stop?/  read-only-attribute
-    done?/         read-only-attribute
-    cancel/        it-method{ true @canceled?! }
-    canceled?/     method{ .$canceled? }
-    should-stop/   method{ true swap .>should-stop?! }
-    a-fork?/       read-only-attribute
-    a-spawn?/      read-only-attribute
+to initialize-classes
+  metaclass/class{
+    thing/superclass
+    name/read-only-attribute
+    methods/read-only-attribute
+    class-methods/read-only-attribute
   }
-  make-l9-task( _, false, false ), drop.
+  void/class{              void/superclass        }
+  thing/class{             void/superclass        }
+    value/class{           thing/superclass       }
+      boolean/class{       value/superclass       }
+      tag/class{           value/superclass       }
+      number/class{        value/superclass       }
+      integer/class{       number/superclass      }
+      float/class{         number/superclass      }
+      text/class{          value/superclass       }
+      runnable/class{      value/superclass       }
+        verb/class{        runnable/superclass    }
+        primitive/class{   runnable/superclass    }
+    object/class{          thing/superclass       }
+      native/class{        object/superclass      }
+      proxy/class{         object/superclass      }
+      block/class{         object/superclass      }
+      collection/class{    object/superclass      }
+        array/class{       collection/superclass  }
+        list/class{        collection/superclass  }
+        stack/class{       collection/superclass  }
+        queue/class{       collection/superclass  }
+        set/class{         collection/superclass  }
+          map/class{       set/superclass         }
+  update-all-classes
+initialize-classes
 
-l9-initialize
+to thing  >method >class
+  $class $method
+  ~~ classes.$class.superclass.definitions.$method
+  object.?@( $method,
+    map.?@( definitions/,
+      object.?@( superclass/,
+        map.?@( $class, classes )
+  ) ) )
+  top something? then{
+    update-method-cache
+  }
+
+to map  thing
+
+
+global: l9-next-id/ is: 0;
+global: l9-root/    is: _;
+
+to initialize-l9
+
+  promise-handler/class{
+    maker{
+      make{
+        _ :next-promise
+        _ :on-resolve
+        _ :on-reject
+      }
+    }
+    schedule/it-method{ >promise
+      if: @next-promise something? then: {
+        promise> @next-promise.schedule
+      } else: {
+        make.promise @next-promise!
+        ~~ ToDo: resolve/reject with the result of the on-resolve/on-reject
+      }
+    }
+  }
+
+  promise/class{
+    maker{
+      make{
+        false  :resolved?
+        _      :resolve-value
+        false  :rejected?
+        _      :reject-reason
+        list[] :handlers
+      }
+    }
+    resolved?/method{ .$resolved? }
+    rejected?/method{ .$rejected? }
+    resolve/it-method{
+      >value
+      return-if( @resolved? or @rejected? )
+      true @resolved?!
+      value> @resolve-value!
+      @schedule
+    }
+    reject/it-method{
+      >reason
+      return-if( @resolved? or @rejected? )
+      true @rejected?!
+      reason> @reject-reason!
+      @schedule
+    }
+    then/it-method{
+      make.promise-handler >handler
+      @handlers.push( $handler )
+      @schedule
+    }
+    schedule/it-method{
+      return-if( not @resolved? and not @rejected? )
+      @handlers.each{ .schedule }
+      @handlers.clear
+    }
+  }
+
+  semaphore/class{
+    maker{
+      make{
+        0       :count
+        queue[] :waiters
+        false   :closed?
+      }
+    }
+    count/attribute
+    wait/it-method{
+      @count -- @count!
+      return-if( @count > 0 )
+      make.promise @waiters.enqueue
+      @pause
+    }
+    signal/it-method{
+      @count ++ @count!
+      @schedule
+    }
+    schedule/it-method{
+      loop{
+        break-if( @count <= 0 )
+        @count -- @count!
+        break-if( @waiters.empty? )
+        /signal @waiters.dequeue .resolve
+      }
+    }
+  }
+
+  task/class{
+    thing/superclass
+    queue/class-attribute
+    current/class-method{ l9 }
+    maker{  with parent/ fork?/ spawn?/ it/ parameters
+      l9-next-id ++ l9-next-id!
+      it make{
+        $parent
+        actor      :actor
+        l9-next-id :id
+        ""         :label
+        true       :paused?
+        false      :a-fork?
+        false      :a-spawn?
+        false      :done?
+        false      :canceled?
+        false      :should-stop?
+        _          :result
+        _          :error
+        _          :promise
+        array[]    :subtasks
+        array[]    :forks
+        array[]    :fork-results
+        0          :fork-parent-index
+      } >it
+      if: $parent something? then: {
+        @parent.subtasks.push( it )
+        if: $fork? then: {
+          @parent.forks.push( it )
+        };
+      } else: {
+        it l9-root!
+        it current-l9-task!
+        "root" @label!
+      };
+      it
+    }
+    actor/attribute
+    label/attribute
+    paused?/read-only-attribute
+    should-stop?/read-only-attribute
+    stopping?/it-method{ ( @should-stop? and not @done ) }
+    done?/read-only-attribute
+    stopped?/method{ .$done? }
+    cancel/it-method{
+      return-if( @done? or @canceled? )
+      true @canceled?!
+      @subtasks.each{ .cancel }
+      ( it not= l9 ) then{
+        @raise( /canceled )
+      }
+    }
+    canceled?/method{ .$canceled? }
+    stop/method{ true swap .>should-stop?! }
+    success?/it-method{ ( @done? and @error nothing? ) }
+    failure?/it-method{ ( @done? and @error something? ) }
+    result/read-only-attribute
+    error/read-only-attribute
+    a-fork?/read-only-attribute
+    a-spawn?/read-only-attribute
+    tasks/method{ .$subtasks }
+    parents/it-method{
+      list[] >parents
+      while: { it something? } do: {
+        it $parents .push
+        @parent it!
+      };
+      $parents
+    }
+    ip/it-method{ @actor.ip }
+    data-stack/it-method{ @actor.data-stack }
+    control-stack/it-method{ @actor.control-stack }
+    tos/it-method{ @actor.tos }
+    csp/it-method{ @actor.csp }
+    pause/it-method{  true  @paused?!, @schedule }
+    resume/it-method{ false @paused?!, @schedule }
+    await/it-method{  with condition/ parameters
+    }
+    signal/it-method{  with result/ parameters
+    }
+    raise/it-method{ with reason/ parameters
+    }
+    setup-stacks/it-method{  with data-stack/ control-stack/ parameters
+      $data-stack @actor         .>data-stack!
+      $data-stack .top @actor    .>tos!
+      $control-stack @actor      .>control-stack!
+      $control-stack .top @actor .>csp!
+    }
+    fork/it-method{  >ip
+      make.task( it, true, false ) it!
+      make.actor( $ip ) @actor!
+      it
+    }
+    spawn/it-method{ >ip
+      make.task( it, false, true ) it!
+      make.actor( $ip ) @actor!
+      it
+    }
+    join/it-method{  with result/ parameters
+    }
+    exit/it-method{  with result/ parameters
+    }
+    sleep/it-method{  with milliseconds/ parameters
+    }
+  }
+
+  make.task( _, false, false ), drop.
+
+initialize-l9
 
 to test-l9
   assert{ ( l9-root .label = "root" ) }
@@ -138,5 +415,4 @@ to test-l9
   l9 .cancel
   assert{ l9-root .canceled? }
   assert{ ( l9-root not .done? ) }
-
 test-l9

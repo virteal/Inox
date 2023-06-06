@@ -6,10 +6,10 @@
  |~
 
 
-void/debug-info-set-file
+void/debug-info-file!
 to while  while-1 while-2 while-3. inline
 to until  while-1 while-2 until-3. inline
-bootstrap/debug-info-set-file
+bootstrap/debug-info-file!
 
 to immediate!  immediate
 
@@ -48,10 +48,10 @@ to finally{       on-return.     inline
 
 to {}             { }.           inline
 to {drop}         /drop definition literal. immediate!
-to in-range?      dup <= and{ >= }
-to in-range<?     dup <  and{ >= }
-to in-range>?     dup <= and{ >  }
-to in-range><?    dup <  and{ >  }
+to in-range?      top <= and{ >= }
+to in-range<?     top <  and{ >= }
+to in-range>?     top <= and{ >  }
+to in-range><?    top <  and{ >  }
 
 
 to clear-stacks   clear-data clear-control
@@ -67,32 +67,33 @@ to ASSERT-hook   "ASSERT" out debugger clear-stacks
 to ASSERT        /ASSERT-hook tag.run
 to assert{       assert. inline
 
-to constant:is:  make-constant
-to global:is:    make-global
-to local:is:     make-local
+to constant:is:  make.constant
+to global:is:    make.global
+to local:is:     make.local
 
-to constant      the-void make-constant
-to global        the-void make-global
-to local         the-void make-local
+to void-constant  _ swap, make.constant
+to void-global    _ swap, make.global
+to void-local     _ swap, make.local
 
-to  ->           set-local.   operator
-to >->           set-local.   operator
-to $->           set-local.   operator
-to _->           set-data.    operator
-to .->           object.set.  operator
+to  ->           local!.    operator
+to >->           local!.    operator
+to $->           local!.    operator
+to _->           data!.     operator
+to .->           object.!.  operator
 
 to init-globals
-  constant: /inox-version      is: "v0.4.0";
-  constant: /inox-version-time is: 1674589501; ~~ ToDo: overflow when ms
-  constant: /true              is: cast( 1 :true,    1 );
-  constant: /false             is: cast( 0 :false,   1 );
-  constant: /on                is: cast( 1 :on,      1 );
-  constant: /off               is: cast( 0 :off,     1 );
-  constant: /yes               is: cast( 1 :yes,     1 );
-  constant: /no                is: cast( 0 :no,      1 );
-  constant: /failure           is: cast( 0 :failure, 1 );
-  constant: /success           is: cast( 1 :success, 1 );
-  global:   /safe              is: "safe";
+  constant: inox-version/       is: "v0.4.0";
+  constant: inox-version-time/  is: 1674589501; ~~ ToDo: overflow when ms
+  constant: true/               is: 1 ? :true;
+  constant: false/              is: 0   :false;
+  constant: on/                 is: 1 ? :on;
+  constant: off/                is: 0 ? :off;
+  constant: yes/                is: 1 ? :yes;
+  constant: no/                 is: 0 ? :no;
+  constant: failure/            is: 0 ? :failure;
+  constant: success/            is: 1 ? :success;
+  constant: with/               is: with/ :with;
+  global:   safe/               is: "safe";
 init-globals
 
 
@@ -158,15 +159,15 @@ to verb.class                   /verb
 
 
 to dump  ~| any -- any |~  ~~ Debug dump of top of stack. TOS is preserved.
-  dup, dup    ~~ any  any    any
-  class-of    ~~ any  any   _class
-  swap, dup   ~~ any _class  any   any
-  type-of     ~~ any _class  any  _type
-  swap, dup   ~~ any _class _type  any   any
-  name-of     ~~ any _class _type  any  _name
-  swap, dup   ~~ any _class _type _name  any    any
-  value-of    ~~ any _class _type _name  any   _value
-  swap        ~~ any _class _type _name _value  any
+  duplicate, duplicate    ~~ any  any    any
+  class-of                ~~ any  any   _class
+  swap, duplicate         ~~ any _class  any   any
+  type-of                 ~~ any _class  any  _type
+  swap, duplicate         ~~ any _class _type  any   any
+  name-of                 ~~ any _class _type  any  _name
+  swap, duplicate         ~~ any _class _type _name  any    any
+  value-of                ~~ any _class _type _name  any   _value
+  swap                    ~~ any _class _type _name _value  any
   out(
       "class: "  & _class
     & " type: "  & _type
@@ -186,8 +187,7 @@ to >{      ~| target a-block -- |~  run-with-it. inline
 
 
 ~~ verbs with formal parameters are functions called with arguments
-to with       /with
-to w/         /with
+to w/         with
 to function{  run-with-parameters. inline
 to /{         run-with-parameters. inline
 
@@ -200,10 +200,10 @@ to ++         increment. inline
 
 to decrement-it    it -- it!
 to increment-it    it ++ it!
-to --it            it -- dup it!
-to ++it            it ++ dup it!
-to it--            it dup -- it!
-to it++            it dup ++ it!
+to --it            it -- top it!
+to ++it            it ++ top it!
+to it--            it top -- it!
+to it++            it top ++ it!
 to it{             run-with-it
 to do-with-it      run-with-it
 
@@ -232,7 +232,7 @@ to that          that>
 to ii            it.  inline
 to ii!           it!. inline
 to upper         upper-local
-to upper!        set-upper-local
+to upper!        upper-local!
 to jj            /it 1 upper
 to jj!           /it 1 upper!
 to kk            /it 2 upper
@@ -278,7 +278,7 @@ to from:to:by:do:
 
 ~~ ToDo: array builder using a sentinel in the data stack
 ~~ to #[     with
-~~ to    ]#  inox-make-with-array
+~~ to    ]#  inox-make.with-array
 
 to try-run  ToDo( "Implement inox-try-run" )
 
@@ -353,10 +353,10 @@ to ::$       -1    range-to     . operator
 to ^..$    0 -1    range-but    . operator
 to ^...$   0 -1    range-to     . operator
 to ^::$    0 -1    range-to     . operator
-to []      dup     range-to  @  . operator
+to []      top     range-to  @  . operator
 to [^]     0  1    range-to  @  . operator
 to [$]    -1 -1    range-to  @  . operator
-to []!     dup     range-to  @! . operator
+to []!     top     range-to  @! . operator
 to [^]!    0  1    range-to  @! . operator
 to [$]!   -1 -1    range-to  @! . operator
 

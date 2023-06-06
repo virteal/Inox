@@ -24,8 +24,8 @@ Dedicated to the memory of Charles Moore, the inventor of Forth.
 inox-dialect
 
 ~~ Some global variables
-/Forth-safe-CSP  0 make-global
-/BASE           10 make-global
+/Forth-safe-CSP  0 make.global
+/BASE           10 make.global
 
 ~~ Let's jump into the Forth dimension
   "." "forth-dot"
@@ -43,9 +43,9 @@ forth-dialect
 
 : ."         34 ascii-character
              input-until
-             literal
+             compile-literal
              quote .
-             machine-code             ; immediate!
+             compile-verb            ; immediate!
 
 ( Now we can talk )
 
@@ -54,10 +54,9 @@ forth-dialect
 : LITERAL    literal                  ;
 : SWAP       swap                     ;
 : DROP       drop                     ;
-: DUP        dup                      ;
+: DUP        duplicate                ;
 : OVER       over                     ;
 : PICK       pick                     ;
-: DUP        dup                      ;
 : ?DUP       ?dup                     ;
 : 2DUP       2dup                     ;
 : ROT        rotate                   ;
