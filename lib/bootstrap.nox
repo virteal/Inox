@@ -20,7 +20,7 @@ to clear               clear-data
 to basic-out           inox-out
 to out                 /basic-out tag.run  ~~ late binding
 
-to ToDo                "ToDo: " swap text.join out
+to ToDo                "ToDo: " text.join out
 to toDo                ToDo  ~~ Literate mode friendly, it becomes ToDo
 
 ~~ Some more, using keyword syntax for ease
@@ -37,6 +37,7 @@ to do:while:      loop-while.    inline
 to loop:until:    loop-until.    inline
 to do:until:      loop-until.    inline
 
+to loop{          loop.          inline
 to and{           if.            inline
 to or{            if-not.        inline
 to then{          if.            inline
@@ -56,9 +57,9 @@ to in-range><?    top <  and{ >  }
 
 to clear-stacks   clear-data clear-control
 
-to missing-verb     "missing-verb "     over text.join out clear-stacks
-to missing-method   "missing-method "   over text.join out clear-stacks
-to missing-operator "missing-operator " over text.join out clear-stacks
+to missing-verb     "missing-verb "     over join out clear-stacks
+to missing-method   "missing-method "   over join out clear-stacks
+to missing-operator "missing-operator " over join out clear-stacks
 
 to FATAL-hook    "FATAL" out debugger clear-stacks
 to FATAL         /FATAL-hook tag.run
@@ -112,50 +113,6 @@ to :on?       name-of /on      =
 to :off?      name-of /off     =
 to :yes?      name-of /yes     =
 to :no?       name-of /no      =
-
-~~ Class hierarchy
-
-to thing.superclass     the-void
-to thing.class          /thing
-
-to value.superclass         /thing
-to value.class              /value
-
-to void.superclass            /value
-to void.class                 /void
-
-to boolean.superclass         /value
-to boolean.class              /boolean
-
-to tag.superclass             /value
-to tag.class                  /tag
-
-to number.superclass          /value
-to number.class               /number
-
-to integer.superclass           /number
-to integer.class                /integer
-
-to float.superclass             /value
-to float.class                  /float
-
-to text.superclass              /value
-to text.class                   /text
-
-to object.superclass        /thing
-to object.class             /object
-
-to native.superclass            /object
-to native.class                 /native
-
-to proxy.superclass             /object
-to proxy.class                  /proxy
-
-to block.superclass             /object
-to block.class                  /block
-
-to verb.superclass              /object
-to verb.class                   /verb
 
 
 to dump  ~| any -- any |~  ~~ Debug dump of top of stack. TOS is preserved.
@@ -308,8 +265,8 @@ to try:finally:
 
 ~~ text class
 to text.&             text.join
-to prefix             over text.join       ~| A B -- A BA |~
-to suffix             over swap text.join  ~| A B -- A AB |~
+to prefix             over join       ~| A B -- A BA |~
+to suffix             over text.join  ~| A B -- A AB |~
 to text.first         text.cut
 to text.last          text.but
 ~~ text.but-last      text.cut
@@ -336,7 +293,7 @@ to text.last          text.but
 
 
 to text.as-tag    as-tag
-to text.defined?  tag.defined?
+to text.exist?    tag.exist?
 
 to verb.definition  definition
 

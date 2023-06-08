@@ -11,13 +11,38 @@ The l8 kernel was a single-threaded, event-driven kernel. The github repository 
 
  |~
 
-to ((          "{|" as-verb run.  immediate!
-to ))  literal "|}" as-verb run.  immediate!
-to does{  define-verb
-to dump-last-verb  last-verb .as-text-definition out
-
 to with-debug-info     debug-info/enable/log
 to without-debug-info  debug-info/disable/log
+
+to text.join$  as-text >pattern
+  "" >result
+  loop{
+    $pattern .find( /$ ) >index
+    break-unless( $index something? )
+    $pattern .cut( $index ) >prefix
+    $result .join( $prefix ) >result!
+    $pattern .but( $index + 1 ) >pattern!
+    $pattern .find( " " ) >index
+    break-unless( $index something? )
+    $pattern .cut( $index ) >word
+    $pattern .but( $index + 1 ) >pattern!
+    break-unless( $word tag.exist? )
+    $result .join( $word as-tag local ) >result!
+  }
+  $result .join( $pattern )
+
+to join$  text.join$
+
+. with-debug-info normal-debug
+
+
+to ((          "{|" as-verb run.  immediate!
+to ))  literal "|}" as-verb run.  immediate!
+
+to does{  define-verb
+
+to dump-last-verb  last-verb .as-text-definition out
+
 
 . normal-debug with-debug-info
 
@@ -55,7 +80,7 @@ to list.push   stack.push
 to array.pop   stack.pop
 to list.pop    stack.pop
 
-. global: classes/ is: map[];
+. global: classes/ is: map[] :classes;
 
 
 to classes.get  classes .?@
@@ -112,7 +137,20 @@ to update-classes  >pattern
 to update-all-classes  update-classes( "*" )
 to update-class        update-classes
 
+to extend-class{ with class-name/ code/ parameters
+  assert{ verb.exist?( $class-name ) }
+  $class-name >it
+  return-unless( it in? classes )
+  update-class( it )
+  $code .run
+  update-class( it )
+
 to class{  with class-name/ code/ parameters
+  verb.exist?( $class-name ) then{
+    $class-name extend-class{ $code run }
+    return
+  }
+  assert{ verb.exist?( $class-name ) not }
   $class-name >it
   make.metaclass( it ) >metaclass
   define-method(  it, /class, attach( it, {} ) )
@@ -124,13 +162,6 @@ to class{  with class-name/ code/ parameters
   define-verb(   it, attach( $class-superclass .name as-verb, {} ) )
   update-class(  it )
 
-to extend-class{ with class-name/ code/ parameters
-  $class-name >it
-  return-unless( it in? classes )
-  update-class( it )
-  $code .run
-  update-class( it )
-
 to superclass  classes.get >class-superclass!
 
 to maker{  >code
@@ -141,6 +172,8 @@ to class-method{  with name/ code/ parameters
 
 to method{  with name/ code/ parameters
   define-method( it, $name, $code )
+
+~~ ToDo: alias-method
 
 to it-method{  with name/ code/ parameters
   attach( $code, { run-with-it } ) >bounded-code
@@ -155,17 +188,50 @@ to attribute  >name
   attach( $name, { object.! } ) >setter
   define-method( it, $name & /!, $setter )
 
-to read-only-attribute   attribute.
-to write-only-attribute  attribute.
+to getter  attribute
+to setter  attribute
 
-debug
+to thing >method >class
+  $class $method
+  ~~ classes.$class.superclass.definitions.$method
+  object.?@( $method,
+    map.?@( definitions/,
+      object.?@( superclass/,
+        map.?@( $class, classes )
+  ) ) )
+  if: top something? then: {
+    top >definition
+    update-method-cache( $class, $method, $definition )
+  } else: {
+    method-name( $class, $method ) >full-name
+    if: verb.exist?( $full-name ) then: {
+      $full-name as-verb definition >definition
+      update-method-cache( $class, $method, $definition )
+      ~~ On the fly addition to the class
+      if: verb.exist?( $class ) then: {
+        $class extend-class{
+          $method $definition "method" run
+        }
+      } else: {
+        verb.exist?( class/ ) then{
+          $class class{
+            $method $definition "method" run
+          }
+        }
+      };
+    };
+  };
+
+to map  thing
+
+. debug
 
 to initialize-classes
   metaclass/class{
     thing/superclass
-    name/read-only-attribute
-    methods/read-only-attribute
-    class-methods/read-only-attribute
+    name/getter
+    methods/getter
+    class-methods/getter
   }
   void/class{              void/superclass        }
   thing/class{             void/superclass        }
@@ -193,19 +259,6 @@ to initialize-classes
   update-all-classes
 initialize-classes
 
-to thing  >method >class
-  $class $method
-  ~~ classes.$class.superclass.definitions.$method
-  object.?@( $method,
-    map.?@( definitions/,
-      object.?@( superclass/,
-        map.?@( $class, classes )
-  ) ) )
-  top something? then{
-    update-method-cache
-  }
-
-to map  thing
 
 
 global: l9-next-id/ is: 0;
@@ -337,10 +390,10 @@ to initialize-l9
     }
     actor/attribute
     label/attribute
-    paused?/read-only-attribute
-    should-stop?/read-only-attribute
+    paused?/getter
+    should-stop?/getter
     stopping?/it-method{ ( @should-stop? and not @done ) }
-    done?/read-only-attribute
+    done?/getter
     stopped?/method{ .$done? }
     cancel/it-method{
       return-if( @done? or @canceled? )
@@ -354,10 +407,10 @@ to initialize-l9
     stop/method{ true swap .>should-stop?! }
     success?/it-method{ ( @done? and @error nothing? ) }
     failure?/it-method{ ( @done? and @error something? ) }
-    result/read-only-attribute
-    error/read-only-attribute
-    a-fork?/read-only-attribute
-    a-spawn?/read-only-attribute
+    result/getter
+    error/getter
+    a-fork?/getter
+    a-spawn?/getter
     tasks/method{ .$subtasks }
     parents/it-method{
       list[] >parents
