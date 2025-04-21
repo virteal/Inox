@@ -1,0 +1,42 @@
+~| Simple Serra Dashboard Example
+ | Shows how to create a dashboard with components and data binding
+ |~
+
+~~ Initialize dashboard components
+"counter" "value" serra.create-component
+"increment" "button" serra.create-component
+"decrement" "button" serra.create-component
+"reset" "button" serra.create-component
+"display" "text" serra.create-component
+
+~~ Set initial properties
+{ "label" "+" } "increment" serra.update-component
+{ "label" "-" } "decrement" serra.update-component
+{ "label" "Reset" } "reset" serra.update-component
+{ "prefix" "Count: " } "display" serra.update-component
+
+~~ Initialize data
+0 "counter-value" serra.set-data
+
+~~ Bind data
+"display" "counter-value" serra.bind-data
+"counter" "counter-value" serra.bind-data
+
+~~ Define event handlers
+to handle-increment
+  "counter-value" serra.get-data 1 + "counter-value" serra.set-data
+
+to handle-decrement
+  "counter-value" serra.get-data 1 - "counter-value" serra.set-data
+
+to handle-reset
+  0 "counter-value" serra.set-data
+
+~~ Register event handlers
+"increment" "click" /handle-increment serra.on-event
+"decrement" "click" /handle-decrement serra.on-event
+"reset" "click" /handle-reset serra.on-event
+
+~~ Output information
+"Dashboard initialized" out
+"Use the buttons to change the counter value" out

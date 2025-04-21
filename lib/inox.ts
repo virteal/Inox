@@ -43,7 +43,7 @@ const INOX_DEBUG_LEVEL = 1;
 const INOX_HEAP_SIZE = 64 * 1024; // Minimum is 24 bytes
 
 /// The initital length of the symbol table
-const INOX_SYMBOL_TABLE_SIZE = 2048;
+const INOX_SYMBOL_TABLE_LENGTH = 2048;
 
 /// Rely on malloc/free or use the custom memory manager?
 //c/ #define INOX_USE_MALLOC 1
@@ -1480,17 +1480,17 @@ static Tag primitive(  TxtC n, Primitive fn  );
 static void immediate_primitive(  TxtC n, Primitive fn  );
 static void operator_primitive(  TxtC n, Primitive fn  );
 static void trace_context(  TxtC msg  );
-static boolean is_a_void_cell(  Cell c  );
-static boolean is_a_boolean_cell(  Cell c  );
-static boolean is_a_tag_cell(  Cell c  );
-static boolean is_a_verb_cell(  Cell c  );
-static boolean is_a_text_cell(  Cell c  );
-static boolean is_a_reference_cell(  Cell c  );
-static boolean is_a_proxy_cell(  Cell c  );
-static boolean is_a_flow_cell(  Cell c  );
-static boolean is_a_list_cell(  Cell c  );
-static boolean is_a_range_cell(  Cell c  );
-static boolean is_a_box_cell(  Cell c  );
+static boolean is_a_void(  Cell c  );
+static boolean is_a_boolean(  Cell c  );
+static boolean is_a_tag(  Cell c  );
+static boolean is_a_verb(  Cell c  );
+static boolean is_a_text(  Cell c  );
+static boolean is_a_reference(  Cell c  );
+static boolean is_a_proxy(  Cell c  );
+static boolean is_a_flow(  Cell c  );
+static boolean is_a_list(  Cell c  );
+static boolean is_a_range(  Cell c  );
+static boolean is_a_box(  Cell c  );
 static Text HEX(  Value n  );
 static Text text_quote(  TxtC txt  );
 static Value checked_integer_from_text(  TxtC txt  );
@@ -1524,7 +1524,7 @@ static Text block_dump(  Cell ip  );
 static Text tag_as_dump_text(  Value tag  );
 static Text dump(  Cell c  );
 static Text short_dump(  Cell c  );
-static Text stacks_dump( void );
+static Text dump_stacks( void );
 static Text type_as_text(  Index type_id  );
 static Tag tag_of_type(  Type type_id  );
 static Type tag_to_type(  Tag tag  );
@@ -2216,7 +2216,7 @@ function name_of( c : Cell ): Tag {
 
 function set_type( c : Cell, t : Type ){
   // The type of the singleton tag cell that defines the tag must never change
-  if( legacy_de && is_a_tag_cell( c ) && is_a_tag_singleton( c ) ){
+  if( legacy_de && is_a_tag( c ) && is_a_tag_singleton( c ) ){
     // Tag void is the exception, it is type is 0, aka void.
     if( c == 0 ){
       mand_eq( t, 0 );
@@ -2532,7 +2532,7 @@ function lean_aligned_cell_length( len : Length ) : Length {
 }
 
 
-function leat_str_header( area : Area ) : Area {
+function lean_str_header( area : Area ) : Area {
 // The header is two cells before the payload
   // Header is made of a reference counter and a size
   return area - 2 * ONE;
@@ -2545,7 +2545,7 @@ function lean_str_is_valid( area : Area ) : boolean {
 // Check that a cell is a valid lean string
   if( ! area_is_busy( area ) )return false;
   const size
-  =  value_of( leat_str_header( area ) + 1 * ONE ) - 2 * size_of_cell;
+  =  value_of( lean_str_header( area ) + 1 * ONE ) - 2 * size_of_cell;
   if( size <= 0 )return false;
   // Check that there is a null terminator
   if( lean_str_unchecked_byte_at( area, size - 1 ) != 0 )return false;
@@ -2933,7 +2933,7 @@ function lean_str_cmp( cell1 : Cell, cell2 : Cell ) : Value {
 }
 
 
-function lean_str_new_from_strcat( area1 : Area, area2 : Area ) : Area {
+function lean_str_from_strcat( area1 : Area, area2 : Area ) : Area {
 // Concatenate two lean strings, returns a new string
 
   // Deal with the empty strings
@@ -3366,7 +3366,7 @@ static Text  extract_line( TxtC, Index );
 }*/
 
 /*
- *  There is some special handling of the empty string.
+ *  There is some special handling of the empty string
  */
 
 /**/ const no_text = "";
@@ -3381,6 +3381,9 @@ static Text  extract_line( TxtC, Index );
  *
  *  S(), N(), C(), P() and F() to concatenate text and various types of numbers.
  */
+
+/**/ const NL = "\n";
+//c/ #define NL "\n"
 
 /*
  *  S() start of text concatenation operations.
@@ -4367,9 +4370,9 @@ function area_turn_busy( area : Area, klass : Tag, sz : Size ){
 // Set the reference counter header of a free byte area to 1, ie it becomes busy
   const header = header_of_area( area );
   // Before it becomes busy, it was free, so it must have a next_area header
-  alloc_de&&mand_cell_name( header, the_tag_for_dynamic_next_area );
+  alloc_de&&mand_named( header, the_tag_for_dynamic_next_area );
   set( header, type_integer, klass, 1 );
-  alloc_de&&mand_cell_name( header + ONE, the_tag_for_dynamic_area_size );
+  alloc_de&&mand_named( header + ONE, the_tag_for_dynamic_area_size );
   set_value( header + ONE, sz );
 }
 
@@ -4408,7 +4411,7 @@ function area_cell_is_area( cell : Cell ) : boolean {
   // This is maybe not 100% reliable, but it is good enough
   const first_header = header_of_area( cell );
   if( name_of( first_header + ONE ) == the_tag_for_dynamic_area_size ){
-    if( type_of( first_header ) == type_void ){
+    if( is_a_void( first_header ) ){
       if( name_of( first_header ) == the_tag_for_dynamic_next_area ){
         alloc_de&&mand( area_is_free( cell ) );
       }else{
@@ -4803,7 +4806,7 @@ function area_monitor(){
         continue;
       }
       total_small_areas += list_length;
-      auto_ += S() + "\n" + N( small_length ) + ": " + N( list_length );
+      auto_ += S() + NL + N( small_length ) + ": " + N( list_length );
       small_free_bytes = 0;
       next_area = all_free_lists_by_area_length[ small_length ];
       loop_detector = 1000000;
@@ -5141,6 +5144,18 @@ function area_tag( area : Area ) : Tag {
 }
 
 
+function area_set_tag( area : Area, klass : Tag ){
+  alloc_de&&mand( area_is_busy( area ) );
+  set_name( area - 2 * ONE, klass );
+}
+
+
+function area_is_named( area : Area, klass : Tag ) : boolean {
+  alloc_de&&mand( area_is_busy( area ) );
+  return name_of( area - 2 * ONE ) == klass;
+}
+
+
 function resize_area( area : Area, sz : Size ) : Area {
   alloc_de&&mand( area_is_busy( area ) );
   let ii = area_size( area );
@@ -5356,7 +5371,7 @@ function area_is_safe( area : Cell ) : boolean {
   if( name_of( header ) != the_tag_for_dynamic_next_area ){
 
     // The reference counter must be an integer
-    alloc_de&&mand( type_of( header ) == type_integer );
+    alloc_de&&mand( is_an_integer( header ) );
 
     // The reference counter must be non zero when busy
     const reference_counter = value_of( header );
@@ -5379,7 +5394,7 @@ function area_is_safe( area : Cell ) : boolean {
   }else if( name_of( header ) == the_tag_for_dynamic_next_area ){
 
     // The value should be the integer address of a next free area, or zero
-    alloc_de&&mand_eq( type_of( header ), type_void );
+    alloc_de&&mand( is_a_void( header ) );
     if( area_is_safe_entered == area ){
       debugger;
       area_is_safe_entered = 0;
@@ -5451,7 +5466,7 @@ function area_is_safe( area : Cell ) : boolean {
   }
 
   // It must be an integer
-  if( type_of( header + 1 * ONE ) != type_integer ){
+  if( ! is_an_integer( header + 1 * ONE ) ){
     FATAL( S()+ "Invalid area, bad size header type, " + C( area ) );
     return false;
   }
@@ -5535,14 +5550,37 @@ function set( c : Cell, t : Type, n : Tag, v : Value ) : void {
   }
 }
 
-function set_tos( t : Type, n : Name, v : Value ) : void {
+function set_top( t : Type, n : Name, v : Value ) : void {
   set( TOS, t, n, v );
 }
+
+
+function reset_top() : void {
+  reset( TOS );
+}
+
+
+function set_top_boolean( n : Name, v : Value ) : void {
+  set_top( type_boolean, n, v );
+}
+
+
+function set_top_tag( n : Name, v : Tag ) : void {
+  set_top( type_tag, n, v );
+}
+
+
+function set_top_integer( n : Name, v : Value ) : void {
+  set_top( type_integer, n, v );
+}
+
+
 /*}*/
 
 /*c{
 
-#define set_tos( t, n, v ) set( TOS, t, n, v )
+#define set_top( t, n, v ) set( TOS, t, n, v )
+#define set_top_boolean( n, v ) set_top_boolean( n, v )
 
 }*/
 
@@ -5576,7 +5614,7 @@ function copy_cell( source : Cell, destination : Cell ){
   }
 
   // If the source was a reference, increment the reference counter
-  if( is_sharable( source ) ){
+  if( is_a_reference( source ) ){
     // This would not be necessary if there were a classical GC.
     // However, I may implement some destructor logic when an object
     // goes out of scope and it sometimes make sense to have that logic
@@ -5623,7 +5661,7 @@ function raw_copy_cell( source : Cell, destination : Cell ){
 
 
 function reset_cell_value( c : Cell ){
-  de&&mand( ! is_sharable( c ) );
+  de&&mand( ! is_a_reference( c ) );
   reset_value( c );
 }
 
@@ -5678,7 +5716,7 @@ function clear( c : Cell ){
   }
 
   // Cell is either a text, a reference to an object, a range or a proxy
-  legacy_de&&mand( is_sharable( c ) );
+  legacy_de&&mand( is_a_reference( c ) );
 
   // At the end, they reference some dynamic area of memory
   const area = value_of( c );
@@ -5699,31 +5737,9 @@ function clear( c : Cell ){
 
 function clear_value( c : Cell ){
 // Clear the value of a cell but keep the name, type becomes void
-
   const info = info_of( c );
-  const typ  = type_of( c );
-
-  if( ! is_a_reference_type( typ ) ){
-    reset( c );
-    set_name( c, unpack_name( info ) );
-    return;
-  }
-
-  // Cell is either a string, a reference or a proxyconst
-  const area = value_of( c );
-
-  reset( c );
+  clear( c );
   set_name( c, unpack_name( info ) );
-
-  // Both references and proxies have a reference counter
-  if( area_is_shared( area ) ){
-    area_free( area );
-    return;
-  }
-
-  // Last reference reached, need to free the area
-  clear_unshared_area( area);
-
 }
 
 
@@ -5814,7 +5830,7 @@ function init_symbols() : Index {
   all_symbol_cells_length = 18;
 
   // ToDo: test with a smaller value
-  all_symbol_cells_capacity = INOX_SYMBOL_TABLE_SIZE;
+  all_symbol_cells_capacity = INOX_SYMBOL_TABLE_LENGTH;
   //c/ all_primitives_capacity  = all_symbol_cells_capacity;
   //c/ all_definitions_capacity = all_symbol_cells_capacity;
 
@@ -5992,7 +6008,7 @@ function tag_as_text( t : Tag ) : Text {
 
 function symbol_as_text( c : Cell ) : Text {
 // Return the string value of a cell
-  de&&mand_eq( type_of( c ), type_tag );
+  de&&mand( is_a_tag( c ) );
   de&&mand_eq( name_of( c ), value_of( c ) );
   return all_symbol_texts[ value_of( c ) ];
 }
@@ -6245,14 +6261,14 @@ function stack_clear( stk : Area ){
     ptr = stk;
   }
   // First cell is the length of the stack
-  de&&mand_cell_type( ptr, type_integer );
+  de&&mand_integer( ptr );
   len = value_of( ptr );
   for( ii = 0 ; ii < len ; ii++ ){
     clear( ptr + ( ii + 1 ) * ONE );
     // ToDo: optimize with some clears() function
   };
   // Set length to 0
-  de&&mand_cell_type( ptr, type_integer );
+  de&&mand_integer( ptr );
   set_value( ptr, 0 );
   de&&mand_eq( stack_length( stk ), 0 );
 }
@@ -6267,12 +6283,12 @@ function stack_free( stk : Area ) : void {
   if( stack_is_extended( stk ) ){
     ptr = value_of( stk );
     // Check that length is 0
-    de&&mand_cell_type( ptr, type_integer );
+    de&&mand_integer( ptr);
     de&&mand_eq( value_of( ptr ), 0 );
     reset( ptr );
     area_free( ptr );
   }else{
-    de&&mand_cell_type( stk, type_integer );
+    de&&mand_integer( stk );
     de&&mand_eq( value_of( stk ), 0 );
   }
   reset( stk );
@@ -6296,10 +6312,10 @@ function stack_length( stk : Area ) : Length {
   // This does not include the first cell that holds the length itself
   let len;
   if( stack_is_extended( stk ) ){
-    de&&mand_cell_type( value_of( stk ), type_integer );
+    de&&mand_integer( value_of( stk ) );
     len = value_of( value_of( stk ) );
   }else{
-    de&&mand_cell_type( stk, type_integer );
+    de&&mand_integer( stk );
     len = value_of( stk );
   }
   de&&mand( len >= 0 );
@@ -6418,7 +6434,7 @@ function stack_at( stk : Area, i : Index ) : Cell {
 // Get the i-th cell from a stack
   let addr;
   // ToDo: handle negative indices?
-  // Must be length 1 to hold item 0, hence the + 1
+  // First item is after the length cell, ie it is at index 1
   stack_extend( stk, i + 1 );
   if( stack_is_extended( stk ) ){
     addr = value_of( stk ) + ( i + 1 ) * ONE;
@@ -6467,7 +6483,7 @@ function stack_split_dump( stk : Area, nth : Index ) : Text {
   let ii;
   for( ii = 0 ; ii < len ; ii++ ){
     if( ii % nth == 0 ){
-      auto_ += "\n";
+      auto_ += NL;
     }
     auto_ += short_dump( stack_at( stk, ii ) ) + " ";
   }
@@ -6614,9 +6630,12 @@ function stack_resize( stk : Area, len : Length ) : Cell {
 // Return a copy of a stack with a new capacity, clear the old stack
   const new_stack = stack_allocate( len );
   let max = stack_length( stk );
-  if( max < len ){
+  // Truncate if new length is smaller
+  if( len < max ){
     max = len;
   }
+  // Move the cells from the old stack to the new stack
+  // ToDo: optimize this
   let ii;
   for( ii = 0 ; ii < max ; ii++ ){
     move_cell( stack_at( stk, ii ), stack_at( new_stack, ii ) );
@@ -6635,7 +6654,7 @@ function stack_rebase( stk : Area ) : Cell {
 
 function stack_is_extended( stk : Area ) : boolean {
 // Check if a stack is extended, ie extensible
-  return type_of( stk ) == type_reference;
+  return is_a_reference( stk );
 }
 
 
@@ -6649,17 +6668,19 @@ function stack_extend( stk : Area, len : Length ){
   }
   if( ! stack_is_extended( stk ) ){
     FATAL( "Can't extend a non extensible stack" );
+    return;
   }
   const capacity = stack_capacity( stk );
   let new_capacity = capacity;
   while( new_capacity < len ){
-    new_capacity = new_capacity * 2;
+    // ToDo: 1.5 instead of 2?
+    new_capacity = new_capacity * 2 + 1;
   }
   const old_stack = value_of( stk );
   const new_stack = stack_resize( old_stack, new_capacity );
   stack_free( old_stack );
   set_value( stk, new_stack );
-  de&&mand( stack_is_extended( stk) );
+  de&&mand( stack_is_extended( stk ) );
   if( len > stack_length( stk ) ){
     stack_set_length( stk, len );
   }
@@ -6731,13 +6752,28 @@ function tag_is_valid( id : Tag ) : boolean {
 }
 
 
-function set_tag_cell( c : Cell, n : Tag ){
+function set_tag( c : Cell, n : Tag ){
   set( c, type_tag, n, n );
 }
 
 
-function set_verb_cell( c : Cell, n : Tag ){
+function is_a_tag( c : Cell ) : boolean {
+  return type_of( c ) == type_tag;
+}
+
+
+function is_a_boolean( c : Cell ) : boolean {
+  return type_of( c ) == type_boolean;
+}
+
+
+function set_verb( c : Cell, n : Tag ){
   set( c, type_verb, n, 0 );
+}
+
+
+function is_a_verb( c : Cell ) : boolean {
+  return type_of( c ) == type_verb;
 }
 
 
@@ -6750,19 +6786,13 @@ const the_void_cell = 0;
  *  ToDo: type_f64, type_bigint
  */
 
-function set_integer_cell( c : Cell, v : Value ){
+function set_integer( c : Cell, v : Value ){
   set( c, type_integer, tag_integer, v );
 }
 
 
-function is_an_integer_cell( c : Cell ) : boolean {
+function is_an_integer( c : Cell ) : boolean {
   return type_of( c ) == type_integer;
-}
-
-
-function cell_integer( c : Cell ) : Value {
-  de&&mand_eq( type_of( c ), type_integer );
-  return value_of( c );
 }
 
 
@@ -6772,7 +6802,7 @@ function cell_integer( c : Cell ) : Value {
  *  ToDo: type_f64, type_bigint, type_f32
  */
 
-function set_float_cell( c : Cell, v : Float ){
+function set_float( c : Cell, v : Float ){
   /**/ set( c, type_float, tag_float, v );
   // For TypeScript, use mem32f
   //a/ set( c, type_float, tag_float, 0 );
@@ -6782,13 +6812,13 @@ function set_float_cell( c : Cell, v : Float ){
 }
 
 
-function is_a_float_cell( c : Cell ) : boolean {
+function is_a_float( c : Cell ) : boolean {
   return type_of( c ) == type_float;
 }
 
 
 function cell_float( c : Cell ) : Float {
-  de&&mand_eq( type_of( c ), type_float );
+  de&&mand( is_a_float( c ) );
   /**/ return value_of( c );
   // For TypeScript, use mem32f
   //a/ return mem32f[ ( c << 1 ) ];
@@ -6804,12 +6834,6 @@ function cell_float( c : Cell ) : Float {
 function set_reference_cell( c : Cell, v : Cell ){
   de&&mand( area_is_busy( v ) );
   set( c, type_reference, area_tag( v ), v );
-}
-
-
-function cell_reference( c : Cell ) : Value {
-  check_de&&mand_eq( is_a_reference_cell( c ) ? 1 : 0, 1 );
-  return value_of( c );
 }
 
 
@@ -6863,8 +6887,13 @@ function set_text_cell( c : Cell, txt : ConstText ){
 }
 
 
-function text_free( oid : Area ){
-  lean_str_free( oid );
+function is_a_text( c : Cell ) : boolean {
+  return is_a_reference( c ) && area_is_named( value_of( c ), tag_text );
+}
+
+
+function text_free( area : Area ){
+  lean_str_free( area );
 }
 
 
@@ -6894,7 +6923,7 @@ function lean_string_test() : Index {
   // Test the string functions
   const str1 = lean_str_new_from_native( "Hello" );
   const str2 = lean_str_new_from_native( "World" );
-  const str3 = lean_str_new_from_strcat( str1, str2 );
+  const str3 = lean_str_from_strcat( str1, str2 );
   const str4 = lean_str_new_from_native( "HelloWorld" );
   if( lean_str_cmp( str3, str4 ) != 0 ){
     FATAL( "lean_str_cmp failed" );
@@ -7487,7 +7516,7 @@ const max_block_length    =   0xfffff; // Max length of a block, 20 bits
 function mand_definition( def : Cell ) : boolean {
   // The header with length & flags is right before the code
   const header = def - ONE;
-  if( type_of( header ) == type_integer )return true;
+  if( is_an_integer( header ) )return true;
   const n = name_of( header );
   FATAL( S()
     + "Not a definition: " + C( n ) + " " + tag_as_text( n )
@@ -7511,7 +7540,7 @@ function set_definition_length( def : Cell, length : Count ){
 // Hack used only by the global primitive to turn a constant into variable
   // The header with length & flags is right before the code
   const header = def - ONE;
-  de&&mand_cell_type( header, type_integer );
+  de&&mand_integer( header );
   if( length > max_block_length ){
     FATAL( S()+ "Too large definition, maximum is " + N( max_block_length ) );
   }
@@ -7685,8 +7714,8 @@ function register_verb_definition( verb_tag : Tag, def : Cell ){
   // the verb.
 
   // Check the header
-  de&&mand_cell_name( def - 1 * ONE, verb_tag );
-  de&&mand_cell_type( def - 1 * ONE, type_integer );
+  de&&mand_named( def - 1 * ONE, verb_tag );
+  de&&mand_integer(   def - 1 * ONE );
 
   // Register the verb in the global symbol table
   register_definition( verb_tag, def );
@@ -7780,7 +7809,7 @@ function is_an_inline_block_cell( c : Cell ) : boolean {
 
 
 function is_block_ip( ip : Cell ) : boolean {
-  de&&mand_cell_name( ip, tag_block_header );
+  de&&mand_named( ip, tag_block_header );
   return ( value_of( ip ) & block_verb_flag ) != 0;
 }
 
@@ -7927,9 +7956,8 @@ function is_a_reference_type( t : Type ) : boolean {
   return t == type_reference;
 }
 
-
-function is_sharable( c : Cell ) : boolean {
-  return is_a_reference_type( type_of( c ) );
+function is_a_reference( c : Cell ) : boolean {
+  return type_of( c ) == type_reference;
 }
 
 
@@ -8010,6 +8038,11 @@ function mand_cell_type( c : Cell, type_id : Type ) : boolean {
   return mand_type( type_of( c ), type_id );
 }
 
+function mand_void( c : Cell ) : boolean {
+// Assert that the type of a cell is the integer type
+  return mand_cell_type( c, type_void );
+}
+
 
 function mand_tag( c : Cell ) : boolean {
   return mand_cell_type( c, type_tag );
@@ -8023,7 +8056,7 @@ function mand_integer( c : Cell ) : boolean {
 
 
 function mand_boolean( c : Cell ) : boolean {
-  return mand_cell_type( c, type_boolean );
+  return is_a_boolean( c );
 }
 
 
@@ -8035,15 +8068,15 @@ function mand_verb( c : Cell ) : boolean {
 
 function mand_block( c : Cell ) : boolean {
 // ToDo: should there be a block type? or is verb ok?
-  mand_cell_type( c, type_integer );
+  mand_integer( c );
   // The value should point to a block
   const block = value_of( c );
   // Block have an header that is the block's length & flags
-  return mand_cell_type( block - ONE, type_integer );
+  return mand_integer( block - ONE );
 }
 
 
-function mand_cell_name( c : Cell, n : Tag ) : boolean{
+function mand_named( c : Cell, n : Tag ) : boolean{
 // Assert that the type of a cell is the expected type.
   const actual_name = name_of( c );
   if( actual_name == n )return true;
@@ -8060,37 +8093,13 @@ function mand_cell_name( c : Cell, n : Tag ) : boolean{
 }
 
 
-function mand_void_cell( c : Cell ) : boolean {
-// Assert that the type of a cell is the integer type
-  return mand_cell_type( c, type_void );
-}
-
-
-function mand_boolean_cell( c : Cell ) : boolean {
-// Assert that the type of a cell is compatible with the boolean type
-  return mand_cell_type( c, type_boolean );
-}
-
-
-function mand_tag_cell( cell  : Cell ) : boolean {
-// Assert that the type of a cell is the tag type
-  return mand_cell_type( cell, type_tag );
-}
-
-
-function mand_verb_cell( c : Cell ) : boolean {
-// Assert that the type of a cell is the integer type
-  return mand_cell_type( c, type_verb );
-}
-
-
-function mand_primitive_cell( c : Cell ) : boolean {
+function mand_primitive( c : Cell ) : boolean {
 // Assert that the type of a cell is the primitive type
   return mand_cell_type( c, type_primitive );
 }
 
 
-function mand_reference_cell( c : Cell ) : boolean {
+function mand_reference( c : Cell ) : boolean {
 // Assert that the type of a cell is the reference type
   return mand_cell_type( c, type_reference );
 }
@@ -8113,7 +8122,7 @@ function eat_raw_value( c : Cell ) : Index {
 
 function get_tag( c : Cell ) : Index {
 // Like value_of() but check that the cell is a tag
-  check_de&&mand_tag_cell( c );
+  check_de&&mand_tag( c );
   return value_of( c );
 }
 
@@ -8207,13 +8216,6 @@ function get_boolean( c : Cell ) : Index {
 }
 
 
-function mand_reference( c : Cell ) : boolean {
-// Check that the cell is a reference
-  check_de&&mand( is_a_reference_cell( c ) );
-  return true;
-}
-
-
 function pop_reference() : Cell {
   check_de&&mand_reference( TOS );
   return pop_raw_value();
@@ -8294,19 +8296,19 @@ function push_text( t : ConstText ){
 
 function push_tag( t : Tag ){
   push();
-  set_tag_cell( TOS, t );
+  set_tag( TOS, t );
 }
 
 
 function push_verb( t : Tag ){
   push();
-  set_verb_cell( TOS, t );
+  set_verb( TOS, t );
 }
 
 
 function push_integer( i : Index ){
   push();
-  set_integer_cell( TOS, i );
+  set_integer( TOS, i );
 }
 
 
@@ -8381,7 +8383,7 @@ function memory_dump(){
   const limit = the_next_free_cell;
 
   trace( S()+ "\nMEMORY DUMP\n"
-  + "from " + N( the_very_first_cell ) + " to " + N( limit ) + "\n"
+  + "from " + N( the_very_first_cell ) + " to " + N( limit ) + NL
   + N( limit - the_very_first_cell ) + " cells\n\n"
   );
 
@@ -8470,7 +8472,7 @@ function set_map_cell( c : Cell, obj? : Object ){
 
 function set_list_cell( c : Cell, obj? : Object ){
   // ToDo: value should a linked list of cells
-  let list = obj;;
+  let list = obj;
   if( ! obj ){
     list = new Array< Cell >();
   }
@@ -8523,14 +8525,14 @@ function data_stack_is_empty() : boolean {
 
 function mand_actor( actor : Cell ) : boolean {
 
-  check_de&&mand_cell_name( actor + 0 * ONE, tag_actor   );
+  check_de&&mand_named( actor + 0 * ONE, tag_actor   );
 
-  de&&mand_cell_name( actor + 1 * ONE, tag_data_stack    );
-  de&&mand_cell_name( actor + 2 * ONE, tag_control_stack );
-  de&&mand_cell_name( actor + 3 * ONE, tag_ip            );
-  de&&mand_cell_name( actor + 4 * ONE, tag_ip            );
-  de&&mand_cell_name( actor + 5 * ONE, tag_tos           );
-  de&&mand_cell_name( actor + 6 * ONE, tag_csp           );
+  de&&mand_named( actor + 1 * ONE, tag_data_stack    );
+  de&&mand_named( actor + 2 * ONE, tag_control_stack );
+  de&&mand_named( actor + 3 * ONE, tag_ip            );
+  de&&mand_named( actor + 4 * ONE, tag_ip            );
+  de&&mand_named( actor + 5 * ONE, tag_tos           );
+  de&&mand_named( actor + 6 * ONE, tag_csp           );
   de&&mand_integer(   actor + 0 * ONE );
   de&&mand_reference( actor + 1 * ONE );
   de&&mand_reference( actor + 2 * ONE );
@@ -8734,7 +8736,7 @@ function build_targets(){
   let all_primitive_declarations = "";
 
   // Split the source code into lines
-  let ts = source.split( "\n" );
+  let ts = source.split( NL );
 
   // A very inefficient string builder, fast enough for this purpose
   let  c_source = "";
@@ -8789,7 +8791,7 @@ function build_targets(){
     // Skip empty lines
     if( tnone( line ) ){
       blank_lines = blank_lines + 1;
-      c_source += line + "\n";
+      c_source += line + NL;
       count_line();
       continue;
     }
@@ -8798,9 +8800,9 @@ function build_targets(){
     if( comment_start != -1 && line.match( /^\s*\*\// ) ){
       comment_start = -1;
       if( targets_preserve_comments ){
-        c_source += line + "\n";
+        c_source += line + NL;
       }else{
-        c_source += "\n";
+        c_source += NL;
       }
       comment_lines = comment_lines + 1;
       count_line();
@@ -8812,7 +8814,7 @@ function build_targets(){
       de&&mand( ! is_in_ts_only_code );
       de&&mand( ! is_in_c_only_code  );
       ts_only_lines += 1;
-      c_source += line + "\n";
+      c_source += line + NL;
       continue;
     }
 
@@ -8822,7 +8824,7 @@ function build_targets(){
       if( targets_preserve_comments ){
         c_source += line + " C++\n";
       }else{
-        c_source += "\n";
+        c_source += NL;
       }
       comment_lines = comment_lines + 1;
       count_line();
@@ -8833,9 +8835,9 @@ function build_targets(){
     if( line.match( /^\s*\* / ) ){
       // Together with // comments, this avoids interferences with comments
       if( targets_preserve_comments ){
-        c_source += line + "\n";
+        c_source += line + NL;
       }else{
-        c_source += "\n";
+        c_source += NL;
       }
       comment_lines = comment_lines + 1;
       count_line();
@@ -8851,7 +8853,7 @@ function build_targets(){
       if( targets_preserve_comments ){
         c_source += line + " C++\n";
       }else{
-        c_source += "\n";
+        c_source += NL;
       }
       comment_lines = comment_lines + 1;
       count_line();
@@ -8860,7 +8862,7 @@ function build_targets(){
 
     // Skip comment lines?
     if( ! targets_preserve_comments && comment_start != -1 ){
-      c_source += "\n";
+      c_source += NL;
       comment_lines = comment_lines + 1;
       count_line();
       continue;
@@ -8971,7 +8973,7 @@ function build_targets(){
       function( match, p1, p2, p3 ){
         de&&mand( ! is_in_ts_only_code );
         de&&mand( ! is_in_c_only_code  );
-        all_primitive_declarations += "\n" + match;
+        all_primitive_declarations += NL + match;
         return "// postponed: " + match;
       }
     );
@@ -8979,7 +8981,7 @@ function build_targets(){
       function( match, p1, p2, p3 ){
         de&&mand( ! is_in_ts_only_code );
         de&&mand( ! is_in_c_only_code  );
-        all_primitive_declarations += "\n" + match;
+        all_primitive_declarations += NL + match;
         return "// postponed: " + match;
       }
     );
@@ -8987,7 +8989,7 @@ function build_targets(){
     function( match, p1, p2, p3 ){
       de&&mand( ! is_in_ts_only_code );
       de&&mand( ! is_in_c_only_code  );
-      all_primitive_declarations += "\n" + match;
+      all_primitive_declarations += NL + match;
       return "// postponed: " + match;
     } );
 
@@ -8995,7 +8997,7 @@ function build_targets(){
     replace(
       /^\s*\/\*P\*\/.*$/,
       function( match, p1, p2, p3 ){
-        all_primitive_declarations += "\n" + match;
+        all_primitive_declarations += NL + match;
         return "// postponed: " + match;
       }
     );
@@ -9008,7 +9010,7 @@ function build_targets(){
 
     count_line();
 
-    c_source += line + "\n";
+    c_source += line + NL;
 
   }
 
@@ -9061,7 +9063,7 @@ function build_targets(){
     // //as/, rest of line is kept as code
     .replace( /\/\/as\/ (.*$)/, "$1 //as" );
 
-    as_source += line + "\n";
+    as_source += line + NL;
   }
 
   // Done, write the AssemblyScript source code
@@ -9118,7 +9120,7 @@ function build_targets(){
   }
 
   // Add a final new line
-  md_source += "\n";
+  md_source += NL;
 
   // Done, write the Markdown source code
   require( "fs" ).writeFileSync( "builds/inox.md", md_source, "utf8" );
@@ -9194,7 +9196,7 @@ function primitive( n : TxtC, fn : Primitive ) : Tag {
   de&&mand_eq(   get_definition( name_id ),  definition_of( name_id )  );
   de&&mand_eq(   definition_length( def ),   2                      );
   de&&mand_eq(       header,                 def - 1 * ONE          );
-  de&&mand_cell_name( header,                name_id                );
+  de&&mand_named( header,                name_id                );
 
   nde&&bug( text_of_verb_definition( name_id ) );
 
@@ -9230,7 +9232,7 @@ const tag_is_little_endian = tag( "little-endian?" );
 
 function primitive_is_little_endian(){
   push();
-  set( TOS, type_boolean, tag_is_little_endian, check_endianes_done );
+  set_top_boolean( tag_is_little_endian, check_endianes_done );
 }
 primitive( "little-endian?", primitive_is_little_endian );
 
@@ -9244,7 +9246,7 @@ const tag_is_a_primitive = tag( "a-primitive?" );
 function primitive_is_a_primitive(){
   let tag_name = eat_tag( TOS );
   let is_a_primitive = primitive_exists( tag_name );
-  set( TOS, type_boolean, tag_is_a_primitive, is_a_primitive ? 1 : 0 );
+  set_top_boolean( tag_is_a_primitive, is_a_primitive ? 1 : 0 );
 }
 primitive( "a-primitive?", primitive_is_a_primitive );
 
@@ -9319,12 +9321,12 @@ primitive( "return-unless", primitive_return_if );
 function trace_context( msg : TxtC ){
   let auto_ = "";
   if( tsome( msg ) ){
-    auto_ = S() + "\n" + msg;
+    auto_ = S() + NL + msg;
   }
   bug( S()
     + auto_
-    + "\n" + stacks_dump()
-    + "\nIP: " + inox_machine_code_cell_as_text( IP ) + "\n"
+    + NL + dump_stacks()
+    + "\nIP: " + inox_machine_code_cell_as_text( IP ) + NL
   );
 }
 
@@ -9451,23 +9453,27 @@ primitive( "goto", primitive_goto );
  *  Primitives to tests the type of a cell
  */
 
+function clear_top(){
+  clear( TOS );
+}
+
 
 /*
  *  a-void? - true if TOS was a void type of cell
  */
 
-function is_a_void_cell( c : Cell ) : boolean {
+function is_a_void( c : Cell ) : boolean {
   return type_of( c ) == type_void;
 }
 
 const tag_is_a_void = tag( "a-void?" );
 
 function primitive_is_a_void(){
-  const it_is = is_a_void_cell( TOS );
+  const it_is = is_a_void( TOS );
   if( ! it_is ){
-    clear( TOS );
+    clear_top();
   }
-  set( TOS, type_boolean, tag_is_a_void, it_is ? 1 : 0 );
+  set_top_boolean( tag_is_a_void, it_is ? 1 : 0 );
 }
 primitive( "a-void?", primitive_is_a_void );
 
@@ -9476,18 +9482,14 @@ primitive( "a-void?", primitive_is_a_void );
  *  a-boolean? - true if TOS was a boolean
  */
 
-function is_a_boolean_cell( c : Cell ) : boolean {
- return type_of( c ) == type_boolean;
-}
-
 const tag_is_a_boolean = tag( "a-boolean?" );
 
 function primitive_is_a_boolean(){
-  const auto_ = is_a_boolean_cell( TOS );
+  const auto_ = is_a_boolean( TOS );
   if( ! auto_ ){
-    clear( TOS );
+    clear_top();
   }
-  set( TOS, type_boolean, tag_is_a_boolean, auto_ ? 1 : 0 );
+  set_top_boolean( tag_is_a_boolean, auto_ ? 1 : 0 );
 }
 primitive( "a-boolean?", primitive_is_a_boolean );
 
@@ -9499,11 +9501,11 @@ primitive( "a-boolean?", primitive_is_a_boolean );
 const tag_is_an_integer = tag( "an-integer?" );
 
 function primitive_is_an_integer(){
-  const auto_ = is_an_integer_cell( TOS );
+  const auto_ = is_an_integer( TOS );
   if( ! auto_ ){
-    clear( TOS );
+    clear_top();
   }
-  set( TOS, type_boolean, tag_is_an_integer, auto_ ? 1 : 0 );
+  set_top_boolean( tag_is_an_integer, auto_ ? 1 : 0 );
 }
 primitive( "an-integer?", primitive_is_an_integer );
 
@@ -9516,8 +9518,8 @@ const tag_is_a_float = tag( "is-a-float?" );
 
 function primitive_is_a_float(){
   const top = TOS;
-  const it_is = is_a_float_cell( top );
-  clear( top );
+  const it_is = is_a_float( top );
+  clear_top();
   set( top, type_boolean, tag_is_a_float, it_is ? 1 : 0 );
 }
 primitive( "is-a-float?", primitive_is_a_float );
@@ -9527,18 +9529,14 @@ primitive( "is-a-float?", primitive_is_a_float );
  *  a-tag? - true if TOS is a tag
  */
 
-function is_a_tag_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_tag;
-}
-
 const tag_is_a_tag = tag( "a-tag?" );
 
 function primitive_is_a_tag(){
-  const it_is = is_a_tag_cell( TOS );
+  const it_is = is_a_tag( TOS );
   if( ! it_is ){
-    clear( TOS );
+    clear_top();
   }
-  set( TOS, type_boolean, tag_is_a_tag, it_is ? 1 : 0 );
+  set_top_boolean( tag_is_a_tag, it_is ? 1 : 0 );
 }
 primitive( "a-tag?", primitive_is_a_tag );
 
@@ -9549,16 +9547,12 @@ primitive( "a-tag?", primitive_is_a_tag );
 
 const tag_is_a_verb = tag( "a-verb?" );
 
-function is_a_verb_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_verb;
-}
-
 function primitive_is_a_verb(){
-  const it_is = is_a_verb_cell( TOS );
+  const it_is = is_a_verb( TOS );
   if( ! it_is ){
-    clear( TOS );
+    clear_top();
   }
-  set( TOS, type_boolean, tag_is_a_verb, it_is ? 1 : 0 );
+  set_top_boolean( tag_is_a_verb, it_is ? 1 : 0 );
 }
 primitive( "a-verb?", primitive_is_a_verb );
 
@@ -9567,72 +9561,62 @@ primitive( "a-verb?", primitive_is_a_verb );
  *  a-text? - true if TOS was a text
  */
 
-function is_a_text_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_reference
-  && area_tag( value_of( c ) ) == tag_text;
-}
-
 const tag_is_a_text = tag( "a-text?" );
 
 function primitive_is_a_text(){
-  const it_is = is_a_text_cell( TOS );
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_a_text, it_is ? 1 : 0 );
+  const it_is = is_a_text( TOS );
+  clear_top();
+  set_top_boolean( tag_is_a_text, it_is ? 1 : 0 );
 }
 primitive( "a-text?", primitive_is_a_text );
 
 
 /*
- *  a-reference? - true if TOS was a reference to an object
+ *  a-reference? - true if top is reference to an object
  */
-
-function is_a_reference_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_reference;
-}
 
 const tag_is_a_reference = tag( "a-reference?" );
 
 function primitive_is_a_reference(){
-  const it_is = is_a_reference_cell( TOS );
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_a_reference, it_is ? 1 : 0 );
+  const it_is = is_a_reference( TOS );
+  clear_top();
+  set_top_boolean( tag_is_a_reference, it_is ? 1 : 0 );
 }
 primitive( "a-reference?", primitive_is_a_reference );
 
 
 /*
- *  a-proxy? - true if TOS was a reference to proxied object
+ *  a-proxy? - true if top was a reference to proxied object
  */
 
-function is_a_proxy_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_reference && name_of( c ) == tag_proxy;
+function is_a_proxy( c : Cell ) : boolean {
+  return is_a_reference( c ) && area_is_named( value_of( c ), tag_proxy );
 }
 
 const tag_is_a_proxy = tag( "a-proxy?" );
 
 function primitive_is_a_proxy(){
-  const it_is = is_a_proxy_cell( TOS );
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_a_proxy, it_is ? 1 : 0 );
+  const it_is = is_a_proxy( TOS );
+  clear_top();
+  set_top_boolean( tag_is_a_proxy, it_is ? 1 : 0 );
 }
 primitive( "a-proxy?", primitive_is_a_proxy );
 
 
 /*
- *  a-flow? - true if TOS was a flow
+ *  a-flow? - true if top is a flow
  */
 
-function is_a_flow_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_reference
-  && area_tag( value_of( c ) ) == tag_flow;
+function is_a_flow( c : Cell ) : boolean {
+  return is_a_reference( c ) && area_is_named( value_of( c ), tag_flow );
 }
 
 const tag_is_a_flow = tag( "a-flow?" );
 
 function primitive_is_a_flow(){
-  const it_is = is_a_flow_cell( TOS );
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_a_flow, it_is ? 1 : 0 );
+  const it_is = is_a_flow( TOS );
+  clear_top();
+  set_top_boolean( tag_is_a_flow, it_is ? 1 : 0 );
 }
 primitive( "a-flow?", primitive_is_a_flow );
 
@@ -9641,56 +9625,52 @@ primitive( "a-flow?", primitive_is_a_flow );
  *  a-list? - true if TOS was a list
  */
 
-function is_a_list_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_reference
-  && area_tag( value_of( c ) ) == tag_list;
+function is_a_list( c : Cell ) : boolean {
+  return is_a_reference( c ) && area_is_named( value_of( c ), tag_list );
 }
 
 const tag_is_a_list = tag( "a-list?" );
 
 function primitive_is_a_list(){
-  const it_is = is_a_list_cell( TOS );
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_a_list, it_is ? 1 : 0 );
+  const it_is = is_a_list( TOS );
+  clear_top();
+  set_top_boolean( tag_is_a_list, it_is ? 1 : 0 );
 }
 primitive( "a-list?", primitive_is_a_list );
 
 
-
 /*
- * a-range? - true if TOS was a range
+ *  a-range? - true if top is a range
  */
 
 const tag_is_a_range = tag( "a-range?" );
 
-function is_a_range_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_reference
-  && area_tag( value_of( c ) ) == tag_range;
+function is_a_range( c : Cell ) : boolean {
+  return is_a_reference( c ) && area_is_named( value_of( c ), tag_range );
 }
 
 function primitive_is_a_range(){
-  const it_is = is_a_range_cell( TOS );
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_a_range, it_is ? 1 : 0 );
+  const it_is = is_a_range( TOS );
+  clear_top();
+  set_top_boolean( tag_is_a_range, it_is ? 1 : 0 );
 }
 primitive( "a-range?", primitive_is_a_range );
 
 
 /*
- *  a-box? - true if TOS was a box
+ *  a-box? - true if top is a box
  */
 
 const tag_is_a_box = tag( "a-box?" );
 
-function is_a_box_cell( c : Cell ) : boolean {
-  return type_of( c ) == type_reference
-  && area_tag( value_of( c ) ) == tag_box;
+function is_a_box( c : Cell ) : boolean {
+  return is_a_reference( c ) && area_is_named( value_of( c ), tag_box );
 }
 
 function primitive_is_a_box(){
-  const it_is = is_a_box_cell( TOS );
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_a_box, it_is ? 1 : 0 );
+  const it_is = is_a_box( TOS );
+  clear_top();
+  set_top_boolean( tag_is_a_box, it_is ? 1 : 0 );
 }
 primitive( "a-box?", primitive_is_a_box );
 
@@ -10014,7 +9994,7 @@ function primitive_data_dump(){
   for( ii = 0 ; ii < depth ; ++ii ){
     const c = TOS + ii * ONE;
     const i = info_of( c );
-    auto_ += "\n" + N( ii )
+    auto_ += NL + N( ii )
     + " " + type_as_text( unpack_type( i ) )
     + " " + tag_as_text(  unpack_name( i ) )
     + " " + cell_as_text( c );
@@ -10067,7 +10047,7 @@ function FATAL( message : TxtC ) : boolean {
   debugger;
   // Simplified version during bootstrap
   if( bootstrapping ){
-    trace( S()+ "\nFATAL: " + message + "\n" );
+    trace( S()+ "\nFATAL: " + message + NL );
     return false;
   }
   // Display error and stacks
@@ -10075,9 +10055,8 @@ function FATAL( message : TxtC ) : boolean {
   + "\nFATAL: " + message
   + " at " + tag_as_text( traced_file )
   + ":" + N( traced_line )
-  + ":" + N( traced_column )
-  + "\n" + stacks_dump();
-  trace( auto_ );
+  + ":" + N( traced_column );
+  trace_context( auto_ );
   debugger;
   // Clear stack & get back to eval loop
   primitive_clear_data();
@@ -10108,7 +10087,7 @@ function primitive_control_dump(){
     const i = info_of( c );
     const t = unpack_type(  i );
     const n = unpack_name(  i );
-    auto_ += "\n" + N( ii )
+    auto_ += NL + N( ii )
     + " " + type_as_text( t )
     + " " + tag_as_text(  n )
     + " " + cell_as_text( c );
@@ -10171,7 +10150,7 @@ function text_quote( txt : TxtC ) : Text {
     const auto_ch = tat( txt, ii );
     if( teq( auto_ch, "\r" ) ){
       auto_ += "\\r";
-    }else if( teq( auto_ch, "\n" ) ){
+    }else if( teq( auto_ch, NL ) ){
       auto_ += "\\n";
     }else if( teq( auto_ch, "\t" ) ){
       auto_ += "\\t";
@@ -10443,7 +10422,7 @@ function text_unquote( txt : TxtC ) : Text {
       if( teq( auto_ch, "r" ) ){
         auto_ += "\r";
       }else if( teq( auto_ch, "n" ) ){
-        auto_ += "\n";
+        auto_ += NL;
       }else if( teq( auto_ch, "t" ) ){
         auto_ += "\t";
       }else if( teq( auto_ch, "\"" ) ){
@@ -10480,10 +10459,10 @@ primitive( "text.unquote", primitive_text_unquote );
 
 
 /*
- *  text.pad - pads a text with spaces
+ *  text.pad - pads a text with spaces for a given length
  */
 
-function text_pad( txt : TxtC, pad_len : Count ) : Text {
+function text_pad( txt : TxtC, filler: Text, pad_len : Count ) : Text {
   let auto_ = S();
   let ii = 0;
   const len = tlen( txt );
@@ -10491,7 +10470,7 @@ function text_pad( txt : TxtC, pad_len : Count ) : Text {
     if( ii < len ){
       auto_ += tat( txt, ii );
     }else{
-      auto_ += " ";
+      auto_ += filler;
     }
     ii++;
   }
@@ -10499,12 +10478,24 @@ function text_pad( txt : TxtC, pad_len : Count ) : Text {
 }
 
 function primitive_text_pad(){
+  const auto_t = pop_as_text();
   const auto_len = pop_integer();
-  const auto_t = cell_as_text( TOS );
-  drop();
-  push_text( text_pad( auto_t, auto_len ) );
+  push_text( text_pad( auto_t, " ", auto_len ) );
 }
 primitive( "text.pad", primitive_text_pad );
+
+
+/*
+ *  text.pad-with - pads a text with a given filler for a given length
+ */
+
+function primitive_text_pad_with(){
+  const auto_t = pop_as_text();
+  const auto_len = pop_integer();
+  const auto_filler = pop_as_text();
+  push_text( text_pad( auto_t, auto_filler, auto_len ) );
+}
+primitive( "text.pad-with", primitive_text_pad_with );
 
 
 /*
@@ -10922,9 +10913,8 @@ function range_textify_into( object : Cell, dest : Cell ){
  *  Debug tool
  */
 
-
 function is_a_tag_singleton( c : Cell ) : boolean {
-  if( ! is_a_tag_cell( c ) )return false;
+  if( ! is_a_tag( c ) )return false;
   // xx:/xx magic marker
   return ( value_of( c ) == c || c == 0 );
 }
@@ -10934,20 +10924,19 @@ function is_a_tag_singleton( c : Cell ) : boolean {
 // ToDo: create a "definition" type? no: use verb
 const tag_block = tag( "block" );
 
-
-function cell_is_a_block( c : Cell ) : boolean {
+function is_a_block( c : Cell ) : boolean {
   return name_of( c ) == tag_block_header;
 }
 
 
 function is_a_verb_block( c : Cell ) : boolean {
 // True when block is the definition of a verb vs inline code.
-  return cell_is_a_block( c ) && ! is_an_inline_block_cell( c );
+  return is_a_block( c ) && ! is_an_inline_block_cell( c );
 }
 
 
 function block_dump( ip : Cell ) : Text {
-  de&&mand( cell_is_a_block( ip ) );
+  de&&mand( is_a_block( ip ) );
   const length = block_length( ip );
   let auto_ = S();
   auto_ += "Block " + C( ip ) + ", length " + N( length );
@@ -11080,7 +11069,7 @@ function dump( c : Cell ) : Text {
           buf += " - <SINGLETON>";
         }
       }else{
-        buf += tag_as_dump_text( v ) + " :" + tag_as_dump_text( n );
+        buf += tag_as_dump_text( v ) + "/ :" + tag_as_dump_text( n );
       }
 
     break;
@@ -11139,7 +11128,7 @@ function dump( c : Cell ) : Text {
         // ToDo: better escape
         // ToDo: C++ version
         /**/ txt = txt
-        /**/ .replace( "\n",  () => "\\n"  )
+        /**/ .replace( NL,  () => "\\n"  )
         /**/ .replace( "\"",  () => "\\\"" )
         /**/ .replace( "\t",  () => "\\t"  )
         /**/ .replace( "\r",  () => "\\r"  )
@@ -11221,7 +11210,7 @@ function dump( c : Cell ) : Text {
       if( n == tag_block ){
         // Block description often comes next
         // ToDo: check presence of block header
-        if( cell_is_a_block( c + ONE ) ){
+        if( is_a_block( c + ONE ) ){
           cell_dump_entered = false;
           return S()+ "block definition";
         }
@@ -11245,10 +11234,11 @@ function dump( c : Cell ) : Text {
 
   if( blabla_de || dump_invalid_cell != 0 ){
     buf
-    = text_pad( buf, 40 )
+    = text_pad( buf, " ", 40 )
     + text_pad( "( " + N( t ) + "/" + N( n ) + "/" + N( v )
       + " " + C( c )
       + ( is_valid ? " )" : " - INVALID )" ),
+      " ",
       20
     );
   }
@@ -11345,7 +11335,7 @@ function short_dump( c : Cell ) : Text {
         }
         // ToDo: better escape
         /**/ txt = txt
-        /**/ .replace( "\n",  () => "\\n"  )
+        /**/ .replace( NL,  () => "\\n"  )
         /**/ .replace( "\"",  () => "\\\"" )
         /**/ .replace( "\t",  () => "\\t"  )
         /**/ .replace( "\r",  () => "\\r"  )
@@ -11388,17 +11378,78 @@ function short_dump( c : Cell ) : Text {
 }
 
 
-function stacks_dump() : Text {
+function dump_cells( ptr : Cell, nn : Count ) : Text {
+// Returns a text dump of the cells starting at ptr, nn cells, reverse order
+
+  /**/ let  buf = "";
+  //c/ Text buf(  "" );
+
+  while( true ){
+    if( nn > 10 ){
+      buf += "...";
+      nn = 10;
+      continue;
+    }
+    buf += NL
+    + dump( ptr - nn * ONE );
+    if( nn == 0 ){
+      buf += " <- ";
+      break;
+    }
+    nn--;
+  }
+
+  return buf;
+
+}
+
+
+
+function dump_stacks() : Text {
 // Returns a text dump of the cells of the data and control stacks, stack trace
+
+  let some_dirty = false;
+  let ptr;
+  let nn;
 
   const top = TOS;
   const csp = CSP;
 
-  /**/ let  buf = "\n"; // "DATA STACK:";
-  //c/ Text buf(  "\nDATA STACK:" );
-  let ptr  = top;
+  /**/ let  buf = NL;
+  //c/ Text buf(  NL );
 
-  let some_dirty = false;
+  // Dump the control stack
+
+  // buf += "CONTROL STACK:";
+  ptr = csp;
+
+  if( value_of( ptr + 2 * ONE ) != 0 ){
+    buf += "\n-2 DIRTY -> " + dump( ptr + 2 * ONE );
+    some_dirty = true;
+  }
+  if( value_of( ptr + 1 * ONE ) != 0 ){
+    buf += "\n-1 DIRTY -> " + dump( ptr + 1 * ONE );
+    some_dirty = true;
+  }
+
+  let return_base = ACTOR_control_stack;
+
+  if( ptr < return_base ){
+    buf += "\nControl stack underflow, top " + C( csp )
+    + ", base "       + C( return_base )
+    + ", delta "      + N(   csp - return_base )
+    + ", excess pop " + N( ( csp - return_base ) / ONE );
+    // ToDo: fatal error?
+    some_dirty = true;
+    // return_base = ptr + 5 * ONE;
+  }
+
+  nn = ptr - return_base;
+  buf += dump_cells( ptr, nn );
+
+  // Dump the data stack
+  buf += NL;
+  ptr = top;
 
   // Checks that cells that were at the top of the stack were correctly cleared
   if( value_of( ptr + 2 * ONE ) != 0 ){
@@ -11421,57 +11472,8 @@ function stacks_dump() : Text {
     some_dirty = true;
   }
 
-  let nn = 0;
-  while( ptr >= base ){
-    if( ptr == ACTOR_data_stack && name_of( ptr ) == tag_data_stack )break;
-    buf += "\n"
-    + dump( ptr )
-    + " <- " + N( nn )
-    + ( ptr == ACTOR_data_stack ? " BASE" : "" );
-    if( ptr == ACTOR_data_stack )break;
-    ptr -= ONE;
-    nn++;
-    if( nn > 10 ){
-      buf += "...";
-      break;
-    }
-  }
-
-  buf += "\n"; // "CONTROL STACK: ";
-  ptr = csp;
-
-  if( value_of( ptr + 2 * ONE ) != 0 ){
-    buf += "\n-2 DIRTY -> " + dump( ptr + 2 * ONE );    some_dirty = true;
-  }
-  if( value_of( ptr + 1 * ONE ) != 0 ){
-    buf += "\n-1 DIRTY -> " + dump( ptr + 1 * ONE );    some_dirty = true;
-  }
-
-  let return_base = ACTOR_control_stack;
-
-  if( ptr < return_base ){
-    buf += "\nControl stack underflow, top " + C( csp )
-    + ", base "       + C( return_base )
-    + ", delta "      + N(   csp - return_base )
-    + ", excess pop " + N( ( csp - return_base ) / ONE );
-    // ToDo: fatal error?
-    some_dirty = true;
-    // return_base = ptr + 5 * ONE;
-  }
-
-  nn = 0;
-  while( ptr >= return_base ){
-    buf += "\n"
-    + dump( ptr )
-    + " <- " + N( nn )
-    + ( ptr == ACTOR_control_stack ? " BASE" : "" );
-    if( nn > 10 ){
-      buf += "...";
-      break;
-    }
-    ptr -= ONE;
-    nn++;
-  }
+  nn = ptr - base;
+  buf += dump_cells( ptr, nn );
 
   if( verbose_stack_de && some_dirty ){
     bug( buf );
@@ -11517,7 +11519,6 @@ primitive( "normal-debug", primitive_normal_debug );
 /*
  *  log - enable/disable traces and checks
  */
-
 
 /**/ let trace_capture_buffer = no_text;
 //c/ static Text trace_capture_buffer = no_text;
@@ -11774,14 +11775,13 @@ const tag_assert_checker = tag( "assert-checker" );
 let assert_checker_definition = 0;
 // = definition_of( tag_assert_checker );
 
-
 /*
  *  assert - assert a condition, based on the result of a block
  */
 
 const tag_assert = tag( "assert" );
 
-function  primitive_assert(){
+function primitive_assert(){
 // Assert that a condition is true, based on the result of a block
 
   // Do not execute the assertion block, if fast mode is on
@@ -11822,8 +11822,8 @@ const pack_verb      = pack( type_verb,       tag_verb      );
 
 function primitive_type_of(){
   const tag = tag_of_type( type_of( TOS ) );
-  clear( TOS );
-  set( TOS, type_tag, tag_type, tag );
+  clear_top();
+  set_top_tag( tag_type, tag );
 }
 primitive( "type-of", primitive_type_of );
 
@@ -11834,8 +11834,8 @@ primitive( "type-of", primitive_type_of );
 
 function primitive_name_of(){
   const n = name_of( TOS );
-  clear( TOS );
-  set( TOS, type_tag, tag_name, n );
+  clear_top();
+  set_top_tag( tag_name, n );
 }
 primitive( "name-of", primitive_name_of );
 
@@ -11846,8 +11846,8 @@ primitive( "name-of", primitive_name_of );
 
 function primitive_value_of(){
   let v = value_of( TOS );
-  clear( TOS );
-  set( TOS, type_integer, tag_value, v );
+  clear_top();
+  set_top_integer( tag_value, v );
 }
 primitive( "value-of", primitive_value_of );
 
@@ -11858,7 +11858,7 @@ primitive( "value-of", primitive_value_of );
 
 function primitive_info_of(){
   let i = info_of( TOS );
-  clear( TOS );
+  clear_top();
   set(   TOS, type_integer, tag_info, i );
 }
 primitive( "info-of", primitive_info_of );
@@ -11890,7 +11890,7 @@ function primitive_unpack_type(){
   const typ     = unpack_type( info );
   /**/ const typ_tag = tag_of_type( typ );
   //c/ Tag   typ_tag = tag_of_type( (Type) typ );
-  clear( TOS );
+  clear_top();
   init_cell( TOS, typ_tag, pack( type_tag, tag_type ) );
 }
 primitive( "unpack-type", primitive_unpack_type );
@@ -11903,7 +11903,7 @@ primitive( "unpack-type", primitive_unpack_type );
 function primitive_unpack_name(){
   const info = value_of( TOS );
   const name = unpack_name( info );
-  clear( TOS );
+  clear_top();
   init_cell(  TOS, name, pack( type_tag, tag_name ) );
 }
 primitive( "unpack-name", primitive_unpack_name );
@@ -11957,7 +11957,7 @@ function type_name_to_type( n : ConstText ) : Type {
 }
 
 
-function cell_class_tag( c : Cell ) : Tag {
+function class_tag_of( c : Cell ) : Tag {
 // Get the most specific type of a cell's value
   const t = type_of( c );
   // For references, it is the name stored in the first cell of the object header
@@ -11973,12 +11973,19 @@ function cell_class_tag( c : Cell ) : Tag {
 
 const tag_class = tag( "class" );
 
-function primitive_inox_class_of(){
-  const class_tag = cell_class_tag( TOS );
-  clear( TOS );
-  set( TOS, type_tag, tag_class, class_tag );
+function primitive_class_of(){
+  const class_tag = class_tag_of( TOS );
+  clear_top();
+  set_top_tag( tag_class, class_tag );
 }
-primitive( "class-of", primitive_inox_class_of );
+primitive( "class-of", primitive_class_of );
+
+
+/*
+ *  class - see class-of
+ */
+
+primitive( "class", primitive_class_of )
 
 
 /* ---------------------------------------------------------------------------
@@ -12072,6 +12079,10 @@ function primitive_from_control(){
 }
 primitive( "control>", primitive_from_control );
 
+
+/*
+ *  fetch-control - copy top of control stack to the data stack
+ */
 
 function primitive_fetch_control(){
   // R@ in Forth
@@ -12215,7 +12226,6 @@ function lookup_sentinel( csp : Cell, tag : Tag ) : Cell {
 /*
  *  break - exit loop
  */
-
 
 function primitive_break(){
 // Like return but to exit a control structure, a non local return
@@ -12473,7 +12483,6 @@ function define_class_binary_operator_primitive(
   // For reference types
   if( is_a_reference_type( target_type ) ){
 
-
   // For not reference types, including integer
   }else{
 
@@ -12542,6 +12551,7 @@ operator_primitive( "+", primitive_add );
 /*
  *  integer.+ - add two integers
  *  ToDo: all operations should check for overflow and raise an exception
+ *  ToDo: the name of the target should be preserved
  */
 
 function primitive_integer_add(){
@@ -12575,9 +12585,8 @@ function primitive_is_equal(){
       return;
     }
     // If not references, then they're necesseraly different
-    if( ! is_sharable( p1 ) ){
+    if( ! is_a_reference( p1 ) ){
       clear( p2 );
-      clear( p1 );
       set( p1, type_boolean, tag_is_equal, 0 );
       return;
     }
@@ -12642,12 +12651,13 @@ primitive( "equal?", primitive_is_equal );
 function primitive_is_not_equal(){
   primitive_is_equal();
   if( value_of( TOS ) == 0 ){
-    set( TOS, type_boolean, tag_is_equal, 1 );
+    set_top_boolean( tag_is_equal, 1 );
   }else{
-    set( TOS, type_boolean, tag_is_equal, 0 );
+    set_top_boolean( tag_is_equal, 0 );
   }
 }
 operator_primitive( "<>", primitive_is_not_equal );
+
 
 /*
  *  not= - value inequality, the opposite of = value equality
@@ -12988,16 +12998,16 @@ const tag_is_truth = tag( "truth?" );
 
 function primitive_is_truth(){
   if( value_of( TOS ) == 0 ){
-    set( TOS, type_boolean, tag_is_truth, 0 );
+    set_top_boolean( tag_is_truth, 0 );
     return;
   }
   if( type_of( TOS ) == type_reference ){
     // ToDo: delegate to some method
-    clear( TOS );
-    set( TOS, type_boolean, tag_is_truth, 1 );
+    clear_top();
+    set_top_boolean( tag_is_truth, 1 );
     return;
   }
-  set( TOS, type_boolean, tag_is_truth, 1 );
+  set_top_boolean( tag_is_truth, 1 );
 }
 primitive( "truth?", primitive_is_truth );
 
@@ -13014,14 +13024,14 @@ function primitive_is_someting(){
   const typ = type_of( TOS );
   if( typ == type_void ){
     if( value_of( TOS ) != 0 ){
-      set( TOS, type_boolean, tag_is_something, 1 );
+      set_top_boolean( tag_is_something, 1 );
     }else{
-      set( TOS, type_boolean, tag_is_something, 0 );
+      set_top_boolean( tag_is_something, 0 );
     }
     return;
   }
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_something, 1 );
+  clear_top();
+  set_top_boolean( tag_is_something, 1 );
 }
 primitive( "something?", primitive_is_someting );
 
@@ -13070,14 +13080,14 @@ function primitive_is_true(){
   const typ = type_of( TOS );
   if( typ == type_boolean ){
     if( value_of( TOS ) != 0 ){
-      set( TOS, type_boolean, tag_is_true, 1 );
+      set_top_boolean( tag_is_true, 1 );
     }else{
-      set( TOS, type_boolean, tag_is_true, 0 );
+      set_top_boolean( tag_is_true, 0 );
     }
     return;
   }
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_true, 0 );
+  clear_top();
+  set_top_boolean( tag_is_true, 0 );
 }
 primitive( "true?", primitive_is_true );
 
@@ -13094,14 +13104,14 @@ function primitive_is_false(){
   const typ = type_of( TOS );
   if( typ == type_boolean ){
     if( value_of( TOS ) != 0 ){
-      set( TOS, type_boolean, tag_is_false, 0 );
+      set_top_boolean( tag_is_false, 0 );
     }else{
-      set( TOS, type_boolean, tag_is_false, 1 );
+      set_top_boolean( tag_is_false, 1 );
     }
     return;
   }
-  clear( TOS );
-  set( TOS, type_boolean, tag_is_false, 0 );
+  clear_top();
+  set_top_boolean( tag_is_false, 0 );
 }
 primitive( "false?", primitive_is_false );
 
@@ -13149,11 +13159,11 @@ function primitive_and(){
   const p2 = pop();
   // check_de&&mand_boolean( TOS );
   if( value_of( TOS ) != 0 ){
-    clear( TOS );
+    clear_top();
     move_cell( p2, TOS );
   }else{
-    clear( TOS );
-    set( TOS, type_boolean, tag_and, 0 );
+    clear_top();
+    set_top_boolean( tag_and, 0 );
   }
 }
 operator_primitive( "and", primitive_and );
@@ -13169,9 +13179,9 @@ function checked_int_is_greater_than(){
   const p2 = checked_int_second_parameter();
   const p1 = checked_int_first_parameter();
   if( p1 > p2 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13180,9 +13190,9 @@ function checked_int_is_greater_or_equal(){
   const p2 = checked_int_second_parameter();
   const p1 = checked_int_first_parameter();
   if( p1 >= p2 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13191,9 +13201,9 @@ function checked_int_is_less_than(){
   const p2 = checked_int_second_parameter();
   const p1 = checked_int_first_parameter();
   if( p1 < p2 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13202,9 +13212,9 @@ function checked_int_is_less_or_equal(){
   const p2 = checked_int_second_parameter();
   const p1 = checked_int_first_parameter();
   if( value_of( p1 ) <= value_of( p2 ) ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13212,9 +13222,9 @@ function checked_int_is_less_or_equal(){
 function checked_int_is_equal_to_1(){
   const p1 = checked_int_parameter();
   if( p1 == 1 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13222,9 +13232,9 @@ function checked_int_is_equal_to_1(){
 function checked_int_is_equal_to_minus_1(){
   const p1 = checked_int_parameter();
   if( p1 == -1 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13232,9 +13242,9 @@ function checked_int_is_equal_to_minus_1(){
 function checked_int_is_equal_to_0(){
   const p1 = checked_int_parameter();
   if( p1 == 0 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13242,9 +13252,9 @@ function checked_int_is_equal_to_0(){
 function checked_int_is_not_equal_to_0(){
   const p1 = checked_int_parameter();
   if( p1 != 0 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13252,9 +13262,9 @@ function checked_int_is_not_equal_to_0(){
 function checked_int_is_less_than_0(){
   const p1 = checked_int_parameter();
   if( p1 < 0 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13262,9 +13272,9 @@ function checked_int_is_less_than_0(){
 function checked_int_is_greater_than_0(){
   const p1 = checked_int_parameter();
   if( p1 > 0 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13272,9 +13282,9 @@ function checked_int_is_greater_than_0(){
 function checked_int_is_less_or_equal_to_0(){
   const p1 = checked_int_parameter();
   if( p1 <= 0 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13282,9 +13292,9 @@ function checked_int_is_less_or_equal_to_0(){
 function checked_int_is_greater_or_equal_to_0(){
   const p1 = checked_int_parameter();
   if( p1 >= 0 ){
-    set( TOS, type_boolean, tag_boolean, 1 );
+    set_top_boolean( tag_boolean, 1 );
   }else{
-    set( TOS, type_boolean, tag_boolean, 0 );
+    set_top_boolean( tag_boolean, 0 );
   }
 }
 
@@ -13384,15 +13394,15 @@ operator_primitive(  ">=0",  checked_int_is_greater_or_equal_to_0 );
 
 function checked_int_negative(){
   const p1 = checked_int_parameter();
-  set( TOS, type_integer, tag_integer, -value_of( p1 ) );
+  set_top_integer( tag_integer, -value_of( p1 ) );
 }
 
 function checked_int_sign(){
   const p1 = checked_int_parameter();
   if( p1 < 0 ){
-    set( TOS, type_integer, tag_integer, -1 );
+    set_top_integer( tag_integer, -1 );
   }else{
-    set( TOS, type_integer, tag_integer, 1 );
+    set_top_integer( tag_integer, 1 );
   }
 }
 
@@ -13400,9 +13410,9 @@ function checked_int_sign(){
 function checked_int_abs(){
   const p1 = checked_int_parameter();
   if( p1 < 0 ){
-    set( TOS, type_integer, tag_integer, -value_of( p1 ) );
+    set_top_integer( tag_integer, -value_of( p1 ) );
   }else{
-    set( TOS, type_integer, tag_integer, value_of( p1 ) );
+    set_top_integer( tag_integer, value_of( p1 ) );
   }
 }
 
@@ -13461,19 +13471,19 @@ function primitive_as_float(){
 
   const top = pop();
 
-  if( is_a_float_cell( top ) ){
+  if( is_a_float( top ) ){
     push();
     return;
   }
 
-  if( is_an_integer_cell( top ) ){
+  if( is_an_integer( top ) ){
     /**/ const f = mem32f[ top ];
     //c/ auto  f = *( float* ) ( ( void* ) ( top << 3 ) );
     push_float( f );
     return;
   }
 
-  if( is_a_text_cell( top ) ){
+  if( is_a_text( top ) ){
     /**/ const f = parseFloat( cell_as_text( top ) );
     //c/ auto  f = (Float) atof( cell_as_text( top ).c_str() );
     push_float( f );
@@ -13841,6 +13851,7 @@ primitive( "float.truncate", primitive_float_truncate );
 
 /*
  *  text.join - text concatenation operator
+ *  ToDo: should preserve the name of the target
  */
 
 function primitive_text_join(){
@@ -14083,7 +14094,6 @@ function primitive_text_ends_with(){
 primitive( "text.end-with?", primitive_text_ends_with );
 
 
-
 /*
  *  text.line - extract a line from a text at some position
  */
@@ -14109,7 +14119,7 @@ function extract_line_no( lines : Text, line_no : Index ) : Text {
   let lf_index;
   let skipped = 0;
   while( true ){
-    lf_index = tidx( lines, "\n" );
+    lf_index = tidx( lines, NL );
     if( lf_index == -1 ){
       if( skipped + 1 == line_no )return lines;
       return no_text;
@@ -14120,7 +14130,7 @@ function extract_line_no( lines : Text, line_no : Index ) : Text {
   }
 
   // Is there still a line feed?
-  lf_index = tidx( lines, "\n" );
+  lf_index = tidx( lines, NL );
   if( lf_index == -1 )return lines;
 
   // Return the line before the line feed
@@ -14141,9 +14151,7 @@ primitive( "text.line-no", primitive_line_no );
  */
 
 function primitive_as_text(){
-  if( type_of( TOS ) == type_reference
-  && area_tag( value_of( TOS ) ) == tag_text
-  )return;
+  if( is_a_text( TOS ) )return;
   push_text( pop_as_text() );
 }
 primitive( "as-text", primitive_as_text );
@@ -14181,12 +14189,12 @@ const tag_is_empty_text = tag( "\"\"?" );
 
 function primitive_is_empty_text(){
   if( type_of( TOS ) != type_reference ){
-    clear( TOS );
-    set( TOS, type_boolean, tag_is_empty_text, 0 );
+    clear_top();
+    set_top_boolean( tag_is_empty_text, 0 );
   }else{
     const it_is = is_empty_text_cell( TOS );
-    clear( TOS );
-    set( TOS, type_boolean, tag_is_empty_text, it_is ? 1 : 0 );
+    clear_top();
+    set_top_boolean( tag_is_empty_text, it_is ? 1 : 0 );
   }
 }
 operator_primitive( "\"\"?", primitive_is_empty_text );
@@ -14202,8 +14210,8 @@ operator_primitive( "\"\"?", primitive_is_empty_text );
 
 function primitive_name(){
   const n = name_of( TOS );
-  clear( TOS );
-  set( TOS, type_tag, tag_name, n );
+  clear_top();
+  set_top_tag( tag_name, n );
 }
 primitive( "name", primitive_name );
 
@@ -14229,11 +14237,11 @@ function primitive_is_named(){
   const t = pop_tag();
   const c = pop();
   if( name_of( c ) == t ){
-    clear( TOS );
-    set( TOS, type_boolean, tag_is_named, 1 );
+    clear_top();
+    set_top_boolean( tag_is_named, 1 );
   }else{
-    clear( TOS );
-    set( TOS, type_boolean, tag_is_named, 0 );
+    clear_top();
+    set_top_boolean( tag_is_named, 0 );
   }
 }
 primitive( "named?",      primitive_is_named );
@@ -14363,11 +14371,11 @@ function definition_as_text( def : Cell ) : Text {
     // Filter out final "return"
     if( ip + 1 == length ){
       de&&mand_eq( value_of( c ), 0x0 );
-      de&&mand_cell_type(  c, type_void );
-      de&&mand_cell_name(  c, type_void );
+      de&&mand_void( c );
+      de&&mand_named(  c, type_void );
     }
     auto_ += "( " + N( ip ) + " ) "
-    + inox_machine_code_cell_as_text( c ) + "\n";
+    + inox_machine_code_cell_as_text( c ) + NL;
     ip++;
   }
 
@@ -14405,7 +14413,7 @@ function text_of_verb_definition( id : Index ) : Text {
   + ", verb " + N( id )
   + ", cell " + C( def )
   + auto_text_def
-  + "\n";
+  + NL;
 
   return auto_;
 }
@@ -14444,7 +14452,7 @@ function primitive_verb_from(){
   }
   let id = tag( auto_ );
   push();
-  set( TOS, type_verb, id, definition_of( id ) );
+  set_top( type_verb, id, definition_of( id ) );
 }
 primitive( "verb.from", primitive_verb_from );
 
@@ -14484,7 +14492,7 @@ function primitive_primitive_from(){
   }
   let id = tag( auto_ );
   push();
-  set( TOS, type_verb, id, definition_of( id ) );
+  set_top( type_verb, id, definition_of( id ) );
 }
 primitive( "primitive.from", primitive_primitive_from );
 
@@ -14587,7 +14595,7 @@ function primitive_define_verb(){
   const def  = value_of( top );
   const len  = area_length( def );
   define_verb( name, def, len );
-  clear( top );
+  clear_top();
 }
 primitive( "define-verb", primitive_define_verb );
 
@@ -14619,7 +14627,7 @@ function primitive_verb_exists(){
   const auto_ = pop_as_text();
   const exists = verb_exists( auto_ );
   push();
-  set( TOS, type_boolean, tag_exist, exists ? 1 : 0 );
+  set_top_boolean( tag_exist, exists ? 1 : 0 );
 }
 primitive( "verb.exist?", primitive_verb_exists );
 
@@ -14637,7 +14645,7 @@ function primitive_tag_to_verb(){
   }
   const def = find_definition_by_name( auto_ );
   push();
-  set( TOS, type_verb, tag, def );
+  set_top( type_verb, tag, def );
 }
 primitive( "tag.to-verb", primitive_tag_to_verb );
 
@@ -14756,10 +14764,10 @@ const tag_is_with = tag( "with?" );
 function primitive_is_with(){
   const is_it = is_with( TOS );
   if( is_it ){
-    set( TOS, type_boolean, tag_is_with, 1 );
+    set_top_boolean( tag_is_with, 1 );
   }else{
-    clear( TOS );
-    set( TOS, type_boolean, tag_is_with, 0 );
+    clear_top();
+    set_top_boolean( tag_is_with, 0 );
   }
 }
 primitive( "with?", primitive_is_with );
@@ -14846,14 +14854,14 @@ function primitive_run_with_parameters(){
   let formal_parameter_cell = new_tos;
   let source_argument_cell  = new_tos - ( count - 1 ) * ONE;
 
-  de&&mand_cell_name( sentinel_tos, tag_with );
+  de&&mand_named( sentinel_tos, tag_with );
   de&&mand_tag( sentinel_tos );
 
   while( copy_count < count ){
 
     // Process sentinel cell, actual argument is number of formal parameters
     if( copy_count == 0 ){
-      de&&mand_cell_name( formal_parameter_cell, tag_with );
+      de&&mand_named( formal_parameter_cell, tag_with );
       set( actual_argument_cell, type_integer, tag_with, count - 1 );
       clear( formal_parameter_cell ); // ToDo: raw?
       actual_argument_cell  += ONE;
@@ -14980,8 +14988,8 @@ function primitive_cached_local(){
     // Cache is valid if CSP is identical to what it was when last cached
     if( CSP == value_of( previous_ip ) ){
       if( check_de ){
-        mand_cell_name( cache, name_of( IP ) );
-        mand_cell_type( cache, type_integer );
+        mand_named( cache, name_of( IP ) );
+        mand_integer( cache );
       }
       copy_cell( value_of( cache ), push() );
       return;
@@ -15003,7 +15011,7 @@ function primitive_cached_local(){
   copy_cell( ptr, push() );
   // Check the validity of the cache cell inside the definition
   if( check_de ){
-    mand_cell_type( IP, type_integer );
+    mand_integer( IP );
   }
   // Cache the value
   set_value( previous_ip, CSP );
@@ -15168,7 +15176,7 @@ function primitive_lookup(){
   const start_ptr  = pop_integer();
   const n = eat_tag( TOS );
   let found = cell_lookup( start_ptr, end_ptr, n, nth );
-  set( TOS, type_integer, tag( "lookup" ), found );
+  set_top_integer( tag( "lookup" ), found );
 }
 primitive( "lookup", primitive_lookup );
 
@@ -15178,7 +15186,7 @@ primitive( "lookup", primitive_lookup );
  */
 
 function primitive_data_index(){
-  check_de&&mand_cell_type( TOS, type_tag );
+  check_de&&mand_tag( TOS );
   const name = value_of( TOS );
   let ptr = TOS - ONE;
   let index = 1;
@@ -15192,7 +15200,7 @@ function primitive_data_index(){
     }
     index++;
   }
-  set( TOS, type_integer, tag( "data-index" ), index );
+  set_top_integer( tag( "data-index" ), index );
 }
 primitive( "data-index", primitive_data_index );
 
@@ -15277,14 +15285,14 @@ function primitive_set_upper_data(){
 function primitive_forget_data(){
   const n = pop_tag();
   while( name_of( TOS ) != n ){
-    clear( TOS );
+    clear_top();
     TOS -= ONE;
     if( TOS < ACTOR_data_stack ){
       FATAL( "data-without, missing " + tag_as_text( n ) );
       return;
     }
   }
-  clear( TOS );
+  clear_top();
   TOS -= ONE;
 }
 primitive( "forget-data", primitive_forget_data );
@@ -15366,14 +15374,14 @@ function make_circular_object_from_js( obj : any, met : Map< string, any> ) : Ce
     if( teq( js_type, "number" ) ){
       if( Number.isInteger( val ) ){
         c = allocate_cell();
-        set_integer_cell( c, val );
+        set_integer( c, val );
       }else{
         // ToDo: c = make_float_cell( val )
       }
 
     }else if( teq( js_type, "boolean" ) ){
       c = allocate_cell();
-      set_integer_cell( c, val ? 1 : 0 );
+      set_integer( c, val ? 1 : 0 );
 
     }else if( teq( js_type, "string" ) ){
       c = allocate_cell();
@@ -15451,7 +15459,7 @@ function primitive_make_fixed_object(){
   const dest_area = allocate_area( class_name, max_length * size_of_cell );
   if( dest_area == 0 ){
     // ToDo: raise an exception?
-    set( TOS, type_tag, tag_out_of_memory, 0 );
+    set_top_tag( tag_out_of_memory, 0 );
     return;
   }
 
@@ -15493,7 +15501,7 @@ primitive( "make.object", primitive_make_object );
 function primitive_make_extensible_object(){
   // Get the class name and the initial capacity
   const class_name = name_of( TOS );
-  check_de&&mand_cell_type( TOS, type_integer );
+  check_de&&mand_integer( TOS );
   // Allocate the object, it will hold a single value, a reference
   const obj = allocate_area( class_name, size_of_cell );
   const capacity = value_of( TOS );
@@ -15525,9 +15533,7 @@ function primitive_extend_object(){
   const len = object_length( obj );
 
   // Silently ignore if alreay extended
-  if( type_of( obj ) == type_reference ){
-    return;
-  };
+  if( is_a_reference( obj ) && len == 1 )return;
 
   // Allocate the extended area
   const area = allocate_area( name_of( obj ), len * size_of_cell );
@@ -15557,14 +15563,16 @@ primitive( "extend-object", primitive_extend_object );
 function object_get( ptr : Cell, n : Tag ) : Cell {
 // Get the value of a data member of an object
 
-  // Add an indirection level if objet is extensible
+  const len = object_length( ptr );
+
+  // Add an indirection level if object is extensible
   if( type_of( ptr ) == type_reference ){
     ptr = reference_of( ptr );
   }
 
   let limit = 0;
   if( check_de ){
-    limit = ptr + object_length( ptr ) * ONE;
+    limit = ptr + len;
   }
 
   // Skip the class name & length header first cell
@@ -15595,14 +15603,14 @@ function primitive_object_at(){
   // Void from void
   if( ptr == 0x0 ){
     de&&mand( info_of( obj ) == 0 );
-    clear( top );
+    clear_top();
     clear( obj );
     return;
   }
 
   if( check_de ){
     mand_tag( top );
-    mand_cell_type( obj, type_reference );
+    mand_reference( obj );
     // ToDo: fatal error
   }
 
@@ -15615,7 +15623,7 @@ function primitive_object_at(){
     return;
   }
 
-  clear( top );
+  clear_top();
   clear( obj );
   copy_cell( ptr, obj );
 
@@ -15644,7 +15652,7 @@ function primitive_object_nice_at(){
 
   if( check_de ){
     mand_tag( key );
-    mand_cell_type( obj, type_reference );
+    mand_reference( obj );
     // ToDo: fatal error
   }
 
@@ -15676,27 +15684,27 @@ function primitive_object_contains(){
   // False from void
   if( ptr == 0x0 ){
     de&&mand( info_of( obj ) == 0 );
-    clear( top );
+    clear_top();
     clear( obj );
-    set( TOS, type_boolean, tag_contains, 0 );
+    set_top_boolean( tag_contains, 0 );
     return;
   }
 
   if( check_de ){
     mand_tag( top );
-    mand_cell_type( obj, type_reference );
+    mand_reference( obj );
     // ToDo: fatal error
   }
 
   ptr = object_get( ptr, value_of( top ) );
 
-  clear( top );
+  clear_top();
   clear( obj );
 
   if( ptr == 0 ){
-    set( TOS, type_boolean, tag_contains, 0 );
+    set_top_boolean( tag_contains, 0 );
   }else{
-    set( TOS, type_boolean, tag_contains, 1 );
+    set_top_boolean( tag_contains, 1 );
   }
 }
 operator_primitive( "object.contain?", primitive_object_contains );
@@ -15715,23 +15723,28 @@ operator_primitive( "in?", primitive_is_in );
 
 
 /*
- *  object.! - change a data member of an object
+ *  object.! - change an existing data member of an object
  */
+
+function dereference_top(){
+  const target = reference_of( TOS );
+  if( type_of( target ) == type_reference ){
+    check_de&&mand_eq( area_length( target ), 1 );
+    return value_of( target );
+  }
+  return target;
+}
+
 
 function primitive_object_set(){
 // Set the value of an instance variable, aka attribute, of an object
 
-  const top = pop();
-  const n   = pop_tag();
-
-  check_de&&mand_cell_type( TOS, type_reference );
-  const obj = pop();
-  let ptr = value_of( obj );
-
-  // Add an indirection level if objet is extensible
-  if( type_of( ptr ) == type_reference ){
-    ptr = reference_of( ptr );
-  }
+  let ptr = dereference_top();
+  const name_cell  = TOS - ONE;
+  const value_cell = TOS - 2 * ONE;
+  check_de&&mand_tag( name_cell );
+  const n = value_of( name_cell );
+  reset( name_cell );
 
   let limit = 0;
   if( check_de ){
@@ -15753,14 +15766,13 @@ function primitive_object_set(){
     }
   }
 
-  // ToDo: optimize this, the target name is already ok
-  reset( ptr );
-  move_cell( top, ptr );
+  move_cell( value_cell, ptr );
 
   // Restore initial name
   set_name( ptr, n );
-  // ToDo: the obj is not clear
-  clear( obj );
+
+  clear_top();
+  TOS -= 3 * ONE;
 
 }
 primitive( "object.!", primitive_object_set );
@@ -15915,13 +15927,13 @@ primitive( "stack.fetch-nice", primitive_stack_fetch_nice );
  *  stack.length - get the depth of a stack object
  */
 
+const tag_length = tag( "length" );
+
 function primitive_stack_length(){
-  let target = pop_reference();
-  if( type_of( target ) == type_reference ){
-    target = value_of( target );
-  }
+  let target = dereference_top();
   const length = value_of( target );
-  push_integer( length );
+  clear_top();
+  set_top_integer( tag_length, length );
 }
 primitive( "stack.length", primitive_stack_length );
 
@@ -15930,12 +15942,13 @@ primitive( "stack.length", primitive_stack_length );
  *  stack.capacity - get the capacity of a stack object
  */
 
-const tag_stack_capacity = tag( "stack.capacity" );
+const tag_capacity = tag( "capacity" );
 
 function primitive_stack_capacity(){
-  let target = pop_reference();
-  push_integer( stack_capacity( target ) );
-  set_tos_name( tag_stack_capacity );
+  let target = dereference_top();
+  const capacity = stack_capacity( target );
+  clear_top();
+  set_top_integer( tag_capacity, capacity );
 }
 primitive( "stack.capacity", primitive_stack_capacity );
 
@@ -16025,7 +16038,7 @@ const tag_stack_top   = tag( "stack-top" );
 function primitive_stack_enter(){
 
   let target = pop_reference();
-  if( type_of( target ) == type_reference ){
+  if( is_a_reference( target ) ){
     target = reference_of( target );
   }
 
@@ -16207,9 +16220,9 @@ primitive( "queue.length", primitive_queue_length );
 
 function primitive_queue_pull(){
 
-  check_de&&mand_cell_type( TOS, tag_reference );
+  check_de&&mand_reference( TOS );
   const queue = value_of( TOS );
-  clear( TOS );
+  clear_top();
   pop();
   const queue_length = value_of( queue );
   if( queue_length + 1 >= to_cell( area_size( queue ) ) ){
@@ -16231,16 +16244,10 @@ primitive( "queue.pull", primitive_queue_pull );
  *  queue.capacity - maximum number of elements in the queue
  */
 
-const tag_queue_capacity = tag( "queue.capacity" );
-
 function primitive_queue_capacity(){
-  check_de&&mand_cell_type( TOS, tag_reference );
-  const queue = value_of( TOS );
-  clear( TOS );
-  pop();
-  const queue_capacity = to_cell( area_size( queue ) );
-  push_integer( queue_capacity - 1 );
-  set_tos_name( tag_queue_capacity );
+  const capacity = stack_capacity( TOS );
+  clear_top();
+  set_top_integer( tag_capacity, capacity );
 }
 primitive( "queue.capacity", primitive_queue_capacity );
 
@@ -16250,16 +16257,14 @@ primitive( "queue.capacity", primitive_queue_capacity );
  */
 
 function primitive_queue_clear(){
-  check_de&&mand_cell_type( TOS, tag_reference );
-  const queue = value_of( TOS );
-  clear( TOS );
-  pop();
+  const queue = dereference_top();
   const queue_length = value_of( queue );
   let ii;
   for( ii = 0 ; ii < queue_length ; ii++ ){
     clear( queue + ( ii + 1 ) * ONE );
   }
   set_value( queue, 0 );
+  drop();
 }
 primitive( "queue.clear", primitive_queue_clear );
 
@@ -16278,7 +16283,7 @@ function primitive_array_put(){
   check_de&&mand_integer( index_cell );
   let   index = value_of( index_cell );
   const array_cell = TOS - 2 * ONE;
-  check_de&&mand_cell_type( array_cell, tag_reference );
+  check_de&&mand_reference( array_cell );
   const array = value_of( array_cell );
   const array_length = value_of( array );
   const array_capacity = to_cell( area_size( array ) );
@@ -16307,12 +16312,10 @@ primitive( "array.put", primitive_array_put );
  */
 
 function primitive_array_get(){
-  const index_cell = TOS;
+  const array = dereference_top();
+  const index_cell = TOS - ONE;
   check_de&&mand_integer( index_cell );
   let   index = value_of( index_cell );
-  const array_cell = TOS - ONE;
-  check_de&&mand_cell_type( array_cell, tag_reference );
-  const array = value_of( array_cell );
   const array_length = value_of( array );
   // Handle negative indices
   if( index < 0 ){
@@ -16324,7 +16327,7 @@ function primitive_array_get(){
   }
   reset( index_cell );
   copy_cell( array + ( index + 1 ) * ONE, TOS );
-  clear( array_cell );
+  clear_top();
   TOS -= 2 * ONE;
 }
 primitive( "array.get", primitive_array_get );
@@ -16337,12 +16340,10 @@ primitive( "array.get", primitive_array_get );
 const tag_array_length = tag( "array.length" );
 
 function primitive_array_length(){
-  const array_cell = TOS;
-  check_de&&mand_cell_type( array_cell, tag_reference );
-  const array = value_of( array_cell );
+  const array = dereference_top();
   const array_length = value_of( array );
-  clear( array_cell );
-  set( TOS, type_integer, tag_array_length, array_length );
+  clear_top();
+  set_top_integer( tag_array_length, array_length );
 }
 primitive( "array.length", primitive_array_length );
 
@@ -16351,15 +16352,10 @@ primitive( "array.length", primitive_array_length );
  *  array.capacity - return the capacity of an array
  */
 
-const tag_array_capacity = tag( "array.capacity" );
-
 function primitive_array_capacity(){
-  const array_cell = TOS;
-  check_de&&mand_cell_type( array_cell, tag_reference );
-  const array = value_of( array_cell );
-  const array_capacity = to_cell( area_size( array ) );
-  clear( array_cell );
-  set( TOS, type_integer, tag_array_capacity, array_capacity - 1 );
+  const array_capacity = stack_capacity( TOS );
+  clear_top();
+  set_top_integer( tag_capacity, array_capacity );
 }
 primitive( "array.capacity", primitive_array_capacity );
 
@@ -16369,11 +16365,11 @@ primitive( "array.capacity", primitive_array_capacity );
  */
 
 function primitive_array_remove(){
-  let array = pop_reference();
-  if( type_of( array ) == type_reference ){
-    array = value_of( array );
-  }
-  const nth = pop_integer();
+  const array = dereference_top();
+  const nth_cell = TOS - ONE;
+  check_de&&mand_integer( nth_cell );
+  const nth = value_of( nth_cell );
+  reset( nth_cell );
   const array_length = value_of( array );
   // Handle negative indices
   let index = nth;
@@ -16391,6 +16387,8 @@ function primitive_array_remove(){
   }
   // Update length
   set_value( array, array_length - 1 );
+  clear_top();
+  TOS -= 2 * ONE;
 }
 
 
@@ -16400,7 +16398,7 @@ function primitive_array_remove(){
 
 function primitive_array_index(){
   let array = pop_reference();
-  if( type_of( array ) == type_reference ){
+  if( is_a_reference( array ) ){
     array = value_of( array );
   }
   const value = TOS;
@@ -16416,8 +16414,8 @@ function primitive_array_index(){
   if( ii == array_length ){
     ii = -1;
   }
-  clear( TOS );
-  set( TOS, type_integer, tag_index, ii );
+  clear_top();
+  set_top_integer( tag_index, ii );
 }
 primitive( "array.index", primitive_array_index );
 
@@ -16431,9 +16429,7 @@ function primitive_array_tag_index(){
   if( type_of( array ) == type_reference ){
     array = value_of( array );
   }
-  const value = TOS;
-  check_de&&mand_cell_type( value, type_tag );
-  const name = value_of( value );
+  const name = eat_tag( TOS );
   const array_length = value_of( array );
   let ii;
   for( ii = 0 ; ii < array_length ; ii++ ){
@@ -16446,7 +16442,7 @@ function primitive_array_tag_index(){
   if( ii == array_length ){
     ii = -1;
   }
-  set( TOS, type_integer, tag_index, ii );
+  set_top_integer( tag_index, ii );
 }
 primitive( "array.tag-index", primitive_array_tag_index );
 
@@ -16456,48 +16452,48 @@ primitive( "array.tag-index", primitive_array_tag_index );
  */
 
 /*
- *  map.put - put a value in a map
+ *  map.! - put a value in a map at a key
  */
 
 function primitive_map_put(){
-  const value_cell = TOS;
-  const name_id = name_of( value_cell );
-  const map_cell = TOS - 2 * ONE;
-  check_de&&mand_cell_type( map_cell, tag_reference );
-  const map = value_of( map_cell );
+  let map = dereference_top();
+  const name_id = eat_tag( TOS - ONE );
+  const value_cell = TOS - 2 * ONE;
+  set_name( value_cell, name_id );
   const map_length = value_of( map );
-  const map_capacity = to_cell( area_size( map ) );
+  const map_capacity = area_length( map );
   // Search for the key
   // ToDo: some caching, based on the name of the map and/or it's address
-  let ii = 0;
-  while( ii < map_length ){
-    if( name_of( map + ( ii + 1 ) * ONE ) == name_id ){
+  let ii = 1;
+  while( ii <= map_length ){
+    if( name_of( map + ii  * ONE ) == name_id ){
       break;
     }
     ii++;
   }
   if( ii == map_capacity ){
-    FATAL( "map.put, map full" );
-    return;
+    const obj = value_of( TOS );
+    stack_extend( obj, ii );
+    map = value_of( obj );
+  }else if( ii > map_length ){
+    set_value( map, ii );
   }
-  if( ii == map_length ){
-    set_value( map, map_length + 1 );
-  }
-  move_cell( value_cell, map + ( ii + 1 ) * ONE );
+  move_cell( value_cell, map + ii * ONE );
+  clear_top();
   TOS -= 3 * ONE;
 }
-primitive( "map.put", primitive_map_put );
+primitive( "map.!", primitive_map_put );
 
 
 /*
- *  map.get - get a value from a map
+ *  map.@ - get a value from a map
  */
 
 function primitive_map_get(){
-  const key_cell = TOS;
+  const map_cell = TOS;
+  check_de&&mand_reference( map_cell );
+  const key_cell = TOS - ONE;
   de&&mand_tag( key_cell );
-  const map_cell = TOS - ONE;
-  check_de&&mand_cell_type( map_cell, tag_reference );
   const map = value_of( map_cell );
   const map_length = value_of( map );
   // Search for the key
@@ -16509,60 +16505,67 @@ function primitive_map_get(){
     ii++;
   }
   if( ii == map_length ){
-    FATAL( "map.get, key not found" );
+    FATAL( "map.@, key not found" );
     return;
   }
   reset( key_cell );
   pop();
-  clear( map_cell );
   copy_cell( map + ( ii + 1 ) * ONE, TOS );
+  clear( map_cell );
 }
 primitive( "map.get", primitive_map_get );
 
 
 /*
  *  map.nice-get - get a value from a map, void if impossible
- *  usage: map.nice-get( map, key ) > value
+ *  usage: map.nice-get( key, map ) >value
  */
 
 function primitive_map_nice_get(){
-  const key_cell = TOS;
-  if( type_of( key_cell ) != type_tag ){
-    reset( key_cell );
+  const map_cell = TOS;
+  if( ! is_a_reference( map_cell ) ){
+    reset( map_cell );
     pop();
-    clear( TOS );
-    return;
-  }
-  const map_cell = key_cell - ONE;
-  if( type_of( map_cell ) != type_reference ){
-    reset( key_cell );
-    pop();
-    reset( TOS );
+    drop();
     return;
   }
   let map = value_of( map_cell );
-  if( type_of( map ) == type_reference ){
+  if( is_a_reference( map )
+  &&  area_length(    map ) == 1
+  ){
     map = value_of( map );
   }
+  // First cell is the length of the map
+  if( ! is_an_integer( map ) ){
+    drop();
+    drop();
+    return;
+  }
   const map_length = value_of( map );
-  // Search for the key
-  let ii = 0;
-  while( ii < map_length ){
-    if( name_of( map + ( ii + 1 ) * ONE ) == name_of( key_cell ) ){
+  const key_cell = TOS - ONE;
+  if( ! is_a_tag( key_cell ) ){
+    drop();
+    drop();
+    return;
+  }
+  const key = value_of( key_cell );
+  // Search for the key, skip length first cell
+  let ii = 1;
+  while( ii <= map_length ){
+    if( name_of( map + ii * ONE ) == key ){
       break;
     }
     ii++;
   }
-  if( ii == map_length ){
-    reset( key_cell );
-    pop();
-    clear( TOS );
+  if( ii > map_length ){
+    drop();
+    drop();
     return;
   }
-  reset( key_cell );
+  copy_cell( map + ii * ONE, the_tmp_cell );
+  clear_top();
   pop();
-  clear( map_cell );
-  copy_cell( map + ( ii + 1 ) * ONE, TOS );
+  move_cell( the_tmp_cell, TOS );
 }
 primitive( "map.nice-get", primitive_map_nice_get );
 
@@ -16572,7 +16575,6 @@ primitive( "map.nice-get", primitive_map_nice_get );
  */
 
 function primitive_map_question_get(){
-  primitive_swap();
   primitive_map_nice_get();
 }
 primitive( "map.?@", primitive_map_question_get );
@@ -16582,23 +16584,20 @@ primitive( "map.?@", primitive_map_question_get );
  *  map.length - number of elements in a map
  */
 
-const tag_map_length = tag( "map.length" );
-
 function primitive_map_length(){
   const map_cell = TOS;
-  check_de&&mand_cell_type( map_cell, tag_reference );
+  check_de&&mand_reference( map_cell );
   const map = value_of( map_cell );
   const map_length = value_of( map );
   clear( map_cell );
-  set( TOS, type_integer, tag_map_length, map_length );
-  set_tos_name( tag_map_length );
+  set_top_integer( tag_length, map_length );
 }
 primitive( "map.length", primitive_map_length );
 
 
 /* ----------------------------------------------------------------------------
-  *  Primitives to handle the stack of an object as a set
-  */
+ *  Primitives to handle the stack of an object as a set
+ */
 
 /*
   *  set.put - put a value in a set
@@ -16608,7 +16607,7 @@ function primitive_set_put(){
   const value_cell = TOS;
   const name_id = name_of( value_cell );
   const set_cell = TOS - 2 * ONE;
-  check_de&&mand_cell_type( set_cell, tag_reference );
+  check_de&&mand_reference( set_cell );
   const set = value_of( set_cell );
   const set_length = value_of( set );
   const set_capacity = to_cell( area_size( set ) );
@@ -16642,7 +16641,7 @@ function primitive_set_get(){
   const key_cell = TOS;
   de&&mand_tag( key_cell );
   const set_cell = TOS - ONE;
-  check_de&&mand_cell_type( set_cell, tag_reference );
+  check_de&&mand_reference( set_cell );
   const set = value_of( set_cell );
   const set_length = value_of( set );
   // Search for the key
@@ -16672,11 +16671,11 @@ const tag_set_length = tag( "set.length" );
 
 function primitive_set_length(){
   const set_cell = TOS;
-  check_de&&mand_cell_type( set_cell, tag_reference );
+  check_de&&mand_reference( set_cell );
   const _set = value_of( set_cell );
   const set_length = value_of( _set );
   clear( set_cell );
-  set( TOS, type_integer, tag_set_length, set_length );
+  set_top_integer( tag_set_length, set_length );
   set_tos_name( tag_set_length );
 }
 primitive( "set.length", primitive_set_length );
@@ -16688,12 +16687,12 @@ primitive( "set.length", primitive_set_length );
 
 function primitive_set_extend(){
   const set_cell = TOS;
-  check_de&&mand_cell_type( set_cell, tag_reference );
+  check_de&&mand_reference( set_cell );
   const set = value_of( set_cell );
   const set_length = value_of( set );
-  const set_capacity = to_cell( area_size( set ) );
+  const set_capacity = area_length( set ) - 1;
   const other_set_cell = TOS - ONE;
-  check_de&&mand_cell_type( other_set_cell, tag_reference );
+  check_de&&mand_reference( other_set_cell );
   const other_set = value_of( other_set_cell );
   const other_set_length = value_of( other_set );
   // Add each element of the other set to the set
@@ -16716,12 +16715,12 @@ primitive( "set.extend", primitive_set_extend );
 
 function primitive_set_union(){
   const set_cell = TOS;
-  check_de&&mand_cell_type( set_cell, tag_reference );
+  check_de&&mand_reference( set_cell );
   const set = value_of( set_cell );
   const set_length = value_of( set );
   const set_capacity = to_cell( area_size( set ) );
   const other_set_cell = TOS - ONE;
-  check_de&&mand_cell_type( other_set_cell, tag_reference );
+  check_de&&mand_reference( other_set_cell );
   const other_set = value_of( other_set_cell );
   const other_set_length = value_of( other_set );
   // Add each element of the other set to the set
@@ -16745,12 +16744,12 @@ primitive( "set.union", primitive_set_union );
 
 function primitive_set_intersection(){
   const set_cell = TOS;
-  check_de&&mand_cell_type( set_cell, tag_reference );
+  check_de&&mand_reference( set_cell );
   const set = value_of( set_cell );
   let   set_length = value_of( set );
   const set_capacity = to_cell( area_size( set ) );
   const other_set_cell = TOS - ONE;
-  check_de&&mand_cell_type( other_set_cell, tag_reference );
+  check_de&&mand_reference( other_set_cell );
   const other_set = value_of( other_set_cell );
   const other_set_length = value_of( other_set );
   // Remove each element of the set that is not in the other set
@@ -16760,7 +16759,7 @@ function primitive_set_intersection(){
     push();
     copy_cell( value_cell, TOS );
     primitive_set_get();
-    if( is_a_void_cell( TOS ) ){
+    if( is_a_void( TOS ) ){
       // The element is not in the other set, remove it
       move_cell( set + ( set_length ) * ONE, set + ( ii + 1 ) * ONE );
       set_value( set, set_length - 1 );
@@ -16807,7 +16806,7 @@ function primive_box(){
   const allocated_cell = allocate_area( tag_box, size_of_cell );
   const kept_name = name_of( TOS );
   move_cell( TOS, allocated_cell );
-  set( TOS, type_reference, kept_name, allocated_cell );
+  set_top( type_reference, kept_name, allocated_cell );
 }
 primitive( "box", primive_box );
 
@@ -16820,7 +16819,7 @@ const tag_at = tag( "@" );
 
 function primitive_at(){
   const box_cell = TOS;
-  check_de&&mand_cell_type( box_cell, type_reference );
+  check_de&&mand_reference( box_cell );
   const value_cell = value_of( box_cell );
   if( value_cell == 0 ){
     // The box is empty, return a void cell
@@ -16832,7 +16831,7 @@ function primitive_at(){
       de&&mand( range_is_free( value_cell ) );
       move_cell( box_cell, the_tmp_cell );
       pop();
-      check_de&&mand_cell_type( TOS, type_reference );
+      check_de&&mand_reference( TOS );
       range_set_binding( value_cell, value_of( TOS ) );
       reset( TOS );
       move_cell( the_tmp_cell, TOS );
@@ -17340,6 +17339,34 @@ primitive( "query-method-cache", primitive_query_method_cache );
 
 
 /*
+ *  object.class - push the class of an object
+ */
+
+function primitive_object_class(){
+  check_de&&mand_reference( TOS );
+  const area = value_of( TOS );
+  const klass = area_tag( area );
+  area_free( area );
+  set_top_tag( tag_class, klass );
+}
+primitive( "object.class", primitive_object_class );
+
+
+/*
+ *  object.class! - change the class of an object
+ */
+
+function primitive_set_object_class(){
+  check_de&&mand_reference( TOS );
+  const area = value_of( TOS );
+  const klass = pop_tag();
+  area_set_tag( area, klass );
+  area_free( area );
+}
+primitive( "object.class!", primitive_set_object_class );
+
+
+/*
  *  run-super-method - run a method from a super class
  */
 
@@ -17351,7 +17378,7 @@ let run_super_method_definition = 0;
 
 function primitive_run_super_method(){
   const top = TOS;
-  if( type_of( top ) != type_integer ){
+  if( ! is_an_integer( top ) ){
     FATAL( "run-super-method, not an integer" );
     return;
   }
@@ -17529,7 +17556,7 @@ const tag_TOS = tag( "TOS" );
 
 function primitive_TOS(){
   push();
-  set( TOS, type_integer, tag_TOS, TOS );
+  set_top_integer( tag_TOS, TOS );
 };
 primitive( "TOS", primitive_TOS );
 
@@ -17570,7 +17597,6 @@ primitive( "IP!", primitive_set_IP );
 /* ---------------------------------------------------------------------------
  *  Forth words
  */
-
 
 /*
  *  ALLOT - allocate some memory by moving the HERE pointer forward
@@ -17880,8 +17906,8 @@ function run(){
           #ifdef RUN_DEBUG
             bug( S()
               + "\nRUN_DEBUG IP: "
-              + inox_machine_code_cell_as_text( IP )
-              + stacks_dump()
+              + dump_stacks()
+              + NL + inox_machine_code_cell_as_text( IP )
             );
             debug_info  = info_of(  IP );
             debug_type  = type_of(  IP );
@@ -18172,6 +18198,7 @@ function run(){
         // Trace execution when needed, filter out some noise in step mode
         if( verbose_stack_de || run_de || step_de ){
           n = unpack_name( i );
+          // If signal
           if( t != type_primitive
           || (  step_de
             && i != 0x0000
@@ -18182,18 +18209,19 @@ function run(){
             && n != tag( "rename" )
           ) ){
             if( verbose_stack_de ){
-              bug( S() + "\n"
-                + stacks_dump()
-                + "\n"
+              bug( S() + NL
+                + dump_stacks()
+                + NL
                 + inox_machine_code_cell_as_text( IP )
-                + " <= IP"
+                + " <= IP\n"
               );
             }else if( run_de ){
-              bug( S() + "\n"
+              bug( S() + NL
                 + inox_machine_code_cell_as_text( IP )
                 + " <= IP"
               );
             }
+          // If noise
           }else{
             // Clear n to avoid step break
             n = 0;
@@ -18324,11 +18352,16 @@ function run(){
               // CSP = old_csp;
             }
             if( IP && IP != old_ip ){
-              bug( S()
-                + "run, IP change, was " + C( old_ip - ONE )
-                + ", due to "
-                + inox_machine_code_cell_as_text( old_ip - ONE )
-              );
+              const code = name_of( old_ip - ONE );
+              if( code != tag( "run" )
+              &&  code != tag( "scope-close" )
+              ){
+                bug( S()
+                  + "run, IP change, was " + C( old_ip - ONE )
+                  + ", due to "
+                  + inox_machine_code_cell_as_text( old_ip - ONE )
+                );
+              }
             }
             if( IP == 0 ){
               bug( S()+ "run, IP 0 due to " + F( fun ) );
@@ -18593,7 +18626,7 @@ let the_last_quoted_verb_id = 0;
 const the_last_token_cell = allocate_cell();
 
 // ToDo: initialize the_last_token_cell in C++ somewhere
-/**/ set_integer_cell( the_last_token_cell, 0 );
+/**/ set_integer( the_last_token_cell, 0 );
 /**/ set_name(         the_last_token_cell, tag( "last-token" ) );
 
 /*
@@ -18758,7 +18791,7 @@ primitive( "last-token", primitive_last_token );
 
 function primitive_as_void(){
   const top = TOS;
-  if( is_sharable( top ) ){
+  if( is_a_reference( top ) ){
     area_free( value_of( top ) );
   }
   set_type( top, type_void );
@@ -18775,9 +18808,9 @@ const tag_as_verb = tag( "as-verb" );
 function primitive_as_verb(){
   const auto_ = cell_as_text( TOS );
   const is_it = verb_exists( auto_ );
-  clear( TOS );
+  clear_top();
   if( is_it ){
-    set_verb_cell( TOS,tag( auto_ ) );
+    set_verb( TOS,tag( auto_ ) );
   }
 }
 primitive( "as-verb", primitive_as_verb );
@@ -18789,11 +18822,11 @@ primitive( "as-verb", primitive_as_verb );
 
 function primitive_text_as_verb(){
   const auto_ = cell_as_text( TOS );
-  clear( TOS );
+  clear_top();
   if( verb_exists( auto_ ) ){
-    set_verb_cell( TOS, tag( auto_ )) ;
+    set_verb( TOS, tag( auto_ )) ;
   }else{
-    set_verb_cell( TOS, tag( "noop" ) );
+    set_verb( TOS, tag( "noop" ) );
   }
 }
 primitive( "text.as-verb", primitive_text_as_verb );
@@ -18805,8 +18838,8 @@ primitive( "text.as-verb", primitive_text_as_verb );
 
 function primitive_as_tag(){
   const t = tag( cell_as_text( TOS ) );
-  clear( TOS );
-  set( TOS, type_tag, tag_tag, t );
+  clear_top();
+  set_top_tag( tag_tag, t );
 }
 primitive( "as-tag", primitive_as_tag );
 
@@ -18874,7 +18907,7 @@ const tag_definition = tag( "definition" );
 
 function primitive_definition(){
   const auto_ = cell_as_text( TOS );
-  clear( TOS );
+  clear_top();
   let verb_id;
   if( tag_exists( auto_ ) ){
     verb_id = tag( auto_ );
@@ -18882,7 +18915,7 @@ function primitive_definition(){
     verb_id = 0;
   }
   const ip = definition_of( verb_id );
-  set( TOS, type_integer, tag_definition, ip );
+  set_top_integer( tag_definition, ip );
   de&&mand_block( TOS );
 }
 primitive( "definition", primitive_definition );
@@ -18926,7 +18959,7 @@ function primitive_definitions(){
   }
   // Return the list
   push();
-  set( TOS, type_reference, tag_definitions, list );
+  set_top( type_reference, tag_definitions, list );
 }
 primitive( "definitions", primitive_definitions );
 
@@ -19012,8 +19045,8 @@ function primitive_scope_close(){
     drop_control();
   }
   // Pop the scope-open sentinel and then the return address
-  check_de&&mand_cell_name( CSP, tag_scope_open );
-  check_de&&mand_cell_type( CSP, type_tag );
+  check_de&&mand_named( CSP, tag_scope_open );
+  check_de&&mand_tag( CSP );
   raw_drop_control();
   pop_ip();
 }
@@ -19108,15 +19141,14 @@ const tag_block_return = tag( "block-jump" );
 function primitive_block_return(){
   const top = TOS;
   pop();
-  check_de&&mand_cell_type( TOS, type_reference );
-  const ip = value_of( TOS );
+  check_de&&mand_reference( top );
+  // Jump to block
+  IP = value_of( top );
   // Push reference to clear later on
   CSP += ONE;
-  move_cell( TOS, CSP );
+  move_cell( top, CSP );
   // Schedule call to destructor, it will clear the reference and return
   defer( tag_destructor, destructor_definition );
-  // Jump to block
-  IP = ip;
 }
 primitive( "block.return", primitive_block_return );
 
@@ -19215,7 +19247,7 @@ function primitive_attach(){
   set( block_area + 2 * ONE, type_primitive, tag_run, 0 );
 
   // Push the resulting block object
-  set( TOS, type_reference, tag_attach, block_area );
+  set_top( type_reference, tag_attach, block_area );
 
 }
 primitive( "attach", primitive_attach );
@@ -19361,7 +19393,7 @@ function primitive_bind_to(){
     set( block_area + ONE, type_primitive, tag_block_run_it, value_of( TOS ) );
   }
   // Push the block object
-  set( TOS, type_reference, tag_block, block_area );
+  set_top( type_reference, tag_block, block_area );
 }
 primitive( "bind-to", primitive_bind_to );
 
@@ -19409,11 +19441,11 @@ function primitive_block(){
   // The block header is at IP, it is an integer
   check_de&&mand_integer( IP );
   // It's name is /block-header
-  check_de&&mand_cell_name( IP, tag_block_header );
+  check_de&&mand_named( IP, tag_block_header );
   let length = block_length( IP );
   // Push the address, skipping the block header
   push();
-  set( TOS, type_integer, tag_block, IP + 1 * ONE );
+  set_top_integer( tag_block, IP + 1 * ONE );
   // Advance IP to skip the block
   IP = IP + ( 1 + length ) * ONE;
   if( de ){
@@ -19809,14 +19841,14 @@ const tag_token = tag( "token" );
 function primitive_input_until(){
   const top = TOS;
   let auto_limit = cell_as_text( top );
-  clear( top );
+  clear_top();
   let auto_ = S();
   let auto_ch  = S();
   while( true ){
     auto_ch = tokenizer_next_character();
     if( teq( auto_ch, "" ) ){
       // Return void if source is empty
-      clear( top );
+      clear_top();
       return;
     }
     if( teq( auto_ch, auto_limit ) ){
@@ -19855,7 +19887,7 @@ function ch_is_space( ch : ConstText ) : boolean {
   // ToDo: faster
   /**/return  tidx( " \n\r\t", ch ) >= 0;
   /*c{
-    return teq( ch, "\n" )
+    return teq( ch, NL )
     ||     teq( ch, "\r" )
     ||     teq( ch, "\t" )
     ||     teq( ch, " " );
@@ -19924,7 +19956,7 @@ const tag_is_eol = tag( "eol?" );
 
 function ch_is_eol( ch : ConstText ) : boolean {
   // ToDo: handle crlf better
-  if( tneq( ch, "\n" ) && tneq( ch, "\r" ) )return false;
+  if( tneq( ch, NL ) && tneq( ch, "\r" ) )return false;
   return true;
 }
 
@@ -20011,14 +20043,14 @@ function extract_line( txt : TxtC, ii : Index, mark : Text ) : Text {
 
   // Get whatever is after next eol
   let auto_back = tbut( txt, ii );
-  let index = tidx( auto_back, "\n" );
+  let index = tidx( auto_back, NL );
   if( index != -1 ){
     auto_back = tcut( auto_back, index );
   }
 
   // Get whatever is before, up to previous eol
   let auto_front = tcut( txt, ii );
-  index = tidxr( auto_front, "\n" );
+  index = tidxr( auto_front, NL );
   if( index != -1 ){
     auto_front = tbut( auto_front, index + 1 );
   }
@@ -20696,7 +20728,7 @@ function process_text_state(){
   toker_buf += toker_ch;
 
   // New lines are ok inside a "xxxx" text token
-  if( teq( toker_ch, "\n" ) ){
+  if( teq( toker_ch, NL ) ){
     toker_line_no += 1;
   }
 
@@ -20800,7 +20832,7 @@ function process_word_state(){
   ){
     toker_next_index++;
     // Handle crlf, skip cr when followed by lf
-    if( teq( toker_ch, "\r" ) &&  teq( toker_next_1, "\n" ) ){
+    if( teq( toker_ch, "\r" ) &&  teq( toker_next_1, NL ) ){
       toker_next_index += 1;
     }
     return;
@@ -21032,13 +21064,13 @@ function next_token(){
   }
 
   if( token_de ){
-    bug( S()+ "\n"
-      + "Token. Next is "
+    bug( S()+ NL
+      + "Token. "
       + token_type_as_text( token_type )
       + " \"" + token_text + "\""
-      + ", index "  + N( toker_start_index )
-      + ", line "   + N( token_line_no )
-      + ", column " + N( token_column_no )
+      // + ", index "  + N( toker_start_index )
+      + " " + N( token_line_no )
+      + ":" + N( token_column_no )
       + " \"" + extract_line( toker_text, toker_start_index, "[TOKEN]" ) + "\""
     );
   }
@@ -21345,7 +21377,7 @@ function text_is_integer( buf : ConstText ) : boolean {
 function primitive_text_is_integer(){
   de&&mand_cell_type( TOS, tag_text );
   const auto_ = cell_as_text( TOS );
-  clear( TOS );
+  clear_top();
   push_boolean( text_is_integer( auto_ ) );
   set_tos_name( tag_is_integer );
 }
@@ -21388,7 +21420,7 @@ function integer_from_text( buf : ConstText ) : Value {
 function primitive_text_as_integer(){
   de&&mand_cell_type( TOS, tag_text );
   const auto_ = cell_as_text( TOS );
-  clear( TOS );
+  clear_top();
   /*ts{*/
     const parsed = parseInt( auto_ );
     if( isNaN( parsed ) ){
@@ -21839,7 +21871,7 @@ function eval_definition_end(){
   parse_new_verb_name = no_text;
   de&&mand( ! eval_is_compiling() );
 
-  eval_de&&bug( S()+ "\n" + text_of_verb_definition( verb_tag ) );
+  eval_de&&bug( S()+ NL + text_of_verb_definition( verb_tag ) );
 
 } // eval_definition_end()
 
@@ -21886,10 +21918,37 @@ function debug_info_as_text( debug_info : u32 ) : Text {
 }
 
 
+function debug_info_and_source( debug_info : u32 ) : Text {
+  let buf = text_pad( debug_info_as_text( debug_info ), "-", 60 );
+  const traced_file   =   debug_info >> 16;
+  const traced_line   = ( debug_info & 0xFFFF ) >> 7;
+  const traced_column =   debug_info & 0x7F;
+  if( traced_file == current_eval_file ){
+    let line = extract_line_no( current_eval_content, traced_line - 1 );
+    if( tsome( line ) ){
+      buf += "\n  " + line;
+    }
+    line = extract_line_no( current_eval_content, traced_line );
+    line = tcut( line, traced_column - 1 )
+    + "**" + tbut( line, traced_column - 1 );
+    buf += "\n> " + line; // + "\n  " + text_pad( "", traced_column - 1 ) + "^"
+    line = extract_line_no( current_eval_content, traced_line + 1 );
+    if( tsome( line ) ){
+      buf += "\n  " + line;
+    }
+    line = extract_line_no( current_eval_content, traced_line + 2 );
+    if( tsome( line ) ){
+      buf += "\n  " + line;
+    }
+  }
+  return buf;
+}
+
+
 function primitive_debug_info(){
   const ip = IP - ONE;
-  de&&mand_cell_type( ip, type_primitive );
-  de&&mand_cell_name( ip, tag_debug_info );
+  de&&mand_primitive( ip );
+  de&&mand_named( ip, tag_debug_info );
   current_debug_info = value_of( IP - ONE );
   traced_file   =   current_debug_info >> 16;
   traced_line   = ( current_debug_info & 0xFFFF ) >> 7;
@@ -21897,17 +21956,10 @@ function primitive_debug_info(){
   if( run_de || eval_de ){
     // Display file:line:col when not about the current file
     if( traced_file != current_eval_file ){
-      trace( "\n" + debug_info_as_text( current_debug_info ) );
+      trace( NL + debug_info_as_text( current_debug_info ) );
     // When about current file, display source code that is around the position
     }else{
-      trace(
-        "\n" + debug_info_as_text( current_debug_info )
-        + "\n  " + extract_line_no( current_eval_content, traced_line - 1 )
-        + "\n> " + extract_line_no( current_eval_content, traced_line )
-        + "\n  " + text_pad( "", traced_column - 1 ) + "^"
-        + "\n  " + extract_line_no( current_eval_content, traced_line + 1 )
-        + "\n  " + extract_line_no( current_eval_content, traced_line + 2 )
-      );
+      trace( NL + debug_info_and_source( current_debug_info ) );
       // Breakpoint now unless somewhere else soon
       if( step_de && ! run_de && ! stack_de ){ breakpoint(); }
     }
@@ -22069,7 +22121,7 @@ function eval_do_literal(){
       + ", now has " + N( stack_length( parse_codes ) ) + " codes"
     );
   }else{
-    verbose_stack_de&&bug( S()+ "PUSH LITERAL\n" + stacks_dump() );
+    verbose_stack_de&&bug( S()+ "PUSH LITERAL\n" + dump_stacks() );
   }
 };
 
@@ -22211,9 +22263,9 @@ function eval_do_machine_code( tag : Name ){
     de&&mand( TOS >= ACTOR_data_stack );
 
     verbose_stack_de&&bug( S()
-      + "Eval. Before immediate run of " + tag_as_text( tag )
+      + "Eval. Before immediate " + tag_as_text( tag )
       + " at IP " + C( IP )
-      + "\n" + stacks_dump()
+      + NL + dump_stacks()
     );
 
     // ToDo: try{ ... } and "back-to-outer-interpreter" primitive
@@ -22222,9 +22274,9 @@ function eval_do_machine_code( tag : Name ){
     de&&mand( TOS < ACTOR_data_stack_limit );
     de&&mand( TOS >= ACTOR_data_stack );
     verbose_stack_de&&bug( S()
-      + "\nEval. After immediate run of "
+      + "\nEval. After immediate "
       + tag_as_text( tag )
-      + "\n" + stacks_dump()
+      + NL + dump_stacks()
     );
 
   // When adding to the definition of a new verb or block
@@ -23470,7 +23522,7 @@ primitive( "inox-out", primitive_inox_out );
 
 function primitive_trace_stacks(){
   // ToDo: push text instead of using console.log() ?
-  trace( S()+ "STACKS TRACE\n" + stacks_dump() );
+  trace( S()+ "STACKS TRACE\n" + dump_stacks() );
 }
 primitive( "trace-stacks", primitive_trace_stacks );
 
@@ -23516,8 +23568,8 @@ primitive( "ascii-character", primitive_ascii_character );
 function primitive_ascii_code(){
   /**/ const code = cell_as_text( TOS ).charCodeAt( 0 );
   //c/ int code = cell_as_text( TOS ).at( 0 );
-  clear( TOS );
-  set( TOS, type_integer, code, tag_ascii );
+  clear_top();
+  set_top_integer( code, tag_ascii );
 }
 primitive( "ascii-code", primitive_ascii_code );
 
@@ -24139,7 +24191,7 @@ const fun = {
 
 /*}*/
 
-// console.log( "C SOURCE:\n" + C_source + "\n" );
+// console.log( "C SOURCE:\n" + C_source + NL );
 
 // ToDo provide a mechanism to register event handlers
 function signal( event : TxtC ){
@@ -24401,7 +24453,7 @@ if( require && require.main === module ){
 static void TODO( const char* message ){
   Text buf( "TODO: " );
   buf += message;
-  buf += "\n";
+  buf += NL;
   write( 2, buf.c_str(), buf.length() );
 }
 

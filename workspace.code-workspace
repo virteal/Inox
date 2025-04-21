@@ -135,7 +135,6 @@
 			"mutex": "cpp",
 			"thread": "cpp"
 		},
-		"workbench.activityBar.visible": true,
 		"workbench.commandPalette.experimental.suggestCommands": true,
 		"workbench.experimental.cloudChanges.autoStore": "onShutdown",
 		"workbench.panel.defaultLocation": "right",
@@ -147,6 +146,7 @@
 			"editor.dragAndDrop": false,
 			"editor.guides.bracketPairs": true
 		},
-		"editor.minimap.enabled": false
+		"editor.minimap.enabled": false,
+		"breadcrumbs.enabled": false
 	}
 }

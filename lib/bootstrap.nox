@@ -70,17 +70,10 @@ to assert{       assert. inline
 
 to constant:is:  make.constant
 to global:is:    make.global
-to local:is:     make.local
 
 to void-constant  _ swap, make.constant
 to void-global    _ swap, make.global
 to void-local     _ swap, make.local
-
-to  ->           local!.    operator
-to >->           local!.    operator
-to $->           local!.    operator
-to _->           data!.     operator
-to .->           object.!.  operator
 
 to init-globals
   constant: inox-version/       is: "v0.4.0";

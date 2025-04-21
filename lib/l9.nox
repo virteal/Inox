@@ -11,10 +11,12 @@ The l8 kernel was a single-threaded, event-driven kernel. The github repository 
 
  |~
 
+ debug
+
 to with-debug-info     debug-info/enable/log
 to without-debug-info  debug-info/disable/log
 
-to text.join$  as-text >pattern
+to text.join$  >pattern
   "" >result
   loop{
     $pattern .find( /$ ) >index
@@ -31,20 +33,14 @@ to text.join$  as-text >pattern
   }
   $result .join( $pattern )
 
-to join$  text.join$
+to join$  as-text text.join$
 
-. with-debug-info normal-debug
-
-
-to ((          "{|" as-verb run.  immediate!
-to ))  literal "|}" as-verb run.  immediate!
+to ((          /{| as-verb run.  immediate!
+to ))  literal |}/ as-verb run.  immediate!
 
 to does{  define-verb
 
 to dump-last-verb  last-verb .as-text-definition out
-
-
-. normal-debug with-debug-info
 
 to drop-with     swap, assert{ top with? }, drop
 to with-length   with data-index
@@ -57,6 +53,23 @@ to queue[]  make.extensible-object( (( 0 :queue )) )
 to map[]    make.extensible-object( (( 0 :map   )) )
 to set[]    make.extensible-object( (( 0 :set   )) )
 
+. with-debug-info
+
+to stack{
+  with
+  swap run
+  with-length :stack make.extensible-object
+  drop-with
+
+to [{  (( stack{/ as-verb ))
+
+to array{  with, swap run, with-length :array make.object, drop-with
+
+to a{   (( array{/ as-verb ))
+to [#{  (( array{/ as-verb ))
+
+to [:{  with, swap run, with-length :map make.extensible-object, drop-with
+
 to object.each{  >code, >it
   this-it
   from: 0 to: @length - 1 do: {
@@ -67,7 +80,7 @@ to object.each-index( >code, >it
   this-it
   from: 0 to: @length - 1 do: {
     ii $code .run
-  }
+  };
 
 to object.each-key{  >code, >it
   this-it
@@ -85,22 +98,22 @@ to list.pop    stack.pop
 
 to classes.get  classes .?@
 
-to method-text-name >method >class
+to method-text-name  >method >class
   ( $class & "." & $method )
 
 to method-name  method-text-name as-tag
 
 to define-method  with class/ method/ code/ parameters
   define-verb( method-name( $class, $method ), $code )
-  ( $class, $method ) classes .!
 
 to understand?  >method >target
   class-of( $target ) >class-name
   tag.run( $class-name, $method, $class-name ) >method-definition
-  drop drop
   $method-definition something?
 
-to make{  >make-code >it
+to thing.understand?  understand?
+
+to make{ >make-code >it
   with
     $make-code run
   with-length{ make.object( it rename ) }
@@ -114,7 +127,7 @@ to make.metaclass  >class-name
     /metaclass  :class
     /thing      :superclass-name
   } >metaclass
-  ( $class-name, $metaclass ) classes .!
+  $metaclass $class-name classes debugger .!
   $metaclass
 
 to update-classes  >pattern
@@ -125,8 +138,7 @@ to update-classes  >pattern
     $full-name .cut( $dot-index ) as-tag >class-name
     break-unless( $class-name in? classes  )
     break-unless( $pattern = "*"  or{ ( $class-name = $pattern ) } )
-    $full-name .but( $dot-index + 1 ) as-tag >method-name
-    ( $class-name, $method-name ) classes .!
+    make.metaclass( $class-name )
   }
   if: ( $pattern = "*" ) then: {
     clear-method-cache( all/, all/ )
@@ -137,7 +149,7 @@ to update-classes  >pattern
 to update-all-classes  update-classes( "*" )
 to update-class        update-classes
 
-to extend-class{ with class-name/ code/ parameters
+to extend-class{  with class-name/ code/ parameters
   assert{ verb.exist?( $class-name ) }
   $class-name >it
   return-unless( it in? classes )
@@ -191,31 +203,34 @@ to attribute  >name
 to getter  attribute
 to setter  attribute
 
-to thing >method >class
+to thing  >method >class ~~ class method -- class method definition
+~~ get the method definition from the superclass or void
+  ~~ restore eaten parameters
   $class $method
   ~~ classes.$class.superclass.definitions.$method
-  object.?@( $method,
-    map.?@( definitions/,
-      object.?@( superclass/,
-        map.?@( $class, classes )
-  ) ) )
+  $class       classes map.?@
+  superclass/  swap    object.?@
+  definitions/ swap    map.?@
+  $method      swap    map.?@
   if: top something? then: {
     top >definition
     update-method-cache( $class, $method, $definition )
   } else: {
     method-name( $class, $method ) >full-name
     if: verb.exist?( $full-name ) then: {
-      $full-name as-verb definition >definition
+      drop
+      $full-name as-verb definition
+      top >definition
       update-method-cache( $class, $method, $definition )
       ~~ On the fly addition to the class
       if: verb.exist?( $class ) then: {
         $class extend-class{
-          $method $definition "method" run
+          $method $definition method/ tag.run
         }
       } else: {
         verb.exist?( class/ ) then{
           $class class{
-            $method $definition "method" run
+            $method $definition method/ tag.run
           }
         }
       };
@@ -223,8 +238,6 @@ to thing >method >class
   };
 
 to map  thing
-
-. debug
 
 to initialize-classes
   metaclass/class{
@@ -258,7 +271,6 @@ to initialize-classes
           map/class{       set/superclass         }
   update-all-classes
 initialize-classes
-
 
 
 global: l9-next-id/ is: 0;

@@ -96,7 +96,7 @@ An Iɴᴏx optimizing compiler is somewhere is the road map, we'll come to it so
 A tale of two stacks
 --------------------
 
-Iɴᴏx don't mix the _control plane_ with the _data plane_, contrary to most languages.
+Iɴᴏx doesn't mix the _control plane_ with the _data plane_, contrary to most languages.
 
 The good thing about that is that data can stay much longer in stacks instead of needing storage elsewhere.
 
@@ -549,7 +549,7 @@ Tags
 ```
 x:1  ~~ an integer value named x
 
-msg:"hello"  ~~ a text value name msg
+msg:"hello"  ~~ a text value named msg
 ```
 
 It is as if a tag were attached to the value, hence such names for values are called **tags**.
